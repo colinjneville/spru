@@ -1,0 +1,30 @@
+[package]
+name = "spru"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+default = []
+# For internal test usage only
+test-util = []
+
+[dev-dependencies]
+
+[dependencies]
+spru-macro = { path = "../spru-macro" }
+
+telety.workspace = true
+amass.workspace = true
+
+halfbrown.workspace = true
+thiserror.workspace = true
+
+derive_more = { workspace = true, features = ["from"] }
+perfect-derive.workspace = true
+
+deku.workspace = true
+
+# serialization
+serde.workspace = true
+rmp-serde.workspace = true
+erased-serde.workspace = true

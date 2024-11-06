@@ -1,0 +1,74 @@
+use crate::{action::{self, adapter::Data, Adapter, Output}, item::{self, lookup}, Item};
+
+pub struct Create;
+
+impl Adapter for Create {
+    type In<'l, T, Lookup: item::lookup::OfTypeMut<T>> = ()
+    where 
+        T: 'l,
+        Lookup: 'l,
+    ;
+    type Out<T, Lookup: item::lookup::OfTypeMut<T>> = T;
+    
+    fn input<'l, T, Lookup: item::lookup::OfTypeMut<T>, Error>(_data: &mut Data<'l, Lookup>) -> Result<(), action::catalog::Error<Lookup::Error, Error>>
+    where 
+        T: 'l,
+        Lookup: 'l,
+    {
+        Ok(())
+    }
+
+    fn output<T, Lookup: item::lookup::OfTypeMut<T>, Undo, Error>(data: &mut Data<Lookup>, output: Output<Undo, T>) 
+        -> Result<Option<Undo>, action::catalog::Error<Lookup::Error, Error>>
+    {
+        let Data { 
+            lookup, 
+            id, 
+            version, 
+        } = data;
+        let lookup = lookup.take().expect("Data is only accessed here");
+        let Output { undo, out } = output;
+
+        if let Ok(stateful) = lookup.lookup(&item::IdT::new(id.clone())) {
+            Err(action::catalog::Error::Item(item::id::Error::AlreadyExists { id: id.clone(), version: stateful.version() }.into()))
+        } else {
+            let stateful = Item::new(item::IdT::new(id.clone()), version.after, out);
+            lookup.create(stateful).map_err(action::catalog::Error::Lookup)?;
+            undo.as_ref().expect("create Action must return an undo record");
+            Ok(undo)
+        }
+    }
+}
+
+struct Creator<'l, Lookup: item::Lookup> {
+    lookup: &'l mut Lookup,
+    id: item::Id,
+    version: item::version::Change,
+}
+
+impl<'l, Lookup: item::Lookup> Creator<'l, Lookup> {
+    pub(crate) fn new(lookup: &'l mut Lookup, id: item::Id, version: item::version::Change) -> Self {
+        Self {
+            lookup,
+            id,
+            version,
+        }
+    }
+
+    pub fn create<T>(self, value: T) -> Result<(), Error<Lookup::Error>>
+    where Lookup: lookup::OfTypeMut<T> {
+        if let Ok(stateful) = self.lookup.lookup(&item::IdT::new(self.id.clone())) {
+            Err(Error::Item(item::id::Error::AlreadyExists { id: self.id, version: stateful.version() }.into()))
+        } else {
+            let stateful = Item::new(item::IdT::new(self.id.clone()), self.version.after, value);
+            Ok(self.lookup.create(stateful).map_err(Error::Lookup)?)
+        }
+    }
+}
+
+#[derive(Debug)]
+#[derive(thiserror::Error)]
+pub enum Error<LookupError> {
+    Lookup(LookupError),
+    Item(#[from] item::id::Error),
+}

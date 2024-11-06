@@ -1,0 +1,14 @@
+[package]
+name = "spru-message"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+spru-macro = { path = "../spru-macro" }
+
+thiserror.workspace = true
+
+# serialization
+serde.workspace = true
+deku.workspace = true
+rmp-serde.workspace = true

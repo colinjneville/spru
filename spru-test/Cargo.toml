@@ -1,0 +1,28 @@
+[package]
+name = "spru-test"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+default = []
+smol = ["dep:spru-smol", "dep:spru-message", "dep:smol"]
+bevy = []
+
+[dependencies]
+spru = { path = "../spru" }
+spru-util = { path = "../spru-util" }
+spru-message = { path = "../spru-message", optional = true }
+spru-smol = { path = "../spru-smol", optional = true }
+
+telety.workspace = true
+amass.workspace = true
+
+smol = { workspace = true, optional = true }
+
+anyhow.workspace = true
+rand.workspace = true
+
+derive_more = { workspace = true, features = ["from"] }
+perfect-derive.workspace = true
+
+serde.workspace = true

@@ -1,0 +1,33 @@
+[package]
+name = "spru-smol"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+
+spru = { path = "../spru" }
+spru-message = { path = "../spru-message" }
+
+thiserror.workspace = true
+
+# async
+atomicell.workspace = true
+async-broadcast.workspace = true
+async-lazy.workspace = true
+async-once-cell.workspace = true
+async-task.workspace = true
+async-trait.workspace = true
+event-listener.workspace = true
+futures-lite.workspace = true
+onetime.workspace = true
+smol.workspace = true
+moro.workspace = true
+
+# serialization
+serde.workspace = true
+rmp-serde.workspace = true
+
+[dev-dependencies]
+spru-util = { path = "../spru-util" }
+
+amass.workspace = true

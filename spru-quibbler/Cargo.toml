@@ -1,0 +1,25 @@
+[package]
+name = "spru-quibbler"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+spru = { path = "../spru/" }
+spru-util = { path = "../spru-util" }
+spru-smol = { path = "../spru-smol" }
+spru-bevy = { path = "../spru-bevy" }
+
+amass.workspace = true
+
+rand.workspace = true
+rand_chacha.workspace = true
+
+rust-fsm.workspace = true
+
+thiserror.workspace = true
+
+bevy.workspace = true
+
+serde.workspace = true
