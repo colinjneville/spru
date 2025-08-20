@@ -9,22 +9,22 @@ use crate::{record, transaction};
 
 #[derive(Debug)]
 #[derive(thiserror::Error)]
-pub enum Error<LookupError, ActionCatalogError> {
+pub enum Error<LookupError, ActionError> {
     #[error(transparent)]
-    Record(#[from] record::Error<LookupError, ActionCatalogError>),
+    Record(#[from] record::Error<LookupError, ActionError>),
     #[error(transparent)]
-    Revert(#[from] RevertError<LookupError, ActionCatalogError>),
+    Revert(#[from] RevertError<LookupError, ActionError>),
 }
 #[derive(Debug)]
 #[derive(thiserror::Error)]
-pub struct RevertError<LookupError, ActionCatalogError> {
-    pub initial: Option<record::Error<LookupError, ActionCatalogError>>, 
-    pub fatal: record::Error<LookupError, ActionCatalogError>,
+pub struct RevertError<LookupError, ActionError> {
+    pub initial: Option<record::Error<LookupError, ActionError>>, 
+    pub fatal: record::Error<LookupError, ActionError>,
 }
 
-impl<LookupError, ActionCatalogError> fmt::Display for RevertError<LookupError, ActionCatalogError>
+impl<LookupError, ActionError> fmt::Display for RevertError<LookupError, ActionError>
 where 
-    record::Error<LookupError, ActionCatalogError>: fmt::Display
+    record::Error<LookupError, ActionError>: fmt::Display
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let Self {
@@ -42,15 +42,15 @@ where
 
 #[derive(Debug)]
 #[derive(thiserror::Error)]
-pub(crate) enum UndoError<LookupError, ActionCatalogError> {
-    Log(#[from] Error<LookupError, ActionCatalogError>),
+pub(crate) enum UndoError<LookupError, ActionError> {
+    Log(#[from] Error<LookupError, ActionError>),
     Invalid(#[from] transaction::id::InvalidError),
 }
 
 #[derive(Debug)]
 #[derive(thiserror::Error)]
-pub enum ConfirmError<LookupError, ActionCatalogError> {
-    Log(#[from] Error<LookupError, ActionCatalogError>),
+pub enum ConfirmError<LookupError, ActionError> {
+    Log(#[from] Error<LookupError, ActionError>),
     Mismatch(#[from] transaction::id::MismatchError),
 }
 

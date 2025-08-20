@@ -1,48 +1,48 @@
-use std::{any, fmt, marker::PhantomData};
+use std::{any, cmp, fmt, hash, marker::PhantomData};
 
-use crate::{snapshot, item, type_index, Item};
+use crate::{item, snapshot, state, Item};
 
 #[derive(Debug)]
-pub struct Canonical<Catalog> {
-    items_map: ItemsMap<Catalog>,
+pub struct Canonical<State> {
+    items_map: ItemsMap<State>,
 }
 
-impl<Catalog> Canonical<Catalog> {
+impl<State> Canonical<State> {
     pub(crate) fn new() -> Self {
         Self {
             items_map: ItemsMap::new(),
         }
     }
 
-    pub(crate) fn items_map(&self) -> &ItemsMap<Catalog> {
+    pub(crate) fn items_map(&self) -> &ItemsMap<State> {
         &self.items_map
     }
 }
 
-impl<Catalog> item::Lookup for Canonical<Catalog> {
+impl<State> item::Lookup for Canonical<State> {
     type Error = Error;
 }
 
-impl<Catalog, T> item::lookup::OfType<T> for Canonical<Catalog> 
+impl<State, T> item::lookup::OfType<T> for Canonical<State> 
 where 
-    Catalog: type_index::TypeToU32<T>,
+    State: tagset::TagSetDiscriminant<T, Repr: Into<state::Index>>,
     T: any::Any,
 {
-    fn lookup(&self, id: &item::IdT<T>) -> Result<&Item<T>, Self::Error> {
+    fn lookup(&self, id: item::IdT<T>) -> Result<&Item<T>, Self::Error> {
         self.items_map.get(id)
             .ok_or(Error::Temp)
     }
 }
 
-impl<Catalog, T> item::lookup::OfTypeMut<T> for Canonical<Catalog> 
+impl<State, T> item::lookup::OfTypeMut<T> for Canonical<State> 
 where 
-    Catalog: type_index::TypeToU32<T>,
+    State: tagset::TagSetDiscriminant<T, Repr: Into<state::Index>>,
     T: any::Any + serde::Serialize,
 {
     type Mut<'lr> = &'lr mut Item<T>
     where Self: 'lr;
 
-    fn lookup_mut(&mut self, id: &item::IdT<T>) -> Result<Self::Mut<'_>, Self::Error> {
+    fn lookup_mut(&mut self, id: item::IdT<T>) -> Result<Self::Mut<'_>, Self::Error> {
         self.items_map.get_mut(id)
             .ok_or(Error::Temp)
     }
@@ -52,7 +52,7 @@ where
         Ok(())
     }
 
-    fn destroy(&mut self, id: &item::IdT<T>) -> Result<Item<T>, Self::Error> {
+    fn destroy(&mut self, id: item::IdT<T>) -> Result<Item<T>, Self::Error> {
         self.items_map.remove(id)
             .ok_or(Error::Temp)
     }
@@ -120,7 +120,7 @@ where
             {
                 let mut map = halfbrown::SizedHashMap::new();
                 while let Some(item) = seq.next_element::<Item<T>>()? {
-                    map.insert(*item.id().untyped(), item);
+                    map.insert(item.id().untyped(), item);
                 }
 
                 Ok(ItemMap {
@@ -135,19 +135,19 @@ where
 
 impl<T> ItemMap<T> {
     pub fn insert(&mut self, item: Item<T>) -> Option<Item<T>> {
-        self.map.insert(*item.id().untyped(), item)
+        self.map.insert(item.id().untyped(), item)
     }
 
-    pub fn remove(&mut self, id: &item::Id) -> Option<Item<T>> {
+    pub fn remove(&mut self, id: item::Id) -> Option<Item<T>> {
         self.map.remove(&id)
     }
 
-    pub fn get(&self, id: &item::Id) -> Option<&Item<T>> {
-        self.map.get(id)
+    pub fn get(&self, id: item::Id) -> Option<&Item<T>> {
+        self.map.get(&id)
     }
 
-    pub fn get_mut(&mut self, id: &item::Id) -> Option<&mut Item<T>> {
-        self.map.get_mut(id)
+    pub fn get_mut(&mut self, id: item::Id) -> Option<&mut Item<T>> {
+        self.map.get_mut(&id)
     }
 }
 
@@ -187,19 +187,19 @@ where T: any::Any + serde::Serialize {
 
 fn map_item<T>(item: &Item<T>) -> Result<Item<Box<[u8]>>, snapshot::CreateError> 
 where T: serde::Serialize {
-    let id = item::IdT::new(*item.id().untyped());
+    let id = item::IdT::new(item.id().untyped());
     let version = item.version();
     let item = Item::new(id, version, rmp_serde::to_vec(&item.get())?.into_boxed_slice());
     Ok(item)
 }
 
 #[derive(Debug)]
-pub(crate) struct ItemsMap<Catalog> {
-    raw: std::collections::HashMap<u32, Box<dyn ErasedItemMap>>,
-    _p: PhantomData<fn(Catalog) -> Catalog>,
+pub(crate) struct ItemsMap<State> {
+    raw: std::collections::HashMap<state::Index, Box<dyn ErasedItemMap>>,
+    _p: PhantomData<fn(State) -> State>,
 }
 
-impl<Catalog> ItemsMap<Catalog> {
+impl<State> ItemsMap<State> {
     pub fn new() -> Self {
         Self {
             raw: Default::default(),
@@ -207,16 +207,16 @@ impl<Catalog> ItemsMap<Catalog> {
         }
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = (&u32, &Box<dyn ErasedItemMap>)> {
+    pub fn iter(&self) -> impl Iterator<Item = (&state::Index, &Box<dyn ErasedItemMap>)> {
         self.raw.iter()
     }
     
     pub fn insert<T>(&mut self, item: Item<T>) 
     where 
         T: any::Any + serde::Serialize,
-        Catalog: type_index::TypeToU32<T>,
+        State: tagset::TagSetDiscriminant<T, Repr: Into<state::Index>>,
     {
-        let index = Catalog::N;
+        let index = State::DISCRIMINANT.into();
         let item_map = self.raw.entry(index)
             .or_insert_with(|| Box::new(ItemMap::<T>::new()));
         let item_map = item_map.as_any_mut().downcast_mut::<ItemMap<T>>()
@@ -225,46 +225,46 @@ impl<Catalog> ItemsMap<Catalog> {
         assert!(prev.is_none(), "Item id was already in type map");
     }
 
-    pub fn remove<T>(&mut self, item_id: &item::IdT<T>) -> Option<Item<T>> 
+    pub fn remove<T>(&mut self, item_id: item::IdT<T>) -> Option<Item<T>> 
     where 
         T: any::Any,
-        Catalog: type_index::TypeToU32<T>,
+        State: tagset::TagSetDiscriminant<T, Repr: Into<state::Index>>,
     {
-        let index = Catalog::N;
+        let index = State::DISCRIMINANT.into();
         if let Some(item_map) = self.raw.get_mut(&index) {
             let item_map = item_map.as_any_mut().downcast_mut::<ItemMap<T>>()
                 .expect("Type map is invalid");
-            item_map.remove(item_id)
+            item_map.remove(item_id.untyped())
         } else {
             None
         }
     }
 
-    pub fn get<T>(&self, item_id: &item::IdT<T>) -> Option<&Item<T>> 
+    pub fn get<T>(&self, item_id: item::IdT<T>) -> Option<&Item<T>> 
     where 
         T: any::Any,
-        Catalog: type_index::TypeToU32<T>,
+        State: tagset::TagSetDiscriminant<T, Repr: Into<state::Index>>,
     {
-        let index = Catalog::N;
+        let index = State::DISCRIMINANT.into();
         if let Some(item_map) = self.raw.get(&index) {
             let item_map = item_map.as_any().downcast_ref::<ItemMap<T>>()
                 .expect("Type map is invalid");
-            item_map.get(item_id)
+            item_map.get(item_id.untyped())
         } else {
             None
         }
     }
 
-    pub fn get_mut<T>(&mut self, item_id: &item::IdT<T>) -> Option<&mut Item<T>> 
+    pub fn get_mut<T>(&mut self, item_id: item::IdT<T>) -> Option<&mut Item<T>> 
     where 
         T: any::Any,
-        Catalog: type_index::TypeToU32<T>,
+        State: tagset::TagSetDiscriminant<T, Repr: Into<state::Index>>,
     {
-        let index = Catalog::N;
+        let index = State::DISCRIMINANT.into();
         if let Some(item_map) = self.raw.get_mut(&index) {
             let item_map = item_map.as_any_mut().downcast_mut::<ItemMap<T>>()
                 .expect("Type map is invalid");
-            item_map.get_mut(item_id)
+            item_map.get_mut(item_id.untyped())
         } else {
             None
         }
@@ -281,34 +281,43 @@ pub enum Error {
 
 #[cfg(test)]
 mod test {
-    use crate::transaction;
+    use crate::{transaction, Snapshot};
+    use tagset::tagset;
 
     use super::*;
 
+    extern crate self as spru;
+
+    #[derive(serde::Serialize, serde::Deserialize)]
+    struct S0(i32);
+
+    #[derive(serde::Serialize, serde::Deserialize)]
+    struct S1(i64);
+
+    #[tagset(impl<Lookup> crate::State<Lookup>)]
+    #[tagset(index(5u32))]
+    #[tagset(S0)]
+    #[tagset(reserved(..7))]
+    #[tagset(S1)]
+    struct MyCatalog;
+
     #[test]
     fn round_trip() {
+        
         use item::lookup::OfTypeMut as _;
 
         extern crate self as spru;
 
-        #[derive(Debug)]
-        #[derive(item::Catalog)]
-        #[repr(u32)]
-        enum MyCatalog {
-            I32(i32) = 5,
-            I64(i64) = 7,
-        }
-
         let mut id = item::Id::new();
         let mut canonical = Canonical::<MyCatalog>::new();
 
-        canonical.create(Item::new_untyped_id(id, item::Version::ZERO, 1i32)).expect("create failed");
+        canonical.create(Item::new_untyped_id(id, item::Version::ZERO, S0(1i32))).expect("create failed");
         id = id.next();
-        canonical.create(Item::new_untyped_id(id, item::Version::ZERO, 2i32)).expect("create failed");
+        canonical.create(Item::new_untyped_id(id, item::Version::ZERO, S0(2i32))).expect("create failed");
         id = id.next();
-        canonical.create(Item::new_untyped_id(id, item::Version::ZERO, 3i64)).expect("create failed");
+        canonical.create(Item::new_untyped_id(id, item::Version::ZERO, S1(3i64))).expect("create failed");
         id = id.next();
-        canonical.create(Item::new_untyped_id(id, item::Version::ZERO, 4i64)).expect("create failed");
+        canonical.create(Item::new_untyped_id(id, item::Version::ZERO, S1(4i64))).expect("create failed");
         
         
         let checkpoint = Snapshot::new(item::Id::new().force_type::<()>(), &canonical).expect("checkpoint failed");
@@ -317,12 +326,12 @@ mod test {
         checkpoint.apply(&mut canonical2).expect("checkpoint apply failed");
 
         let mut id = item::Id::new();
-        assert_eq!(canonical2.items_map.get::<i32>(&id.force_type()).expect("lookup failed").get(), &1i32);
+        assert_eq!(canonical2.items_map.get::<S0>(id.force_type()).expect("lookup failed").get().0, 1i32);
         id = id.next();
-        assert_eq!(canonical2.items_map.get::<i32>(&id.force_type()).expect("lookup failed").get(), &2i32);
+        assert_eq!(canonical2.items_map.get::<S0>(id.force_type()).expect("lookup failed").get().0, 2i32);
         id = id.next();
-        assert_eq!(canonical2.items_map.get::<i64>(&id.force_type()).expect("lookup failed").get(), &3i64);
+        assert_eq!(canonical2.items_map.get::<S1>(id.force_type()).expect("lookup failed").get().0, 3i64);
         id = id.next();
-        assert_eq!(canonical2.items_map.get::<i64>(&id.force_type()).expect("lookup failed").get(), &4i64);
+        assert_eq!(canonical2.items_map.get::<S1>(id.force_type()).expect("lookup failed").get().0, 4i64);
     }
 }

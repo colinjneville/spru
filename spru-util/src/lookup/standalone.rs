@@ -18,13 +18,13 @@ impl spru::item::Lookup for Standalone {
 }
 
 impl<T: 'static> spru::item::lookup::OfType<T> for Standalone {
-    fn lookup(&self, id: &IdT<T>) -> Result<&Item<T>, Self::Error> {
+    fn lookup(&self, id: IdT<T>) -> Result<&Item<T>, Self::Error> {
         let type_id = any::TypeId::of::<T>();
         let item = if let Some(inner_map) = self.map.get(&type_id) {
             let inner_map = inner_map.downcast_ref::<HashMap<item::IdT<T>, Item<T>>>()
-                .expect("Interal type mismatch");
+                .expect("Internal type mismatch");
 
-            inner_map.get(id)
+            inner_map.get(&id)
         } else {
             None
         };
@@ -38,13 +38,13 @@ impl<T: 'static> spru::item::lookup::OfTypeMut<T> for Standalone {
     type Mut<'lr> = &'lr mut spru::Item<T>
     where Self: 'lr;
 
-    fn lookup_mut(&mut self, id: &IdT<T>) -> Result<Self::Mut<'_>, Self::Error> {
+    fn lookup_mut(&mut self, id: IdT<T>) -> Result<Self::Mut<'_>, Self::Error> {
         let type_id = any::TypeId::of::<T>();
         let item = if let Some(inner_map) = self.map.get_mut(&type_id) {
             let inner_map = inner_map.downcast_mut::<InnerMap<T>>()
                 .expect("Interal type mismatch");
 
-            inner_map.get_mut(id)
+            inner_map.get_mut(&id)
         } else {
             None
         };
@@ -67,13 +67,13 @@ impl<T: 'static> spru::item::lookup::OfTypeMut<T> for Standalone {
         }
     }
 
-    fn destroy(&mut self, id: &IdT<T>) -> Result<spru::Item<T>, Self::Error> {
+    fn destroy(&mut self, id: IdT<T>) -> Result<spru::Item<T>, Self::Error> {
         let type_id = any::TypeId::of::<T>();
         let item = if let Some(inner_map) = self.map.get_mut(&type_id) {
             let inner_map = inner_map.downcast_mut::<InnerMap<T>>()
                 .expect("Interal type mismatch");
 
-            inner_map.remove(id)
+            inner_map.remove(&id)
         } else {
             None
         };
@@ -115,23 +115,23 @@ mod test {
         lookup.create(spru::Item::test_new(id2.clone(), "two"))
             .unwrap();
 
-        let s0 = lookup.lookup_mut(&id0)
+        let s0 = lookup.lookup_mut(id0)
             .unwrap()
             .test_get_mut();
 
         *s0 = "ZERO";
 
-        let s0 = lookup.lookup(&id0)
+        let s0 = lookup.lookup(id0)
             .unwrap()
             .get();
         assert_eq!(s0, &"ZERO");
 
-        let s1 = lookup.lookup(&id1)
+        let s1 = lookup.lookup(id1)
             .unwrap()
             .get();
         assert_eq!(s1, &"one");
 
-        lookup.destroy(&id2)
+        lookup.destroy(id2)
             .unwrap();
     }
 }

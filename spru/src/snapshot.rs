@@ -1,32 +1,30 @@
 use std::{marker::PhantomData, sync::Arc};
 
-use crate::{item, Item};
-
-pub type Key = u32;
+use crate::{item, state, Item};
 
 #[derive(Debug)]
 #[derive(serde::Serialize, serde::Deserialize)]
 struct SnapshotType {
-    index: Key,
+    index: u32,
     items: Box<[Item<Box<[u8]>>]>,
 }
 
 #[derive(Debug)]
 #[derive(serde::Serialize, serde::Deserialize)]
-pub struct Snapshot<ItemCatalog, Root> {
-    root: item::IdT<Root>,
+pub struct Snapshot<State, Root> {
+    root: Root,
     items: Arc<[SnapshotType]>,
     #[serde(skip)]
-    _p: PhantomData<fn(ItemCatalog) -> ItemCatalog>,
+    _p: PhantomData<fn(State) -> State>,
 }
 
 
-impl<ItemCatalog, Root> Snapshot<ItemCatalog, Root> {
-    pub(crate) fn new(root: item::IdT<Root>, lookup: &item::lookup::Canonical<ItemCatalog>) -> Result<Self, CreateError> {
+impl<State, Root> Snapshot<State, Root> {
+    pub(crate) fn new(root: Root, lookup: &item::lookup::Canonical<State>) -> Result<Self, CreateError> {
         let mut snapshot_items_map = vec![];
-        for (&key, item_map) in lookup.items_map().iter() {
+        for (key, item_map) in lookup.items_map().iter() {
             snapshot_items_map.push(SnapshotType {
-                index: key,
+                index: key.clone(),
                 items: item_map.as_serialized()?,
             });
         }
@@ -38,18 +36,23 @@ impl<ItemCatalog, Root> Snapshot<ItemCatalog, Root> {
         })
     }
 
-    pub(crate) fn root(&self) -> item::IdT<Root> {
-        self.root
+    pub(crate) fn root(&self) -> &Root {
+        &self.root
     }
 
     pub(crate) fn apply<Lookup>(&self, lookup: &mut Lookup) -> Result<(), ApplyError<Lookup::Error>> 
     where 
         Lookup: item::Lookup,
-        ItemCatalog: item::Catalog<Lookup>,
+        State: crate::State<Lookup, Repr: TryFrom<state::Index>>,
     {
         for item_type in &*self.items {
             for item in &*item_type.items {
-                ItemCatalog::apply_item(item_type.index, item, lookup)?;
+                let Ok(index) = item_type.index.try_into() else {
+                    // TODO This should be a proper error
+                    unimplemented!("Index could not be converted back to repr type");
+                };
+                
+                State::apply_state(index, item, lookup)?;
             }
         }
         Ok(())

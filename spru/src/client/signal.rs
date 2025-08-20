@@ -1,9 +1,9 @@
-use crate::transaction;
+use crate::{record::Records, transaction};
 
 #[derive(Debug)]
 #[derive(serde::Serialize, serde::Deserialize)]
-pub struct Arg<ActionCatalog, GameOutcome> {
-    pub(crate) signal: Internal<ActionCatalog, GameOutcome>,
+pub struct Arg<Action, GameOutcome> {
+    pub(crate) signal: Internal<Action, GameOutcome>,
 }
 
 #[derive(Debug)]
@@ -26,36 +26,36 @@ pub enum Error<LookupError, ActionsError> {
     #[error(transparent)]
     Action(ActionsError),
     // TODO
-    #[error("Other synchronization error")]
-    Other,
+    #[error("Other synchronization error: {0}")]
+    Other(crate::TempError),
 }
 
 impl<LookupError, ActionsError> From<crate::TempError> for Error<LookupError, ActionsError> {
-    fn from(_value: crate::TempError) -> Self {
-        Self::Other
+    fn from(value: crate::TempError) -> Self {
+        Self::Other(value)
     }
 }
 
 #[derive(Debug)]
 #[derive(derive_more::From)]
 #[derive(serde::Serialize, serde::Deserialize)]
-pub(crate) enum Internal<ActionCatalog, GameOutcome> {
-    InteractionResult(InteractionResult),
-    ConfirmedTransaction(ConfirmedTransaction<ActionCatalog>),
+pub(crate) enum Internal<Action, GameOutcome> {
+    InteractionResult(InteractionResult<Action>),
+    ConfirmedTransaction(ConfirmedTransaction<Action>),
     EndGame(EndGame<GameOutcome>),
 }
 
 #[derive(Debug)]
 #[derive(serde::Serialize, serde::Deserialize)]
-pub(crate) struct InteractionResult {
+pub(crate) struct InteractionResult<Action> {
     pub pending_transaction_id: transaction::Pending,
-    pub confirmed_transaction_id: Option<transaction::Id>,
+    pub confirmed_transaction_id: Option<(transaction::Id, Records<Action>)>,
 }
 
 #[derive(Debug)]
 #[derive(serde::Serialize, serde::Deserialize)]
-pub(crate) struct ConfirmedTransaction<ActionCatalog> {
-    pub confirmed_transaction: transaction::Confirmed<ActionCatalog>,
+pub(crate) struct ConfirmedTransaction<Action> {
+    pub confirmed_transaction: transaction::Confirmed<Action>,
 }
 
 #[derive(Debug)]

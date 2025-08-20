@@ -1,7 +1,10 @@
-#[spru_message::payload_variant(0 => spru_smol::lobby::client::Variant::<MemberInfo>)]
-#[spru_message::payload_variant(1 => spru::directive::Client::<PlayerData, ActionCatalog, GameOutcome>)]
-#[spru_message::payload_variant(2 => spru_smol::lobby::server::Variant::<MemberInfo>)]
-#[spru_message::payload_variant(3 => spru::directive::Server::<Interaction>)]
+use tagset::tagset;
+
+
+#[tagset(spru_smol::lobby::client::Variant::<MemberInfo>)]
+#[tagset(spru::directive::Client::<PlayerData, Action, GameOutcome>)]
+#[tagset(spru_smol::lobby::server::Variant::<MemberInfo>)]
+#[tagset(spru::directive::Server::<Interaction>)]
 pub struct Payload;
 
 #[cfg(test)]

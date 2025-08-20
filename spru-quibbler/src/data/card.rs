@@ -21,8 +21,8 @@ impl Card {
 }
 
 pub struct Face {
-    letters: &'static str,
-    points: u8,
+    pub letters: &'static str,
+    pub points: u8,
 }
 
 impl Face {
@@ -31,6 +31,10 @@ impl Face {
             letters,
             points,
         }
+    }
+
+    pub fn points(&self) -> u32 {
+        self.points as u32
     }
 }
 

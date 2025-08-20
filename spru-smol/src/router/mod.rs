@@ -2,7 +2,6 @@ pub mod connection;
 pub use connection::Connection;
 mod route;
 use route::Route;
-use spru_message::{header, payload, Header, Message, Payload};
 
 use crate::util;
 
@@ -56,7 +55,7 @@ impl<P> TcpListener<P> {
 
     pub async fn listen(mut self) -> std::io::Result<()> 
     where 
-        P: 'static 
+        P: any::Any + Send + serde::de::DeserializeOwned,
     {
         // Force binding before destructuring
         self.tcp_listener().await?;
@@ -69,13 +68,11 @@ impl<P> TcpListener<P> {
         let BindState::Bound(tcp_listener) = bind_state 
             else { unreachable!("tcp_listener() ensures we have already bound") };
         
-        let header_len = Header::byte_length();
-        
         let result: std::io::Result<()> = moro::async_scope!(|scope| {
             use moro::prelude::*;
 
             loop {
-                let (mut tcp_stream, addr) = tcp_listener.accept().await
+                let (tcp_stream, addr) = tcp_listener.accept().await
                     .unwrap_or_cancel(scope).await;
     
                 let route = route::Tcp::new(addr, tcp_stream.clone());
@@ -84,36 +81,40 @@ impl<P> TcpListener<P> {
                 let router = router.clone();
                 let sender = router.sender();
 
-                let _ = scope.spawn(async move {
-                    let mut header_buffer = vec![0u8; header_len];
+                let _ = scope.spawn::<Result<(), crate::TempError>>(async move {
+                    
+                    let mut buffer = vec![0u8; util::PAYLOAD_MAX_LEN];
                     
                     loop {
-                        use smol::io::AsyncReadExt as _;
+                        let payload = util::deserialize_over_stream(tcp_stream.clone(), &mut *buffer)
+                            .await
+                            .map_err(util::discard)?;
+                        sender.send(Routed { client_id: id, value: payload })
+                            .await
+                            .map_err(util::discard)?;
                         
-                        tcp_stream.read_exact(&mut header_buffer).await
-                            .map_err(util::discard)?;
+                        // tcp_stream.read_exact(&mut header_buffer).await
+                        //     .map_err(util::discard)?;
     
-                        let Ok(header) = Header::try_from(&*header_buffer) else {
-                            // TODO error handling
-                            return Err(());
-                        };
+                        // let Ok(header) = Header::try_from(&*header_buffer) else {
+                        //     // TODO error handling
+                        //     return Err(());
+                        // };
                         
-                        if header.payload_size > crate::util::PAYLOAD_MAX_LEN {
-                            // TODO error handling
-                            return Err(());
-                        }
+                        // if header.payload_size > crate::util::PAYLOAD_MAX_LEN {
+                        //     // TODO error handling
+                        //     return Err(());
+                        // }
     
-                        let mut payload_buffer = vec![0u8; header.payload_size];
+                        // let mut payload_buffer = vec![0u8; header.payload_size];
     
-                        tcp_stream.read_exact(&mut *payload_buffer).await
-                            .map_err(util::discard)?;
+                        // tcp_stream.read_exact(&mut *payload_buffer).await
+                        //     .map_err(util::discard)?;
     
-                        let message = Message::from_bytes(header, payload_buffer.into_boxed_slice());
-                        sender.send(Routed { client_id: id, value: message.into() }).await
-                            .map_err(util::discard)?;
+                        // let message = Message::from_bytes(header, payload_buffer.into_boxed_slice());
+                        // sender.send(Routed { client_id: id, value: message.into() }).await
+                        //     .map_err(util::discard)?;
                     }
-
-                    Ok(())
                 });
             }
         }).await;
@@ -123,33 +124,33 @@ impl<P> TcpListener<P> {
 }
 
 #[derive(Debug, Clone)]
-pub struct Routed<T> {
+pub struct Routed<P> {
     pub client_id: Id,
-    pub value: T,
+    pub value: P,
 }
 
-impl<T> Routed<T> {
-    pub fn new(client_id: Id, value: T) -> Self {
+impl<P> Routed<P> {
+    pub fn new(client_id: Id, value: P) -> Self {
         Self {
             client_id,
             value,
         }
     }
 
-    fn map<U, V>(self, f: impl FnOnce(T) -> Result<U, V>) -> Result<Routed<U>, V> {
-        Ok(Routed {
-            client_id: self.client_id,
-            value: f(self.value)?,
-        })
-    }
+    // fn map<U, V>(self, f: impl FnOnce(P) -> Result<U, V>) -> Result<Routed<U>, V> {
+    //     Ok(Routed {
+    //         client_id: self.client_id,
+    //         value: f(self.value)?,
+    //     })
+    // }
 }
 
 #[derive(Debug)]
 pub struct Router<P> {
     routes: Arc<RwLock<Vec<Route<P>>>>,
 
-    send_keep_open: smol::channel::Sender<Routed<Message<Payload<P>>>>,
-    recv: smol::channel::Receiver<Routed<Message<Payload<P>>>>,
+    send_keep_open: smol::channel::Sender<Routed<P>>,
+    recv: smol::channel::Receiver<Routed<P>>,
 }
 
 impl<P> Clone for Router<P> {
@@ -202,65 +203,43 @@ impl<P> Router<P> {
         Id(index)
     }
 
-    pub async fn send<V>(&self, data: Routed<V>) -> Result<(), V>
+    pub async fn send(&self, payload: Routed<P>) -> Result<(), crate::TempError>
     where
-        V: any::Any + Serialize + Send,
-        P: payload::Variant<V>,
+        P: any::Any + Serialize + Send + Clone,
     {
         let Routed {
             client_id,
             value,
-        } = data;
+        } = payload;
         let routes = self.routes.read().await;
         let route = &routes[client_id.0];
         route.send(value).await
     }
 
-    pub fn send_blocking<V>(&self, data: Routed<V>) -> Result<(), V> 
+    pub fn send_blocking(&self, payload: Routed<P>) -> Result<(), crate::TempError> 
     where
-        V: any::Any + Serialize + Send,
-        P: payload::Variant<V>,
+        P: any::Any + Serialize + Send,
     {
         let Routed {
             client_id,
             value,
-        } = data;
+        } = payload;
         let routes = self.routes.read_blocking();
         let route = &routes[client_id.0];
         route.send_blocking(value)
     }
 
-    pub async fn recv<V>(&self) -> Result<Routed<V>, crate::TempError> 
-    where 
-        V: any::Any + DeserializeOwned + Send,
-        P: payload::Variant<V>,
-    {
-        self.recv_untyped().await?
-            .map(Message::<Payload<P>>::into_variant)
-            .map_err(util::discard)
-    }
-
-    pub async fn recv_untyped(&self) -> Result<Routed<Message<Payload<P>>>, crate::TempError> {
+    pub async fn recv(&self) -> Result<Routed<P>, crate::TempError> {
         self.recv.recv().await
             .map_err(util::discard)
     }
 
-    pub fn try_recv<V>(&self) -> Result<Routed<V>, crate::TempError> 
-    where
-        V: any::Any + DeserializeOwned + Send,
-        P: payload::Variant<V>,
-    {
-        self.try_recv_untyped()?
-            .map(Message::<Payload<P>>::into_variant)
-            .map_err(util::discard)
-    }
-
-    pub fn try_recv_untyped(&self) -> Result<Routed<Message<Payload<P>>>, crate::TempError> {
+    pub fn try_recv(&self) -> Result<Routed<P>, crate::TempError> {
         self.recv.try_recv()
             .map_err(util::discard)
     }
 
-    fn sender(&self) -> smol::channel::Sender<Routed<Message<Payload<P>>>> {
+    fn sender(&self) -> smol::channel::Sender<Routed<P>> {
         self.send_keep_open.clone()
     }
 
@@ -278,7 +257,7 @@ mod test {
     use std::collections::HashMap;
 
     use futures_lite::FutureExt;
-    use spru_message::header;
+    use tagset::tagset;
 
     use super::*;
 
@@ -286,7 +265,11 @@ mod test {
     fn local_routing() {
         let executor = smol::LocalExecutor::new();
 
-        #[spru_message::payload_variant(0 => i32)]
+        #[tagset(impl tagset::proxy::serde::Serialize)]
+        #[tagset(impl<'de> tagset::serde::DeserializeFromDiscriminant<'de>)]
+        #[tagset(impl<'de> tagset::proxy::serde::Deserialize<'de>)]
+        #[tagset(derive(Clone))]
+        #[tagset(i32)]
         struct Pload;
 
         let router = Router::<Pload>::new();
@@ -298,15 +281,15 @@ mod test {
                 let local1 = router.create_local_connection().await;
                 let local2 = router.create_local_connection().await;
 
-                local2.send(12i32).await.unwrap();
-                local0.send(25i32).await.unwrap();
-                local0.send(50i32).await.unwrap();
-                local1.send(1i32).await.unwrap();
-                local2.send(24i32).await.unwrap();
-                local1.send(2i32).await.unwrap();
-                local0.send(25i32).await.unwrap();
-                local1.send(97i32).await.unwrap();
-                local2.send(64i32).await.unwrap();
+                local2.send(12i32.into()).await.unwrap();
+                local0.send(25i32.into()).await.unwrap();
+                local0.send(50i32.into()).await.unwrap();
+                local1.send(1i32.into()).await.unwrap();
+                local2.send(24i32.into()).await.unwrap();
+                local1.send(2i32.into()).await.unwrap();
+                local0.send(25i32.into()).await.unwrap();
+                local1.send(97i32.into()).await.unwrap();
+                local2.send(64i32.into()).await.unwrap();
             }
         }).detach();
 
@@ -315,8 +298,9 @@ mod test {
                 let mut map = HashMap::<_, i32>::new();
 
                 for _ in 0..9 {
-                    let Routed { client_id: id, value } = router.recv::<i32>().await
+                    let Routed { client_id: id, value } = router.recv().await
                         .unwrap();
+                    let Ok(value): Result<i32, _> = value.try_into() else { panic!() };
                     *map.entry(id).or_default() += value;
                 }
 
@@ -330,10 +314,16 @@ mod test {
         }
     }
 
+    #[tagset(impl tagset::proxy::serde::Serialize)]
+    #[tagset(impl<'de> tagset::serde::DeserializeFromDiscriminant<'de>)]
+    #[tagset(impl<'de> tagset::proxy::serde::Deserialize<'de>)]
+    #[tagset(derive(Clone))]
+    #[tagset(i32)]
+    struct Pload;
+
     #[test]
     fn tcp_routing() {
-        #[spru_message::payload_variant(0 => i32)]
-        struct Pload;
+        
 
         let executor = smol::LocalExecutor::new();
 
@@ -354,15 +344,15 @@ mod test {
                 let mut tcp2 = connection::Tcp::<Pload>::new(local_socket).await.unwrap();
                 println!("TcpStream 2 connected on {} -> {}", tcp2.local_addr().unwrap(), tcp2.peer_addr().unwrap());
 
-                tcp2.send(12i32).await.unwrap();
-                tcp0.send(25i32).await.unwrap();
-                tcp0.send(50i32).await.unwrap();
-                tcp1.send(1i32).await.unwrap();
-                tcp2.send(24i32).await.unwrap();
-                tcp1.send(2i32).await.unwrap();
-                tcp0.send(25i32).await.unwrap();
-                tcp1.send(97i32).await.unwrap();
-                tcp2.send(64i32).await.unwrap();
+                tcp2.send(12i32.into()).await.unwrap();
+                tcp0.send(25i32.into()).await.unwrap();
+                tcp0.send(50i32.into()).await.unwrap();
+                tcp1.send(1i32.into()).await.unwrap();
+                tcp2.send(24i32.into()).await.unwrap();
+                tcp1.send(2i32.into()).await.unwrap();
+                tcp0.send(25i32.into()).await.unwrap();
+                tcp1.send(97i32.into()).await.unwrap();
+                tcp2.send(64i32.into()).await.unwrap();
             }
         }).detach();
 
@@ -375,8 +365,9 @@ mod test {
                     let mut map = HashMap::<_, i32>::new();
 
                     for _ in 0..9 {
-                        let Routed { client_id: id, value } = router.recv::<i32>().await
+                        let Routed { client_id: id, value } = router.recv().await
                             .unwrap();
+                        let Ok(value): Result<i32, _> = value.try_into() else { panic!() };
                         println!("{id:?}: {}", value);
                         
                         *map.entry(id).or_default() += value;

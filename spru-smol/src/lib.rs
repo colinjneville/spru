@@ -1,8 +1,10 @@
 pub mod client;
 pub mod error;
 pub mod game;
-pub use game::Server;
+// pub use game::Server;
 pub mod lobby;
+use std::borrow::Cow;
+
 pub use lobby::Lobby;
 pub mod router;
 pub use router::{Routed, Router};
@@ -10,7 +12,7 @@ pub mod server;
 pub mod util;
 
 // TODO actual error handling
-#[derive(Debug, Copy, Clone, Default)]
+#[derive(Debug, Clone, Default)]
 #[derive(thiserror::Error)]
 pub struct TempError;
 

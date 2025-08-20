@@ -23,8 +23,8 @@ impl<GameData, PlayerInit, PlayerData, Actions, Reaction, Payload> Server<GameDa
     ) -> Result<Self, NewError<Lookup::Error, GameInit::Error, PlayerInit::Error, Actions::Error>> 
     where 
         Lookup: spru::item::Lookup,
-        GameInit: spru::Init<PlayerData, Lookup, In = LobbyInfo, Out = GameData, ActionCatalog = Actions>,
-        PlayerInit: spru::Init<PlayerData, Lookup, In = MemberInfo, Out = PlayerData, ActionCatalog = Actions>,
+        GameInit: spru::Init<PlayerData, Lookup, In = LobbyInfo, Out = GameData, Action = Actions>,
+        PlayerInit: spru::Init<PlayerData, Lookup, In = MemberInfo, Out = PlayerData, Action = Actions>,
         Actions: actions::Apply<Lookup, Undo = Actions> + Send + Sync + 'static,
     {
         let lobby::Output {
@@ -78,7 +78,7 @@ impl<GameData, PlayerInit, PlayerData, Actions, Reaction, Payload> Server<GameDa
         Lookup: spru::item::Lookup,
         Actions: spru::actions::Apply<Lookup, Undo = Actions> + Send + Sync + 'static,
         Interaction: spru::Interaction<Actions, PlayerData> + serde::Serialize + serde::de::DeserializeOwned + Send + 'static,
-        Reaction: spru::interaction::Reaction<Actions, PlayerData, Input = Interaction::Output, GameOutcome: Clone>,
+        Reaction: spru::Reaction<Actions, PlayerData, Input = Interaction::Output, GameOutcome: Clone>,
         Payload: payload::Variant<spru::communication::Server<Interaction>> +
                  payload::Variant<spru::communication::Client<PlayerData, Actions, Reaction::GameOutcome>>,
         spru::communication::Server<Interaction>: serde::de::DeserializeOwned + Send + any::Any,
@@ -109,7 +109,7 @@ impl<GameData, PlayerInit, PlayerData, Actions, Reaction, Payload> Server<GameDa
         Lookup: spru::item::Lookup,
         Actions: spru::actions::Apply<Lookup, Undo = Actions> + Send + Sync + 'static,
         Interaction: spru::Interaction<Actions, PlayerData> + serde::Serialize + serde::de::DeserializeOwned + Send + 'static,
-        Reaction: spru::interaction::Reaction<Actions, PlayerData, Input = Interaction::Output, GameOutcome: Clone>,
+        Reaction: spru::Reaction<Actions, PlayerData, Input = Interaction::Output, GameOutcome: Clone>,
         Payload: payload::Variant<spru::communication::Server<Interaction>> +
                  payload::Variant<spru::communication::Client<PlayerData, Actions, Reaction::GameOutcome>>,
         spru::communication::Server<Interaction>: serde::de::DeserializeOwned + Send + any::Any,
@@ -130,7 +130,7 @@ impl<GameData, PlayerInit, PlayerData, Actions, Reaction, Payload> Server<GameDa
         Lookup: spru::item::Lookup,
         Actions: spru::actions::Apply<Lookup, Undo = Actions> + Send + Sync + 'static,
         Interaction: spru::Interaction<Actions, PlayerData> + serde::Serialize + serde::de::DeserializeOwned + Send + 'static,
-        Reaction: spru::interaction::Reaction<Actions, PlayerData, Input = Interaction::Output, GameOutcome: Clone>,
+        Reaction: spru::Reaction<Actions, PlayerData, Input = Interaction::Output, GameOutcome: Clone>,
         Payload: payload::Variant<spru::communication::Server<Interaction>> +
                  payload::Variant<spru::communication::Client<PlayerData, Actions, Reaction::GameOutcome>>,
         spru::communication::Server<Interaction>: serde::de::DeserializeOwned + Send + any::Any,
@@ -162,7 +162,7 @@ impl<GameData, PlayerInit, PlayerData, Actions, Reaction, Payload> Server<GameDa
         Lookup: spru::item::Lookup,
         Actions: spru::actions::Apply<Lookup, Undo = Actions> + Send + Sync + 'static,
         Interaction: spru::Interaction<Actions, PlayerData> + serde::Serialize + serde::de::DeserializeOwned + Send + 'static,
-        Reaction: spru::interaction::Reaction<Actions, PlayerData, Input = Interaction::Output, GameOutcome: Clone>,
+        Reaction: spru::Reaction<Actions, PlayerData, Input = Interaction::Output, GameOutcome: Clone>,
         Payload: payload::Variant<spru::communication::Server<Interaction>>,
     {
         let Routed { client_id, value } = message;

@@ -1,35 +1,17 @@
-use std::{fmt, sync::{atomic::{self, AtomicUsize}, Arc, Mutex}};
+use std::{sync::{atomic::{self, AtomicUsize}, Arc, Mutex}};
 
-use crate::{action, item, log, transaction::{self, Transactions}, Transaction};
+use crate::{item, log, transaction::{self, Transactions}, Transaction};
 
-pub(crate) struct Server<ActionCatalog> {
+#[derive(Debug)]
+pub(crate) struct Server<Action> {
     next_id: transaction::Id,
     // Compensation transactions to be applied to undo the effects of a transaction.
     // Can be cleared when game logic decides undos are no longer allowed
-    undo_transactions: Transactions<ActionCatalog>,
+    undo_transactions: Transactions<Action>,
     undo_pin_board: Arc<UndoPinBoard>,
 }
 
-impl<ActionCatalog> fmt::Debug for Server<ActionCatalog> 
-where 
-    Transactions<ActionCatalog>: fmt::Debug,
-{
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let Self {
-            next_id,
-            undo_transactions,
-            undo_pin_board,
-        } = self;
-
-        f.debug_struct("Server")
-            .field("next_id", next_id)
-            .field("undo_transactions", undo_transactions)
-            .field("undo_pin_board", undo_pin_board)
-            .finish()
-    }
-}
-
-impl<ActionCatalog> Server<ActionCatalog> {
+impl<Action> Server<Action> {
     pub(crate) fn new() -> Self {
         Self::new_with_next_id(transaction::Id::ZERO)
         
@@ -48,12 +30,12 @@ impl<ActionCatalog> Server<ActionCatalog> {
     }
 }
 
-impl<ActionCatalog> Server<ActionCatalog> {
-    pub fn apply_or_revert<Lookup>(&mut self, lookup: &mut Lookup, transaction: Transaction<ActionCatalog>) 
-        -> Result<transaction::Confirmed<ActionCatalog>, log::Error<Lookup::Error, ActionCatalog::Error>>
+impl<Action> Server<Action> {
+    fn apply_or_revert<Lookup>(&mut self, lookup: &mut Lookup, transaction: Transaction<Action>) 
+        -> Result<transaction::Confirmed<Action>, log::Error<Lookup::Error, Action::Error>>
     where 
         Lookup: item::Lookup,
-        ActionCatalog: action::Catalog<Lookup>,
+        Action: crate::Action<Lookup, Undo = Action>,
     {
         self.release_undo();
 
@@ -68,11 +50,20 @@ impl<ActionCatalog> Server<ActionCatalog> {
         Ok(transaction::Confirmed { id: do_id, transaction })
     }
 
+    pub(crate) fn register_undo(&mut self, undo_transaction: Transaction<Action>) -> transaction::Id {
+        let do_id = self.next_id;
+        self.next_id = do_id.next();
+        let undo_id = self.undo_transactions.push_back(undo_transaction);
+
+        debug_assert!(do_id == undo_id);
+        undo_id
+    }
+
     pub fn undo<Lookup>(&mut self, lookup: &mut Lookup, transaction_id: transaction::Id) 
-        -> Result<transaction::Confirmed<ActionCatalog>, log::UndoError<Lookup::Error, ActionCatalog::Error>>
+        -> Result<transaction::Confirmed<Action>, log::UndoError<Lookup::Error, Action::Error>>
     where 
         Lookup: item::Lookup,
-        ActionCatalog: action::Catalog<Lookup> + Clone,
+        Action: crate::Action<Lookup, Undo = Action> + Clone,
     {
         let transaction = self.undo_transactions.get(transaction_id)
             .ok_or(log::UndoError::Invalid(transaction::id::InvalidError(transaction_id)))?.clone();
@@ -84,6 +75,7 @@ impl<ActionCatalog> Server<ActionCatalog> {
         self.undo_pin_board.add_pin()
     }
 
+    // Release any undo transactions that are no longer needed
     fn release_undo(&mut self) {
         let min_pin = self.undo_pin_board.min_pin().unwrap_or(self.next_id);
         self.undo_transactions.trim_start(min_pin);

@@ -1,8 +1,5 @@
 use std::{any, marker::PhantomData};
 
-use serde::Serialize;
-use spru_message::{header, payload, Header, Message};
-
 use crate::util;
 
 
@@ -13,29 +10,27 @@ pub(crate) enum Route<P> {
 }
 
 impl<P> Route<P> {
-    pub async fn send<V>(&self, data: V) -> Result<(), V> 
+    pub async fn send(&self, payload: P) -> Result<(), crate::TempError> 
     where 
-        V: any::Any + Serialize + Send,
-        P: payload::Variant<V>,
+        P: any::Any + Send + serde::Serialize,
     {
         match self {
-            Self::Local(l) => l.send(data).await,
+            Self::Local(l) => l.send(payload).await,
             Self::Tcp(t) => 
-                t.send(&data).await
-                    .map_err(|_| data),
+                t.send(payload).await
+                    .map_err(util::discard),
         }
     }
 
-    pub fn send_blocking<V>(&self, data: V) -> Result<(), V> 
+    pub fn send_blocking(&self, payload: P) -> Result<(), crate::TempError> 
     where 
-        V: any::Any + Serialize + Send,
-        P: payload::Variant<V>,
+        P: any::Any + Send + serde::Serialize,
     {
         match self {
-            Self::Local(l) => l.send_blocking(data),
+            Self::Local(l) => l.send_blocking(payload),
             Self::Tcp(t) => 
-                t.send_blocking(&data)
-                    .map_err(|_| data),
+                t.send_blocking(payload)
+                    .map_err(util::discard),
         }
     }
 
@@ -61,37 +56,30 @@ impl<P> Tcp<P> {
         Self {
             addr,
             tcp_stream: tcp_stream,
-            _p: Default::default()
+            _p: PhantomData,
         }
     }
 
-    pub fn send_blocking<V>(&self, data: &V) -> Result<(), crate::TempError>
+    pub fn send_blocking<'p>(&self, payload: P) -> Result<(), crate::TempError>
     where
-        P: payload::Variant<V>,
-        V: Serialize,
+        P: serde::Serialize,
     {
-        smol::block_on(self.send(data))
+        smol::block_on(self.send(payload))
     }
 
-    pub async fn send<V>(&self, data: &V) -> Result<(), crate::TempError> 
+    pub async fn send<'p>(&self, payload: P) -> Result<(), crate::TempError> 
     where
-        P: payload::Variant<V>,
-        V: Serialize,
+        P: serde::Serialize,
     {
-        let message = Message::<P>::new_serialized(data)
-            .map_err(util::discard)?;
-        // Message is both the header and payload
-        if message.header.payload_size > util::PAYLOAD_MAX_LEN {
-            return Err(crate::TempError);
-        }
-
-        use smol::io::AsyncWriteExt as _;
+        let mut serial_buffer = vec![0u8; Self::MAX_MESSAGE_LEN];
 
         let mut tcp_stream = self.tcp_stream.clone();
-        tcp_stream.write_all(&*message.into_bytes()).await
+        util::serialize_over_stream(&mut tcp_stream, &mut *serial_buffer, &payload)
+            .await
             .map_err(util::discard)?;
-
-        tcp_stream.flush().await
+        
+        smol::io::AsyncWriteExt::flush(&mut tcp_stream)
+            .await
             .map_err(util::discard)?;
 
         Ok(())
@@ -108,46 +96,34 @@ impl<P> Tcp<P> {
 
 #[derive(Debug)]
 pub(crate) struct Local<P> {
-    send: smol::channel::Sender<Message<payload::Raw<P>>>,
+    send: smol::channel::Sender<P>,
 }
 
 impl<P> Local<P> {
-    pub(crate) fn new(send: smol::channel::Sender<Message<payload::Raw<P>>>) -> Self {
+    pub(crate) fn new(send: smol::channel::Sender<P>) -> Self {
         Self {
             send,
         }
     }
 
-    pub async fn send<V>(&self, data: V) -> Result<(), V> 
+    pub async fn send<'p>(&self, payload: P) -> Result<(), crate::TempError> 
     where 
-        V: std::any::Any + Send,
-        P: payload::Variant<V>,
+        P: std::any::Any + Send,
     {
-        let message = spru_message::Message::<P>::new_raw(data);
-
         // Channel is unbounded, and can never be full
-        self.send.force_send(message)
+        self.send.force_send(payload)
             .map(util::discard)
-            .map_err(|e| {
-                let Ok(v) = e.0.into_variant() else { panic!("recast to original type must succeed")};
-                v
-            })
+            .map_err(util::discard)
     }
 
-    pub fn send_blocking<V>(&self, data: V) -> Result<(), V> 
+    pub fn send_blocking<'p>(&self, payload: P) -> Result<(), crate::TempError> 
     where 
-        V: std::any::Any + Send,
-        P: payload::Variant<V>,
+        P: std::any::Any + Send,
     {
-        let message = spru_message::Message::<P>::new_raw(data);
-
         // Channel is unbounded, and can never be full
-        self.send.force_send(message)
+        self.send.force_send(payload.into())
             .map(util::discard)
-            .map_err(|e| {
-                let Ok(v) = e.0.into_variant() else { panic!("recast to original type must succeed")};
-                v
-            })
+            .map_err(util::discard)
     }
 
     pub async fn close(&self) -> Result<(), crate::TempError> {

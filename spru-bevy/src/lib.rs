@@ -2,7 +2,7 @@ pub use spru::*;
 
 pub mod item;
 pub mod server;
-pub use server::BevyServer;
+// pub use server::BevyServer;
 
 pub struct SpruPlugin;
 

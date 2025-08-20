@@ -1,8 +1,5 @@
 use std::any;
 
-use futures_lite::AsyncReadExt;
-use spru_message::{header, payload, Message, Payload};
-
 use crate::{Routed, router, util};
 
 #[derive(Debug, Clone)]
@@ -12,10 +9,9 @@ pub enum Connection<P> {
 }
 
 impl<P> Connection<P> {
-    pub async fn send<V>(&mut self, payload: V) -> Result<(), crate::TempError>
+    pub async fn send(&mut self, payload: P) -> Result<(), crate::TempError>
     where 
-        V: serde::Serialize + any::Any + Send,
-        P: payload::Variant<V>,
+        P: any::Any + Send + serde::Serialize,
     {
         match self {
             Connection::Tcp(t) => t.send(payload).await,
@@ -23,10 +19,9 @@ impl<P> Connection<P> {
         }
     }
 
-    pub fn send_blocking<V>(&mut self, payload: V) -> Result<(), crate::TempError>
+    pub fn send_blocking(&mut self, payload: P) -> Result<(), crate::TempError>
     where 
-        V: serde::Serialize + any::Any + Send,
-        P: payload::Variant<V>,
+        P: any::Any + Send + serde::Serialize,
     {
         match self {
             Connection::Tcp(c) => c.send_blocking(payload),
@@ -34,10 +29,9 @@ impl<P> Connection<P> {
         }
     }
 
-    pub async fn recv<V>(&mut self) -> Result<V, crate::TempError>
+    pub async fn recv(&mut self) -> Result<P, crate::TempError>
     where 
-        V: serde::de::DeserializeOwned + any::Any + Send,
-        P: payload::Variant<V>,
+        P: any::Any + Send + serde::de::DeserializeOwned,
     {
         match self {
             Connection::Tcp(t) => t.recv().await,
@@ -45,10 +39,9 @@ impl<P> Connection<P> {
         }
     }
 
-    pub fn try_recv<V>(&mut self) -> Result<V, crate::TempError>
+    pub fn try_recv(&mut self) -> Result<P, crate::TempError>
     where 
-        V: serde::de::DeserializeOwned + any::Any + Send,
-        P: payload::Variant<V>,
+        P: any::Any + Send + serde::de::DeserializeOwned,
     {
         match self {
             Connection::Tcp(c) => c.try_recv(),
@@ -81,73 +74,41 @@ impl<P> Tcp<P> {
         self.stream.peer_addr()
     }
 
-    pub async fn send<V>(&mut self, payload: V) -> Result<(), crate::TempError>
+    pub async fn send(&mut self, payload: P) -> Result<(), crate::TempError>
     where
-        P: payload::Variant<V>,
-        V: serde::Serialize,
+        P: serde::Serialize,
     {
-        use futures_lite::AsyncWriteExt as _;
-        
-        let message = Message::<P>::new_serialized(&payload)
-            .map_err(util::discard)?;
-
-        let bytes = message.into_bytes();
-        
-        self.stream.write_all(&*bytes).await
+        let mut buffer = vec![0u8; util::PAYLOAD_MAX_LEN];
+        util::serialize_over_stream(self.stream.clone(), &mut buffer, &payload)
+            .await
             .map_err(util::discard)?;
         
         Ok(())
     }
 
-    pub fn send_blocking<V>(&mut self, payload: V) -> Result<(), crate::TempError>
+    pub fn send_blocking(&mut self, payload: P) -> Result<(), crate::TempError>
     where
-        P: payload::Variant<V>,
-        V: serde::Serialize,
+        P: serde::Serialize,
     {
         smol::block_on(self.send(payload))
     }
 
-    pub async fn recv<V>(&mut self) -> Result<V, crate::TempError>
+    pub async fn recv(&mut self) -> Result<P, crate::TempError>
     where
-        P: payload::Variant<V>,
-        V: serde::de::DeserializeOwned,
+        P: serde::de::DeserializeOwned,
     {
-        use futures_lite::AsyncReadExt as _;
-
-        let header_len = spru_message::Header::byte_length();
-
-        let mut header_buffer = vec![0u8; header_len];
+        let mut buffer = vec![0u8; util::PAYLOAD_MAX_LEN];
             
-        self.stream.read_exact(&mut header_buffer).await
+        let payload = util::deserialize_over_stream(self.stream.clone(), &mut buffer)
+            .await
             .map_err(util::discard)?;
 
-        let Ok(header) = spru_message::Header::try_from(&*header_buffer) else {
-            // TODO error handling
-            return Err(crate::TempError);
-        };
-        
-        if header.payload_size > crate::util::PAYLOAD_MAX_LEN {
-            // TODO error handling
-            return Err(crate::TempError);
-        }
-
-        let mut payload_buffer = vec![0u8; header.payload_size];
-
-        self.stream.read_exact(&mut *payload_buffer).await
-            .map_err(util::discard)?;
-
-        let message = Message::<P>::from_bytes(header, payload_buffer.into_boxed_slice());
-
-        let v = message.into_variant()
-            .map_err(util::discard)?;
-
-        Ok(v)
+        Ok(payload)
     }
 
-    pub fn try_recv<V>(&mut self) -> Result<V, crate::TempError>
+    pub fn try_recv(&mut self) -> Result<P, crate::TempError>
     where
-        P: payload::Variant<V>,
-        V: serde::de::DeserializeOwned,
+        P: serde::de::DeserializeOwned,
     {
         smol::block_on(smol::future::poll_once(self.recv()))
             .unwrap_or(Err(crate::TempError))
@@ -156,13 +117,13 @@ impl<P> Tcp<P> {
 
 #[derive(Debug, Clone)]
 pub struct Local<P> {
-    send: smol::channel::Sender<Routed<Message<Payload<P>>>>,
-    recv: smol::channel::Receiver<Message<payload::Raw<P>>>,
+    send: smol::channel::Sender<Routed<P>>,
+    recv: smol::channel::Receiver<P>,
     client_id: router::Id,
 }
 
 impl<P> Local<P> {
-    pub(crate) fn new(send: smol::channel::Sender<Routed<Message<Payload<P>>>>, recv: smol::channel::Receiver<Message<payload::Raw<P>>>, client_id: router::Id) -> Self {
+    pub(crate) fn new(send: smol::channel::Sender<Routed<P>>, recv: smol::channel::Receiver<P>, client_id: router::Id) -> Self {
         Self {
             send,
             recv,
@@ -174,63 +135,44 @@ impl<P> Local<P> {
         self.client_id
     }
 
-    pub async fn send<V>(&self, payload: V) -> Result<(), crate::TempError> 
+    pub async fn send(&self, payload: P) -> Result<(), crate::TempError> 
     where 
-        P: payload::Variant<V>,
-        V: std::any::Any + Send,
+        P: std::any::Any + Send,
     {
         let message = Routed {
             client_id: self.client_id,
-            value: Message::<P>::new_raw(payload).into(),
+            value: payload,
         };
-        self.send.send(message).await
-            .map_err(|e| {
-                use payload::IntoVariant as _;
-                let Payload::Raw(r) = e.0.value.payload else { unreachable!("Message was created as Raw locally") };
-                let Ok(v) = r.into_variant() else { unreachable!("Variant was cast locally") };
-                v
-            })
+        self.send.send(message)
+            .await
             .map_err(util::discard)
     }
 
-    pub fn send_blocking<V>(&self, payload: V) -> Result<(), crate::TempError>
+    pub fn send_blocking(&self, payload: P) -> Result<(), crate::TempError>
     where 
-        P: payload::Variant<V>,
-        V: std::any::Any + Send,
+        P: std::any::Any + Send,
     {
         let message = Routed {
             client_id: self.client_id,
-            value: Message::<P>::new_raw(payload).into(),
+            value: payload,
         };
         self.send.send_blocking(message)
-            .map_err(|e| {
-                use payload::IntoVariant as _;
-                let Payload::Raw(r) = e.0.value.payload else { unreachable!("Message was created as Raw locally") };
-                let Ok(v) = r.into_variant() else { unreachable!("Variant was cast locally") };
-                v
-            })
             .map_err(util::discard)
     }
 
-    pub async fn recv<V>(&self) -> Result<V, crate::TempError> 
+    pub async fn recv(&self) -> Result<P, crate::TempError> 
     where 
-        P: payload::Variant<V>,
-        V: std::any::Any + Send,
+        P: std::any::Any + Send,
     {
-        let message = self.recv.recv().await
-            .map_err(util::discard)?;
-        message.into_variant()
+        self.recv.recv().await
             .map_err(util::discard)
     }
 
-    pub fn try_recv<V>(&self) -> Result<V, crate::TempError>
+    pub fn try_recv(&self) -> Result<P, crate::TempError>
     where 
-        P: payload::Variant<V>,
-        V: std::any::Any + Send,
+        P: std::any::Any + Send,
     {
-        let message = self.recv.try_recv()
-            .map_err(util::discard)?;
-        message.into_variant()
+        self.recv.try_recv()
             .map_err(util::discard)
     }
 }

@@ -1,96 +1,98 @@
 mod id;
-use std::ops;
-
 pub use id::Id;
+pub mod init;
+pub use init::Init;
 pub(crate) mod manager;
 pub(crate) use manager::Manager;
 
-use crate::player;
+// use crate::player;
 
-#[derive(Debug)]
-#[derive(serde::Serialize, serde::Deserialize)]
-pub struct Player<Data> {
-    data: Data,
-}
+// use std::ops;
 
-impl<Data> Player<Data> {
-    fn new(data: Data) -> Self {
-        Self {
-            data,
-        }
-    }
+// #[derive(Debug)]
+// #[derive(serde::Serialize, serde::Deserialize)]
+// pub struct Player<Data> {
+//     data: Data,
+// }
 
-    pub fn data(&self) -> &Data {
-        &self.data
-    }
-}
+// impl<Data> Player<Data> {
+//     fn new(data: Data) -> Self {
+//         Self {
+//             data,
+//         }
+//     }
 
-#[derive(Debug)]
-#[derive(serde::Serialize, serde::Deserialize)]
-pub struct Players<Data> {
-    players: Vec<Player<Data>>,
-}
+//     pub fn data(&self) -> &Data {
+//         &self.data
+//     }
+// }
 
-impl<Data> Default for Players<Data> {
-    fn default() -> Self {
-        Self { players: Default::default() }
-    }
-}
+// #[derive(Debug)]
+// #[derive(serde::Serialize, serde::Deserialize)]
+// pub struct Players<Data> {
+//     players: Vec<Player<Data>>,
+// }
 
-impl<Data> Players<Data> {
-    pub(crate) fn next_player_id(&self) -> player::Id {
-        player::Id(self.players.len())
-    }
+// impl<Data> Default for Players<Data> {
+//     fn default() -> Self {
+//         Self { players: Default::default() }
+//     }
+// }
 
-    pub(crate) fn add_player(&mut self, player: Player<Data>) -> player::Id {
-        let index = self.players.len();
-        self.players.push(player);
-        player::Id(index)
-    }
-}
+// impl<Data> Players<Data> {
+//     pub(crate) fn next_player_id(&self) -> player::Id {
+//         player::Id(self.players.len())
+//     }
 
-pub struct Iter<'i, PlayerData> {
-    id: usize,
-    iter: std::slice::Iter<'i, Player<PlayerData>>,
-}
+//     pub(crate) fn add_player(&mut self, player: Player<Data>) -> player::Id {
+//         let index = self.players.len();
+//         self.players.push(player);
+//         player::Id(index)
+//     }
+// }
 
-impl<'i, PlayerData> Iter<'i, PlayerData> {
-    fn new(players: &'i [Player<PlayerData>]) -> Self {
-        Self {
-            id: 0,
-            iter: players.into_iter(),
-        }
-    }
-}
+// pub struct Iter<'i> {
+//     id: usize,
+//     iter: std::slice::Iter<'i, Player>,
+// }
 
-impl<'i, PlayerData> Iterator for Iter<'i, PlayerData> {
-    type Item = (Id, &'i Player<PlayerData>);
+// impl<'i> Iter<'i> {
+//     fn new(players: &'i [Player]) -> Self {
+//         Self {
+//             id: 0,
+//             iter: players.into_iter(),
+//         }
+//     }
+// }
 
-    fn next(&mut self) -> Option<Self::Item> {
-        match self.iter.next() {
-            Some(p) => {
-                let item = Some((Id(self.id), p));
-                self.id += 1;
-                item
-            },
-            None => None,
-        }
-    }
-}
+// impl<'i> Iterator for Iter<'i> {
+//     type Item = (Id, &'i Player);
 
-impl<PlayerData> ops::Index<player::Id> for Players<PlayerData> {
-    type Output = Player<PlayerData>;
+//     fn next(&mut self) -> Option<Self::Item> {
+//         match self.iter.next() {
+//             Some(p) => {
+//                 let item = Some((Id(self.id), p));
+//                 self.id += 1;
+//                 item
+//             },
+//             None => None,
+//         }
+//     }
+// }
 
-    fn index(&self, index: player::Id) -> &Self::Output {
-        &self.players[index.get()]
-    }
-}
+// impl ops::Index<player::Id> for Players {
+//     type Output = Player;
 
-impl<'i, PlayerData> IntoIterator for &'i Players<PlayerData> {
-    type Item = <Self::IntoIter as Iterator>::Item;
-    type IntoIter = Iter<'i, PlayerData>;
+//     fn index(&self, index: player::Id) -> &Self::Output {
+//         &self.players[index.get()]
+//     }
+// }
 
-    fn into_iter(self) -> Self::IntoIter {
-        Iter::new(&*self.players)
-    }
-}
+// impl<'i> IntoIterator for &'i Players {
+//     type Item = <Self::IntoIter as Iterator>::Item;
+//     type IntoIter = Iter<'i>;
+
+//     fn into_iter(self) -> Self::IntoIter {
+//         Iter::new(&*self.players)
+//     }
+// }

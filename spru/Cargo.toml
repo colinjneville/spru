@@ -1,7 +1,7 @@
 [package]
 name = "spru"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 [features]
 default = []
@@ -15,12 +15,16 @@ spru-macro = { path = "../spru-macro" }
 
 telety.workspace = true
 amass.workspace = true
+tagset.workspace = true
 
 halfbrown.workspace = true
 thiserror.workspace = true
 
+# temporary until proper errors are done
+anyhow.workspace = true
+
 derive_more = { workspace = true, features = ["from"] }
-perfect-derive.workspace = true
+derive-where.workspace = true
 
 deku.workspace = true
 

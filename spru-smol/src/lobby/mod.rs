@@ -4,7 +4,7 @@ use futures_lite::FutureExt as _;
 pub use member_status::MemberStatus;
 mod ready_status;
 pub use ready_status::ReadyStatus;
-use spru_message::{payload, Message};
+// use spru_message::{payload, Message};
 pub mod server;
 
 use std::{collections::{hash_map, HashMap}, ops, sync::Arc};
@@ -162,7 +162,8 @@ impl<LobbyInfo, MemberInfo, Payload> Lobby<LobbyInfo, MemberInfo, Payload> {
     pub async fn run(self) -> Result<Output<LobbyInfo, MemberInfo>, ()> 
     where 
         MemberInfo: DeserializeOwned + Send + 'static,
-        Payload: payload::Variant<lobby::client::Variant<MemberInfo>>,
+        Payload: From<lobby::client::Variant<MemberInfo>>,
+        lobby::client::Variant<MemberInfo>: TryFrom<Payload>,
     {
         let Self {
             router,
@@ -183,11 +184,15 @@ impl<LobbyInfo, MemberInfo, Payload> Lobby<LobbyInfo, MemberInfo, Payload> {
         all_ready_event.listen().or(
             async move {
                 loop {
-                    let Routed { client_id, value: message } = match router.recv::<client::Variant<MemberInfo>>().await {
+                    let Routed { client_id, value: message } = match router.recv().await {
                         Ok(routed) => routed,
                         Err(_) => 
                             // TODO error handling
                             continue,
+                    };
+                    let Ok(message): Result<client::Variant<MemberInfo>, _> = message.try_into() else {
+                        // TODO
+                        panic!();
                     };
 
                     let mut state_lock = status.state.write().await;
@@ -237,12 +242,17 @@ impl<LobbyInfo, MemberInfo, Payload> Lobby<LobbyInfo, MemberInfo, Payload> {
 
 #[cfg(test)]
 mod test {
-    use std::sync::Arc;
     use futures_lite::FutureExt;
-    use spru_message::header;
+    use tagset::tagset;
 
-    use crate::{Lobby, router, util};
+    use crate::Lobby;
     use super::*;
+
+    #[tagset(impl tagset::proxy::serde::Serialize)]
+    #[tagset(impl<'de> tagset::serde::DeserializeFromDiscriminant<'de>)]
+    #[tagset(impl<'de> tagset::proxy::serde::Deserialize<'de>)]
+    #[tagset(crate::lobby::client::Variant<i32>)]
+    struct ClientPload;
 
     #[test]
     fn run_lobby() {
@@ -256,8 +266,7 @@ mod test {
 
         let lobby_info = 7u32;
 
-        #[spru_message::payload_variant(0 => crate::lobby::client::Variant::<i32>)]
-        struct ClientPload;
+        
 
         let lobby = Lobby::<_, i32, ClientPload>::new(router, lobby_info);
 
@@ -272,19 +281,19 @@ mod test {
             println!("[1.1]");
             smol::Timer::after(std::time::Duration::from_millis(500)).await;
             println!("[1.2]");
-            local_stream.send(client::Variant::UpdateInfo(111)).await.unwrap();
+            local_stream.send(client::Variant::UpdateInfo(111).into()).await.unwrap();
             println!("[1.3]");
             smol::Timer::after(std::time::Duration::from_millis(250)).await;
             println!("[1.4]");
-            local_stream.send(client::Variant::SetReady(true)).await.unwrap();
+            local_stream.send(client::Variant::SetReady(true).into()).await.unwrap();
             println!("[1.5]");
         }).detach();
 
         executor.spawn(async move {
             smol::Timer::after(std::time::Duration::from_millis(100)).await;
-            local_stream2.send(client::Variant::UpdateInfo(222)).await.unwrap();
+            local_stream2.send(client::Variant::UpdateInfo(222).into()).await.unwrap();
             smol::Timer::after(std::time::Duration::from_millis(750)).await;
-            local_stream2.send(client::Variant::SetReady(true)).await.unwrap();
+            local_stream2.send(client::Variant::SetReady(true).into()).await.unwrap();
         }).detach();
 
         executor.spawn(async move {

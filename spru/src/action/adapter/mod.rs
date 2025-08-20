@@ -22,6 +22,30 @@ impl<'l, Lookup> Data<'l, Lookup> {
             version,
         }
     }
+
+    #[doc(hidden)]
+    pub fn create<T, Undo, Error>(&mut self, value: T, undo: Undo) 
+    -> Result<Option<Undo>, action::catalog::Error<Lookup::Error, Error>> 
+    where
+        Lookup: item::lookup::OfTypeMut<T>
+    {
+        let Data { 
+            lookup, 
+            id, 
+            version, 
+        } = data;
+        let lookup = lookup.take().expect("Data is only accessed here");
+        let Output { undo, out } = output;
+
+        if let Ok(stateful) = lookup.lookup(&item::IdT::new(id.clone())) {
+            Err(action::catalog::Error::Item(item::id::Error::AlreadyExists { id: id.clone(), version: stateful.version() }.into()))
+        } else {
+            let stateful = Item::new(item::IdT::new(id.clone()), version.after, out);
+            lookup.create(stateful).map_err(action::catalog::Error::Lookup)?;
+            undo.as_ref().expect("create Action must return an undo record");
+            Ok(undo)
+        }
+    }
 }
 
 pub trait Adapter {

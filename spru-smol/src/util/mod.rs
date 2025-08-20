@@ -39,17 +39,16 @@ pub async fn deserialize_over_stream<S: serde::de::DeserializeOwned>(mut stream:
     let max_len = buffer.len();
 
     let mut size_buf = [0u8; 8];
-    stream.read(&mut size_buf).await?;
+    stream.read_exact(&mut size_buf).await?;
     let size = u64::from_le_bytes(size_buf) as usize;
     
     if size > max_len {
         return Err(IoDeserializeError::Io(std::io::ErrorKind::InvalidData.into()));
     }
 
-    let bytes_read = stream.read(buffer).await?;
-    debug_assert_eq!(bytes_read, size);
+    stream.read_exact(&mut buffer[0..size]).await?;
 
-    let data = S::deserialize(&mut rmp_serde::Deserializer::new(&buffer[0..bytes_read])).map_err(DeserializeError::new)?;
+    let data = S::deserialize(&mut rmp_serde::Deserializer::new(&*buffer)).map_err(DeserializeError::new)?;
 
     Ok(data)
 }
@@ -140,31 +139,40 @@ impl AsyncWrite for DuplexStream {
 
 #[cfg(test)]
 mod test {
-    use spru::Action;
+    use spru_util::verbatim;
+    use tagset::tagset;
 
     use super::*;
 
+    #[tagset(impl tagset::proxy::serde::Serialize)]
+    #[tagset(impl<'de> tagset::serde::DeserializeFromDiscriminant<'de>)]
+    #[tagset(impl<'de> tagset::proxy::serde::Deserialize<'de>)]
+    #[tagset(impl spru::action::Base)]
+    #[tagset(impl<Lookup: spru::item::Lookup> spru::Action<Lookup>)]
+    #[tagset(include(spru_util::verbatim::Actions<i32>))]
+    #[tagset(include(spru_util::verbatim::Actions<i64>))]
+    struct Actions;
+
     #[test]
     fn serialize_stream_roundtrip() {
-        let value = 4i32;
-        let action = spru_util::action::verbatim::Create::new(value);
+        let value = 4i64;
+        let action = verbatim::create(value);
+        let message: Actions = action.into();
 
         let mut buffer = vec![0u8; crate::util::PAYLOAD_MAX_LEN];
-        let message: spru_util::item::Combo = action.into();
 
         let mut stream = vec![];
         let _ = smol::future::block_on(
             serialize_over_stream(&mut stream, &mut buffer, &message)
         ).unwrap();
         
-        let new_message = smol::future::block_on(
+        let new_message: Actions = smol::future::block_on(
             deserialize_over_stream(&*stream, &mut *buffer)
         ).unwrap();
 
-        let spru_util::item::Combo::I32(spru_util::action::verbatim::Actions::Create(new_action)) = new_message 
-            else { panic!() };
+        let Ok(new_action): Result<verbatim::Create<i64>, _> = new_message.try_into() else { panic!() };
 
-        let new_value = new_action.apply(()).unwrap().into().out;
+        let (new_value, _) = spru::action::Create::create(&new_action).unwrap();
 
         assert_eq!(value, new_value);
     }

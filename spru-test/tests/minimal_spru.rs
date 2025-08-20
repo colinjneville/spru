@@ -1,25 +1,26 @@
 use std::collections::HashMap;
 
+use spru::item::IdT;
 use spru_test::*;
 
-use rand::seq::SliceRandom as _;
+use rand::seq::{IndexedRandom as _, };
 
 #[test]
 fn minimal_spru() {
     use spru_test::game::minimal::*;
 
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
 
     let mut runner = SyncRunner::<
-        ItemCatalog, 
-        ActionCatalog, 
-        GameRoot, 
+        State, 
+        Actions, 
+        IdT<GameRoot>, 
         PlayerInit, 
         _, 
         Interaction, 
         Reaction, 
         GameOutcome,
-    >::new(GameInit, LobbyInfo, PlayerInit, Reaction).unwrap();
+    >::new(GameInit(LobbyInfo), PlayerInit, Reaction).unwrap();
 
     for color in PLAYER_COLORS {
         runner.add_player(spru::server::add_player::Arg {
@@ -62,11 +63,13 @@ fn minimal_spru() {
                                 spru::server::Event::GameComplete(game_complete) => {
                                     game_outcomes.insert(None, game_complete.game_outcome);
                                 }
+                                _ => { }
                             },
                         Event::ClientEvent(event::ClientEvent { player_id, event }) => match event {
                                 spru::client::Event::GameComplete(game_complete) => {
                                     game_outcomes.insert(Some(player_id), game_complete.game_outcome);
                                 }
+                                _ => { }
                             },
                     }
                 }

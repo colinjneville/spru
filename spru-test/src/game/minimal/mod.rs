@@ -4,7 +4,10 @@ mod bevy;
 mod smol;
 
 
-use spru::{action, item::IdT};
+use spru::item::IdT;
+use tagset::tagset;
+
+use spru_util::verbatim;
 
 #[derive(Debug)]
 pub struct LobbyInfo;
@@ -13,62 +16,61 @@ pub struct LobbyInfo;
 pub struct MemberInfo(PlayerColor);
 
 #[derive(Debug)]
-pub struct InteractionOutput(spru::player::Id);
+pub struct Trigger(spru::player::Id);
 
 
 #[derive(Debug, Clone, PartialEq)]
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct GameOutcome(pub spru::player::Id);
 
-#[derive(Debug)]
-#[derive(serde::Serialize, serde::Deserialize)]
-#[derive(spru::item::Catalog)]
-pub enum ItemCatalog {
-    GameRoot(GameRoot),
-    PlayerRoot(PlayerRoot),
-}
+#[tagset(impl crate::proxy::std::fmt::Debug)]
+#[tagset(impl<Lookup: spru::item::Lookup> spru::State<Lookup>)]
+#[tagset(GameRoot)]
+#[tagset(PlayerData)]
+pub struct State;
 
-#[derive(Debug, Clone)]
-#[derive(serde::Serialize, serde::Deserialize)]
-#[derive(spru::action::Catalog)]
-#[catalog(error = MyError)]
-#[amass::amass_telety(crate::game::minimal)]
-pub enum ActionCatalog {
-    GameRoot(spru_util::action::verbatim::Catalog<GameRoot>),
-    PlayerRoot(spru_util::action::verbatim::Catalog<PlayerRoot>),
-}
+// #[telety::telety(crate::game::minimal)]
+#[tagset(derive(Clone))]
+#[tagset(impl crate::proxy::std::fmt::Debug)]
+#[tagset(impl spru::action::Base)]
+#[tagset(impl<Lookup: spru::item::Lookup> spru::Action<Lookup>)]
+#[tagset(impl tagset::proxy::serde::Serialize)]
+#[tagset(impl<'de> tagset::serde::DeserializeFromDiscriminant<'de>)]
+#[tagset(impl<'de> tagset::proxy::serde::Deserialize<'de>)]
+#[tagset(include(verbatim::Actions<GameRoot>))]
+#[tagset(include(verbatim::Actions<PlayerData>))]
+pub struct Actions;
 
-#[derive(Debug)]
-pub struct MyError;
-impl From<std::convert::Infallible> for MyError {
-    fn from(_value: std::convert::Infallible) -> Self {
-        Self
+#[derive(Debug, spru::FromInfallible)]
+#[derive(thiserror::Error)]
+#[error("{0}")]
+pub struct Error(anyhow::Error);
+
+impl From<anyhow::Error> for Error {
+    fn from(value: anyhow::Error) -> Self {
+        Self(value)
     }
 }
-
-impl std::fmt::Display for MyError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Error!")
-    }
-}
-
-impl std::error::Error for MyError { }
 
 #[derive(Debug)]
 pub struct Reaction;
 
-impl spru::interaction::Reaction<ItemCatalog, ActionCatalog, GameRoot> for Reaction {
-    type Input = InteractionOutput;
+impl spru::Reaction for Reaction {
+    type State = State;
+    type Action = Actions;
+    type Root = IdT<GameRoot>;
+    type Trigger = Trigger;
     type GameOutcome = GameOutcome;
     
     fn apply(&self, 
-        _interactor: &mut spru::interaction::Interactor<spru::item::lookup::Canonical<ItemCatalog>, ActionCatalog, GameRoot>, 
-        input: Self::Input
+        interactor: &mut spru::reaction::Interactor<State, Actions, IdT<GameRoot>, Trigger, GameOutcome>, 
+        input: Self::Trigger,
     ) 
-        -> Result<Option<Self::GameOutcome>, spru::interaction::reaction::Error>
+        -> Result<(), spru::item::lookup::canonical::Error>
     {
-        Ok(Some(GameOutcome(input.0)))
-    }
+        interactor.set_game_outcome(GameOutcome(input.0));
+        Ok(())
+    }    
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -85,26 +87,30 @@ pub const PLAYER_COLORS: [PlayerColor; 4] = [PlayerColor::Red, PlayerColor::Blue
 #[derive(Debug)]
 pub struct PlayerInit;
 
-impl spru::init::Base for PlayerInit {
+impl spru::player::Init for PlayerInit {
     type In = PlayerColor;
-    type Out = ();
-    type Error = std::convert::Infallible;
-}
+    type Root = IdT<GameRoot>;
+    type Error = Error;
+    type State = State;
+    type Action = Actions;
 
-impl spru::Init<ItemCatalog, ActionCatalog, GameRoot> for PlayerInit {
-    fn initialize(&self, interactor: &mut spru::interaction::Interactor<spru::item::lookup::Canonical<ItemCatalog>, ActionCatalog, GameRoot>, input: Self::In) -> Result<Self::Out, spru::init::Error<Self::Error>> {
-        let player_root = interactor.create(spru_util::action::verbatim::Create::new(PlayerRoot {
+    fn initialize(
+        &self, 
+        interactor: &mut spru::Interactor<spru::item::lookup::Canonical<State>, Actions, spru::player::init::Context<IdT<GameRoot>>>, 
+        input: Self::In
+    ) 
+        -> Result<(), spru::player::init::Error<Self::Error>> 
+    {
+        let player_root = interactor.create(verbatim::create(PlayerData {
             color: input,
-        })).map_err(spru::init::Error::Lookup)?;
+        }))?;
 
-        let mut game_root = interactor.root()
-            .map_err(spru::init::Error::Lookup)?
-            .get()
+        let mut game_root = interactor.get_root()?
             .clone();
         
         game_root.players.push(player_root);
-        interactor.update(spru_util::action::verbatim::Update::new(game_root), &interactor.root_id())
-            .map_err(spru::init::Error::Lookup)?;        
+        interactor.get_root()?
+            .update(spru_util::verbatim::update(game_root));
         
         Ok(())
     }
@@ -112,27 +118,31 @@ impl spru::Init<ItemCatalog, ActionCatalog, GameRoot> for PlayerInit {
 
 #[derive(Debug, Clone)]
 #[derive(serde::Serialize, serde::Deserialize)]
-pub struct PlayerRoot {
+pub struct PlayerData {
     color: PlayerColor,
 }
 
 #[derive(Debug, Default, Clone)]
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct GameRoot {
-    players: Vec<IdT<PlayerRoot>>,
+    players: Vec<IdT<PlayerData>>,
 }
 
-pub struct GameInit;
-impl spru::init::Base for GameInit {
-    type In = LobbyInfo;
-    type Out = spru::item::IdT<GameRoot>;
-    type Error = std::convert::Infallible;
-}
+pub struct GameInit(pub LobbyInfo);
 
-impl spru::Init<ItemCatalog, ActionCatalog, GameRoot> for GameInit {
-    fn initialize(&self, interactor: &mut spru::interaction::Interactor<spru::item::lookup::Canonical<ItemCatalog>, ActionCatalog, GameRoot>, _input: Self::In) -> Result<Self::Out, spru::init::Error<Self::Error>> {
-        let root = interactor.create(spru_util::action::verbatim::Create::new(GameRoot::default()))
-            .map_err(spru::init::Error::Lookup)?;
+impl spru::game::Init for GameInit {
+    type Root = IdT<GameRoot>;
+    type Error = Error;
+    type State = State;
+    type Action = Actions;
+
+    fn initialize(
+        self, 
+        interactor: &mut spru::game::init::Interactor<State, Actions>
+    ) 
+        -> Result<Self::Root, spru::game::init::Error<Self::Error>> 
+    {
+        let root = interactor.create(spru_util::verbatim::create(GameRoot::default()))?;
 
         Ok(root)
     }
@@ -141,98 +151,19 @@ impl spru::Init<ItemCatalog, ActionCatalog, GameRoot> for GameInit {
 #[derive(Debug)]
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct Interaction;
-impl spru::Interaction<ActionCatalog, GameRoot> for Interaction {
-    type Output = InteractionOutput;
-    type Error = std::convert::Infallible;
+impl spru::Interaction for Interaction {
+    type Action = Actions;
+    type Root = IdT<GameRoot>;
+    type Trigger = Trigger;
+    type Error = Error;
 
-    fn apply<Lookup>(&self, _interactor: &mut spru::interaction::Interactor<Lookup, ActionCatalog, GameRoot>, player_id: spru::player::Id) 
-        -> Result<Self::Output, spru::interaction::Error<Lookup::Error, Self::Error>>
+    fn apply<Lookup>(&self, interactor: &mut spru::interaction::Interactor<Lookup, Actions, IdT<GameRoot>, Trigger>) 
+        -> Result<(), spru::interaction::Error<Lookup::Error, Self::Error>>
     where 
         Lookup: spru::item::Lookup,
-        ActionCatalog: spru::action::Catalog<Lookup>,
+        Actions: spru::Action<Lookup>,
     {
-        Ok(InteractionOutput(player_id))
+        interactor.enqueue_trigger(Trigger(interactor.context().player));
+        Ok(())
     }
 }
-
-
-// #[cfg(test)]
-// mod test {
-//     use super::*;
-
-//     use std::collections::{HashMap, VecDeque};
-
-//     type Server = spru::Server<ItemCatalog, ActionCatalog, GameRoot, PlayerInit, Reaction>;
-//     type Client = spru::Client<ActionCatalog, GameRoot, Interaction, GameOutcome>;
-
-//     #[test]
-//     fn run() {
-//         let mut server = spru::Server::new(GameInit, LobbyInfo, PlayerInit, Reaction)
-//             .expect("Server::new failed");
-
-//         let mut clients = HashMap::new();
-
-//         let mut server_signals = VecDeque::new();
-//         let mut client_signals = VecDeque::new();
-
-//         fn run_queues(
-//             server: &mut Server,
-//             clients: &mut HashMap<spru::player::Id, (Client, spru_util::lookup::Standalone)>,
-//             server_signals: &mut VecDeque<(spru::player::Id, spru::server::signal::Arg<Interaction>)>, 
-//             client_signals: &mut VecDeque<(spru::player::Id, spru::client::signal::Arg<ActionCatalog, GameOutcome>)>,
-//         ) -> Result<Option<GameOutcome>, Box<dyn std::error::Error>> {
-//             let mut outcome = None;
-//             while !server_signals.is_empty() || !client_signals.is_empty() {
-//                 if let Some((sender, server_directive)) = server_signals.pop_front() {
-//                     let spru::server::Output {
-//                         outbound,
-//                         events,
-//                         ret: spru::server::signal::Ret {
-
-//                         },
-//                     } = server.apply_signal(sender, server_directive)?;
-
-                    
-
-//                     client_signals.extend(outbound.signals.into_iter());
-//                 }
-
-//                 if let Some((recipient, client_directive)) = client_signals.pop_front() {
-//                     let (client, lookup) = clients.get_mut(&recipient).unwrap();
-//                     let spru::client::signal::Ret {
-//                         outbound,
-//                         game_outcome,
-//                     } = client.signal(lookup, client_directive)
-//                         .expect("Client::apply_directive failed");
-
-//                     server_signals.extend(outbound.signals.into_iter().map(|d| (recipient, d)));
-//                 }
-//             }
-
-//             Ok(outcome)
-//         }
-
-//         for i in 0..4 {
-//             let new_player = Client::new_request(PLAYER_COLORS[i]);
-
-//             let spru::server::add_player::Ret {
-//                 client_init,
-//                 outbound,
-//                 player_id,
-//             } = server.add_player(new_player)
-//                 .expect("Server::add_player failed");
-
-//             let mut lookup = spru_util::lookup::Standalone::new();
-
-//             let client = spru::Client::init(&mut lookup, client_init)
-//                 .expect("Client::new failed");
-
-//             clients.insert(player_id, (client, lookup));
-
-//             client_signals.extend(outbound.signals.into_iter());
-
-//             let game_outcome = run_queues(&mut server, &mut clients, &mut server_signals, &mut client_signals)
-//                 .unwrap();
-//         }
-//     }
-// }

@@ -5,28 +5,28 @@ use spru_message::{payload, Message};
 
 use crate::{router, Routed};
 
-pub struct Client<PlayerData, Actions, Payload> {
-    client: spru::Client<PlayerData, Actions>,
+pub struct Client<Action, Root, Interaction, GameOutcome> {
+    client: spru::Client<Action, Root, Interaction, GameOutcome>,
     connection: router::Connection<Payload>,
 }
 
-impl<PlayerData, Actions, Payload> Client<PlayerData, Actions, Payload> {
+impl<Action, PlayerData, Payload> Client<Action, PlayerData, Payload> {
     pub fn new<Lookup>(lookup: &mut Lookup, connection: router::Connection<Payload>) -> Self {
-        let client = spru::Client::init(lookup, )
+        // let client = spru::Client::init(lookup, )
     }
 
     pub fn run_one<Lookup, Interaction, GameOutcome>(&mut self, lookup: &mut Lookup)
         -> Option<Result<Option<GameOutcome>, crate::TempError>>
     where 
         Lookup: spru::item::Lookup,
-        Actions: spru::actions::Apply<Lookup, Undo = Actions> + Send + Sync + 'static,
-        Interaction: spru::Interaction<Actions, PlayerData> + serde::Serialize + serde::de::DeserializeOwned + Send + 'static,
-        Payload: payload::Variant<spru::communication::Client<PlayerData, Actions, GameOutcome>> + 
+        Action: spru::actions::Apply<Lookup, Undo = Action> + Send + Sync + 'static,
+        Interaction: spru::Interaction<Action, PlayerData> + serde::Serialize + serde::de::DeserializeOwned + Send + 'static,
+        Payload: payload::Variant<spru::communication::Client<PlayerData, Action, GameOutcome>> + 
                 payload::Variant<spru::communication::Server<Interaction>>,
-        spru::communication::Client<PlayerData, Actions, GameOutcome>: serde::de::DeserializeOwned + Send + any::Any,
+        spru::communication::Client<PlayerData, Action, GameOutcome>: serde::de::DeserializeOwned + Send + any::Any,
         spru::communication::Server<Interaction>: serde::Serialize + Send + any::Any,
     {
-        match self.connection.try_recv::<spru::communication::Client<PlayerData, Actions, GameOutcome>>() {
+        match self.connection.try_recv::<spru::communication::Client<PlayerData, Action, GameOutcome>>() {
             Ok(message) => {
                 match self.process_directive(lookup, message) {
                     Ok((messages, game_outcome)) => {
@@ -50,11 +50,11 @@ impl<PlayerData, Actions, Payload> Client<PlayerData, Actions, Payload> {
         -> Result<Option<GameOutcome>, crate::TempError> 
     where 
         Lookup: spru::item::Lookup,
-        Actions: spru::actions::Apply<Lookup, Undo = Actions> + Send + Sync + 'static,
-        Interaction: spru::Interaction<Actions, PlayerData> + serde::Serialize + serde::de::DeserializeOwned + Send + 'static,
-        Payload: payload::Variant<spru::communication::Client<PlayerData, Actions, GameOutcome>> + 
+        Action: spru::actions::Apply<Lookup, Undo = Action> + Send + Sync + 'static,
+        Interaction: spru::Interaction<Action, PlayerData> + serde::Serialize + serde::de::DeserializeOwned + Send + 'static,
+        Payload: payload::Variant<spru::communication::Client<PlayerData, Action, GameOutcome>> + 
                 payload::Variant<spru::communication::Server<Interaction>>,
-        spru::communication::Client<PlayerData, Actions, GameOutcome>: serde::de::DeserializeOwned + Send + any::Any,
+        spru::communication::Client<PlayerData, Action, GameOutcome>: serde::de::DeserializeOwned + Send + any::Any,
         spru::communication::Server<Interaction>: serde::Serialize + Send + any::Any,
     {
         while let Some(result) = self.run_one::<_, Interaction, _>(lookup) { 
@@ -69,15 +69,15 @@ impl<PlayerData, Actions, Payload> Client<PlayerData, Actions, Payload> {
         -> Result<GameOutcome, crate::TempError>
     where 
         Lookup: spru::item::Lookup,
-        Actions: spru::actions::Apply<Lookup, Undo = Actions> + Send + Sync + 'static,
-        Interaction: spru::Interaction<Actions, PlayerData> + serde::Serialize + serde::de::DeserializeOwned + Send + 'static,
-        Payload: payload::Variant<spru::communication::Client<PlayerData, Actions, GameOutcome>> + 
+        Action: spru::actions::Apply<Lookup, Undo = Action> + Send + Sync + 'static,
+        Interaction: spru::Interaction<Action, PlayerData> + serde::Serialize + serde::de::DeserializeOwned + Send + 'static,
+        Payload: payload::Variant<spru::communication::Client<PlayerData, Action, GameOutcome>> + 
                  payload::Variant<spru::communication::Server<Interaction>>,
-        spru::communication::Client<PlayerData, Actions, GameOutcome>: serde::de::DeserializeOwned + Send + any::Any,
+        spru::communication::Client<PlayerData, Action, GameOutcome>: serde::de::DeserializeOwned + Send + any::Any,
         spru::communication::Server<Interaction>: serde::Serialize + Send + any::Any,
     {
         let game_outcome = loop {
-            let directive = self.connection.recv::<spru::communication::Client<PlayerData, Actions, GameOutcome>>().await
+            let directive = self.connection.recv::<spru::communication::Client<PlayerData, Action, GameOutcome>>().await
                 .unwrap();
             
             let (responses, game_outcome) = self.process_directive(lookup, directive)?;
@@ -95,13 +95,13 @@ impl<PlayerData, Actions, Payload> Client<PlayerData, Actions, Payload> {
         Ok(game_outcome)
     }
 
-    fn process_directive<Lookup, Interaction, GameOutcome>(&mut self, lookup: &mut Lookup, directive: spru::communication::Client<PlayerData, Actions, GameOutcome>)
+    fn process_directive<Lookup, Interaction, GameOutcome>(&mut self, lookup: &mut Lookup, directive: spru::communication::Client<PlayerData, Action, GameOutcome>)
         -> Result<(Vec<spru::communication::Server<Interaction>>, Option<GameOutcome>), crate::TempError>
     where 
         Lookup: spru::item::Lookup,
-        Actions: spru::actions::Apply<Lookup, Undo = Actions> + Send + Sync + 'static,
-        Interaction: spru::Interaction<Actions, PlayerData> + serde::Serialize + serde::de::DeserializeOwned + Send + 'static,
-        Payload: payload::Variant<spru::communication::Client<PlayerData, Actions, GameOutcome>> + 
+        Action: spru::actions::Apply<Lookup, Undo = Action> + Send + Sync + 'static,
+        Interaction: spru::Interaction<Action, PlayerData> + serde::Serialize + serde::de::DeserializeOwned + Send + 'static,
+        Payload: payload::Variant<spru::communication::Client<PlayerData, Action, GameOutcome>> + 
                  payload::Variant<spru::communication::Server<Interaction>>,
     {
         let spru::communication::communication::Output {

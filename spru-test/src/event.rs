@@ -1,10 +1,12 @@
+use derive_where::derive_where;
+
 #[derive(Debug)]
-#[perfect_derive::perfect_derive(Default)]
-pub struct State<GameOutcome> {
+#[derive_where(Default)]
+pub struct Messaging<GameOutcome> {
     events: Vec<Event<GameOutcome>>
 }
 
-impl<GameOutcome> State<GameOutcome> {
+impl<GameOutcome> Messaging<GameOutcome> {
     pub fn new() -> Self {
         Self::default()
     }
@@ -20,7 +22,7 @@ impl<GameOutcome> State<GameOutcome> {
     }
 }
 
-impl<GameOutcome> IntoIterator for State<GameOutcome> {
+impl<GameOutcome> IntoIterator for Messaging<GameOutcome> {
     type Item = Event<GameOutcome>;
 
     type IntoIter = std::vec::IntoIter<Self::Item>;

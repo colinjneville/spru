@@ -7,8 +7,8 @@ pub struct Arg<PlayerInitIn> {
 }
 
 #[must_use]
-pub struct Ret<ItemCatalog, ActionCatalog, Root> {
-    pub client_init: client::init::Arg<ItemCatalog, ActionCatalog, Root>,
+pub struct Ret<State, Action, Root> {
+    pub client_init: client::init::Arg<State, Action, Root>,
     pub player_id: player::Id,
 }
 

@@ -10,17 +10,17 @@ pub trait Lookup {
 }
 
 pub trait OfType<T>: Lookup {
-    fn lookup(&self, id: &IdT<T>) -> Result<&Item<T>, Self::Error>;
+    fn lookup(&self, id: IdT<T>) -> Result<&Item<T>, Self::Error>;
 }
 
 pub trait OfTypeMut<T>: OfType<T> {    
     type Mut<'lr>: ops::DerefMut<Target=Item<T>> + 'lr
     where Self: 'lr;
     
-    fn lookup_mut(&mut self, id: &IdT<T>) -> Result<Self::Mut<'_>, Self::Error>;
+    fn lookup_mut(&mut self, id: IdT<T>) -> Result<Self::Mut<'_>, Self::Error>;
 
     fn create(&mut self, value: Item<T>) -> Result<(), Self::Error>;
-    fn destroy(&mut self, id: &IdT<T>) -> Result<Item<T>, Self::Error>;
+    fn destroy(&mut self, id: IdT<T>) -> Result<Item<T>, Self::Error>;
 }
 
 // pub struct Mut<T, LookupMut>(LookupMut, PhantomData<T>);

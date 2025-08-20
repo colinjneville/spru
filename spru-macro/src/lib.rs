@@ -1,125 +1,113 @@
+use syn::spanned::Spanned as _;
+
 mod action_catalog;
 mod create;
 mod destroy;
 mod update;
 mod from_infallible;
 mod payload_variant;
-mod item_catalog;
+mod state;
+// mod item_catalog;
 mod type_index;
 mod util;
 
-pub(crate) struct ActionArgs {
-    pub ident: syn::Ident,
-    pub generics: syn::Generics,
-    // pub t: syn::Type,
-    pub adapter: syn::Type,
-    pub error: Option<syn::Type>,
-    pub undo: syn::Type,
+pub(crate) struct ActionImpl<'i> {
+    pub ident: &'i syn::Ident,
+    pub generics: &'i syn::Generics,
+    pub trait_ident: syn::Ident,
+    pub func_ident: syn::Ident,
 }
 
-impl quote::ToTokens for ActionArgs {
+impl<'i> ActionImpl<'i> {
+    pub fn new(item: &'i syn::Item, trait_ident: syn::Ident, func_ident: syn::Ident) -> syn::Result<Self> {
+        let (ident, generics) = match item {
+            syn::Item::Enum(item_enum) => (&item_enum.ident, &item_enum.generics),
+            syn::Item::Struct(item_struct) => (&item_struct.ident, &item_struct.generics),
+            syn::Item::Union(item_union) => (&item_union.ident, &item_union.generics),
+            _ => return Err(syn::Error::new(item.span(), "Attribute can only be applied to a struct, enum, or union")),
+        };
+
+        Ok(Self {
+            ident,
+            generics,
+            func_ident,
+            trait_ident,
+        })
+    }
+}
+
+impl<'i> quote::ToTokens for ActionImpl<'i> {
     fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
         use syn::parse_quote;
 
         let Self {
             ident,
             generics,
-            // t,
-            adapter,
-            error,
-            undo,
-        } = self;
+            ref func_ident,
+            ref trait_ident, 
+        } = *self;
+
+        let lookup_ident: syn::Ident = parse_quote!(Lookup);
+
+        let trait_path: syn::Path = parse_quote!(::spru::action::#trait_ident);
+
+        let mut generics = generics.clone();
+        generics.make_where_clause().predicates.push(parse_quote!(
+            Self: #trait_path
+        ));
         
-        let default_error = parse_quote!(::std::convert::Infallible);
-        let error = error.as_ref().unwrap_or(&default_error);        
+        let mut lookup_generics = generics.clone();
+        lookup_generics.params.push(parse_quote!(
+            #lookup_ident: ::spru::item::lookup::OfTypeMut<<Self as #trait_path>::T>
+        ));
 
-        let mut base_generics = generics.clone();
-        base_generics.make_where_clause().predicates.push(parse_quote!(Self: ::std::clone::Clone + ::spru::Serial));
-
-        let mut base2_generics = generics.clone();
-        base2_generics.make_where_clause().predicates.push(parse_quote!(Self: ::spru::action::Base));
-
-        let mut entry_generics = generics.clone();
-        entry_generics.params.push(parse_quote!(Lookup: ::spru::item::Lookup));
-        entry_generics.make_where_clause().predicates.push(parse_quote!(Self: ::spru::Action));
-        entry_generics.make_where_clause().predicates.push(parse_quote!(Lookup: ::spru::item::lookup::OfTypeMut<<Self as ::spru::Action>::T>));
-
-        let (base_impl_generics, base_type_generics, base_where_clause) = base_generics.split_for_impl();
-        let (base2_impl_generics, base2_type_generics, base2_where_clause) = base2_generics.split_for_impl();
-        let (entry_impl_generics, _entry_type_generics, entry_where_clause) = entry_generics.split_for_impl();
+        let (impl_generics, type_generics, where_clause) = generics.split_for_impl();
+        let (lookup_impl_generics, _lookup_type_generics, lookup_where_clause) = lookup_generics.split_for_impl();
 
         quote::quote! {
-            impl #base_impl_generics ::spru::action::Base for #ident #base_type_generics
-            #base_where_clause {        
-                type Error = #error;
-                type Undo = #undo;
+            impl #impl_generics ::spru::action::Base for #ident #type_generics
+            #where_clause {
+                type Undo = <Self as #trait_path>::Undo;
+                type Error = <Self as #trait_path>::Error;
             }
 
-            impl #base2_impl_generics ::spru::action::Base2 for #ident #base2_type_generics
-            #base2_where_clause {
-                // type T = #t;
-                type Adapter = #adapter;
-            }
-
-            impl #entry_impl_generics ::spru::action::catalog::Entry<Lookup> for #ident #base_type_generics
-            #entry_where_clause {
-                fn __apply_entry(&self, mut data: ::spru::action::adapter::Data<'_, Lookup>) -> Result<Option<Self::Undo>, ::spru::action::catalog::Error<<Lookup as ::spru::item::Lookup>::Error, Self::Error>>
-                // where Lookup: 'l
+            impl #lookup_impl_generics ::spru::Action<#lookup_ident> for #ident #type_generics
+            #lookup_where_clause {
+                fn apply(&self, context: ::spru::action::Context<'_, #lookup_ident>) -> Result<Option<Self::Undo>, ::spru::action::Error<Lookup::Error, Self::Error>>
+                where 
+                    Self: Sized,
                 {
-                    use ::spru::action::Adapter as _;
-                    use ::spru::Action as _;
-                    
-                    let input = <Self as spru::action::Base2>::Adapter::input(&mut data)?;
-                    let output = self
-                        .apply(input)
-                        .map_err(::spru::action::catalog::Error::Action)?
-                        .into();
-                    let undo = <Self as spru::action::Base2>::Adapter::output(&mut data, output)?;
-                    Ok(undo)
+                    context.#func_ident(self)
                 }
             }
         }.to_tokens(tokens);
     }
 }
 
-#[proc_macro_derive(ActionCatalog, attributes(catalog))]
-pub fn action_catalog(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    let (Ok(ts) | Err(ts)) = action_catalog::derive_action_catalog(input.into())
+#[proc_macro_derive(Create)]
+pub fn create(item: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let (Ok(ts) | Err(ts)) = create::fn_create(item.into())
         .map_err(syn::Error::into_compile_error);
     ts.into()
 }
 
-#[proc_macro_derive(ItemCatalog, attributes(catalog))]
-pub fn item_catalog(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    let (Ok(ts) | Err(ts)) = item_catalog::derive_item_catalog(input.into())
+#[proc_macro_derive(Destroy)]
+pub fn destroy(item: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let (Ok(ts) | Err(ts)) = destroy::fn_destroy(item.into())
         .map_err(syn::Error::into_compile_error);
     ts.into()
 }
 
-#[proc_macro_derive(TypeIndex)]
-pub fn type_index(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    let (Ok(ts) | Err(ts)) = type_index::derive_type_index(input.into())
+#[proc_macro_derive(Update)]
+pub fn update(item: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let (Ok(ts) | Err(ts)) = update::fn_update(item.into())
         .map_err(syn::Error::into_compile_error);
     ts.into()
 }
 
-#[proc_macro_attribute]
-pub fn create(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    let (Ok(ts) | Err(ts)) = create::fn_create(attr.into(), item.into())
-        .map_err(syn::Error::into_compile_error);
-    ts.into()
-}
-
-#[proc_macro_attribute]
-pub fn destroy(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    let (Ok(ts) | Err(ts)) = destroy::fn_destroy(attr.into(), item.into())
-        .map_err(syn::Error::into_compile_error);
-    ts.into()
-}
-
-#[proc_macro_attribute]
-pub fn update(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    let (Ok(ts) | Err(ts)) = update::fn_update(attr.into(), item.into())
+#[proc_macro_derive(State)]
+pub fn state(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let (Ok(ts) | Err(ts)) = state::derive_state(input.into())
         .map_err(syn::Error::into_compile_error);
     ts.into()
 }
@@ -127,13 +115,6 @@ pub fn update(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> p
 #[proc_macro_derive(FromInfallible)]
 pub fn from_infallible(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let (Ok(ts) | Err(ts)) = from_infallible::derive_from_infallible(input.into())
-        .map_err(syn::Error::into_compile_error);
-    ts.into()
-}
-
-#[proc_macro_attribute]
-pub fn payload_variant(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    let (Ok(ts) | Err(ts)) = payload_variant::payload_variant_attr(attr.into(), item.into())
         .map_err(syn::Error::into_compile_error);
     ts.into()
 }

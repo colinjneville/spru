@@ -1,12 +1,12 @@
 use std::collections::VecDeque;
 
-use crate::{action, interaction, item, log, record, transaction, Transaction};
+use crate::{action, interaction, item, log, record::{self, Records}, transaction, Transaction};
 
 #[derive(Debug)]
 #[derive(serde::Serialize, serde::Deserialize)]
-struct PendingTransaction<ActionCatalog, Interaction> {
+struct PendingTransaction<Action, Interaction> {
     id: transaction::Pending,
-    undo_transaction: Transaction<ActionCatalog>,
+    undo_transaction: Transaction<Action>,
     // Once we have sent an apply message to the server, we shouldn't allow the client
     // to attempt to revert that transaction (otherwise the revert may be forcibly
     // un-reverted if the server commits it).
@@ -17,12 +17,12 @@ struct PendingTransaction<ActionCatalog, Interaction> {
 
 #[derive(Debug)]
 #[derive(serde::Serialize, serde::Deserialize)]
-pub(crate) struct Client<ActionCatalog, Interaction> {
+pub(crate) struct Client<Action, Interaction> {
     // Transactions applied locally which have not been confirmed by the server.
     // Any rejected transaction rolls back all pending, because the player may
     // have made a later Interaction on the assumption the earlier one was valid.
     // TODO add some sort of configuration?
-    pending_undo_transactions: VecDeque<PendingTransaction<ActionCatalog, Interaction>>,
+    pending_undo_transactions: VecDeque<PendingTransaction<Action, Interaction>>,
     
     // Next pending id to use. If we cancel a staged transaction, we don't want to reuse
     // the pending id to prevent cancelling the newer staged transaction with the id
@@ -34,7 +34,7 @@ pub(crate) struct Client<ActionCatalog, Interaction> {
     next_confirmed_id: transaction::Id,
 }
 
-impl<ActionCatalog, Interaction> Client<ActionCatalog, Interaction> {
+impl<Action, Interaction> Client<Action, Interaction> {
     pub(crate) fn new(next_confirmed_id: transaction::Id) -> Self {
         Self {
             pending_undo_transactions: VecDeque::new(),
@@ -42,45 +42,59 @@ impl<ActionCatalog, Interaction> Client<ActionCatalog, Interaction> {
             next_confirmed_id,
         }
     }
-    pub(crate) fn apply_confirmed<Lookup>(&mut self, lookup: &mut Lookup, transaction: transaction::Confirmed<ActionCatalog>)
-        -> Result<(), log::ConfirmError<Lookup::Error, ActionCatalog::Error>>
+    pub(crate) fn apply_confirmed<Lookup>(&mut self, lookup: &mut Lookup, transaction: transaction::Confirmed<Action>)
+        -> Result<(), log::ConfirmError<Lookup::Error, Action::Error>>
     where
         Lookup: item::Lookup,
-        ActionCatalog: action::Catalog<Lookup>,
+        Action: crate::Action<Lookup, Undo = Action>,
     {
         if self.next_confirmed_id == transaction.id {
             self.next_confirmed_id = self.next_confirmed_id.next();
 
-            match transaction.transaction.apply_or_revert(lookup) {
-                Ok(_) => Ok(()),
-                // Failed to apply transaction, and revert 
-                Err(e @ log::Error::Revert(_)) => Err(log::ConfirmError::Log(e)),
-                Err(log::Error::Record(e)) => {
-                    // Log apply failed, discard our local pending changes...
-                    // TODO we could instead look for the earliest incompatible transaction
-                    // and only rollback until there
-                    match self.revert_pending(lookup, None) {
-                        Ok(()) => {
-                            // Then try one more time on what should be a clean slate
-                            transaction.transaction.apply(lookup)
-                                .map(|_| ())
-                                .map_err(log::Error::Record)
-                                .map_err(log::ConfirmError::Log)
-                        },
-                        Err(e2) => Err(log::ConfirmError::Log(log::Error::Revert(log::RevertError { initial: Some(e), fatal: e2 }))),
-                    }
-                },
-            }
+            self.apply_records(lookup, transaction.transaction.records())
+                .map_err(log::ConfirmError::Log)
         } else {
             Err(log::ConfirmError::Mismatch(transaction::id::MismatchError { expected: self.next_confirmed_id, actual: transaction.id }))
         }
     }
 
-    pub fn stage_pending<Lookup>(&mut self, lookup: &mut Lookup, interaction: interaction::Staged<Interaction>, transaction: Transaction<ActionCatalog>)
-        -> Result<transaction::Pending, log::Error<Lookup::Error, ActionCatalog::Error>>
+    fn apply_records<Lookup>(&mut self, lookup: &mut Lookup, records: &Records<Action>)
+        -> Result<(), log::Error<Lookup::Error, Action::Error>>
     where
         Lookup: item::Lookup,
-        ActionCatalog: action::Catalog<Lookup>,
+        Action: crate::Action<Lookup, Undo = Action>,
+    {
+        match records.apply_or_revert(lookup) {
+            Ok(_) => Ok(()),
+            // Failed to apply transaction, and revert 
+            Err(e @ log::Error::Revert(_)) => Err(e),
+            Err(log::Error::Record(e)) => {
+                // Log apply failed, discard our local pending changes...
+                // TODO we could instead look for the earliest incompatible transaction
+                // and only rollback until there
+                match self.revert_pending(lookup, None) {
+                    Ok(()) => {
+                        // Then try one more time on what should be a clean slate
+                        records.apply(lookup)
+                            .map(|_| ())
+                            .map_err(log::Error::Record)
+                    },
+                    Err(e2) => Err(log::Error::Revert(log::RevertError { initial: Some(e), fatal: e2 })),
+                }
+            },
+        }
+    }
+
+    pub fn stage_pending<Lookup>(
+        &mut self, 
+        lookup: &mut Lookup, 
+        interaction: interaction::Staged<Interaction>, 
+        transaction: Transaction<Action>
+    )
+        -> Result<transaction::Pending, log::Error<Lookup::Error, Action::Error>>
+    where
+        Lookup: item::Lookup,
+        Action: crate::Action<Lookup, Undo = Action>,
     {
         let id = self.next_pending_id;
         self.next_pending_id = self.next_pending_id.next();
@@ -110,40 +124,53 @@ impl<ActionCatalog, Interaction> Client<ActionCatalog, Interaction> {
                 Ok(output)
             },
             // transaction not found (invalid, reverted, or commited)
-            Err(_) => Err(crate::TempError),
+            Err(_) => Err(crate::TempError::new()),
         }
     }
 
-    pub fn confirm_pending(&mut self, pending_transaction_id: transaction::Pending, confirmed_transaction_id: transaction::Id)
+    pub fn confirm_pending<Lookup>(
+        &mut self, 
+        lookup: &mut Lookup,
+        pending_transaction_id: transaction::Pending, 
+        confirmed_transaction_id: transaction::Id, 
+        reaction_records: &Records<Action>
+    )
         -> Result<(), crate::TempError>
+    where
+        Lookup: item::Lookup,
+        Action: crate::Action<Lookup, Undo = Action>,
     {
         match self.pending_undo_transactions.get(0) {
             Some(pending) => {
                 if pending.id == pending_transaction_id {
                     if self.next_confirmed_id == confirmed_transaction_id {
+                        self.apply_records(lookup, &reaction_records)
+                            .map_err(crate::TempError::discard)?;
+                        
                         self.next_confirmed_id = self.next_confirmed_id.next();
                         self.pending_undo_transactions.pop_front();
                         Ok(())
                     } else {
                         // We expected a different confirmed transaction id
-                        Err(crate::TempError)
+                        Err(crate::TempError::new())
                     }
                 } else {
                     // We expected a different pending tranaction id
-                    Err(crate::TempError)
+                    Err(crate::TempError::new())
                 }
             }
             // No pending transactions
-            None => Err(crate::TempError),
+            None => Err(crate::TempError::new()),
         }
     }
 
     pub fn revert_pending<Lookup>(&mut self, lookup: &mut Lookup, until: Option<transaction::Pending>) 
-        -> Result<(), record::Error<Lookup::Error, ActionCatalog::Error>> 
+        -> Result<(), record::Error<Lookup::Error, Action::Error>> 
     where 
         Lookup: item::Lookup,
-        ActionCatalog: action::Catalog<Lookup>,
-    {       
+        Action: crate::Action<Lookup, Undo = Action>,
+    {
+        // pop_back_if: https://github.com/rust-lang/rust/issues/135889
         while let Some(pending) = self.pending_undo_transactions.pop_back() {
             if Some(pending.id) < until {
                 // We've gone too far, put it back and exit

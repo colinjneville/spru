@@ -5,6 +5,10 @@ use std::fmt;
 pub struct Id(pub(crate) usize);
 
 impl Id {
+    pub fn into_usize(self) -> usize {
+        self.0
+    }
+
     pub(crate) const ZERO: Self = Self(0);
 
     pub(crate) const fn next(&self) -> Self {

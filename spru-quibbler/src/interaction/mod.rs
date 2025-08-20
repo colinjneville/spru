@@ -1,9 +1,13 @@
 pub mod draw;
 pub use draw::Draw;
-pub mod pass;
-pub use pass::Pass;
+pub mod discard;
+pub use discard::Discard;
 pub mod play;
 pub use play::Play;
+use spru::item::IdT;
+use tagset::tagset;
+
+pub(crate) type Interactor<'l, 'r, Lookup> = spru::interaction::Interactor<'l, 'r, Lookup, crate::Actions, IdT<crate::game::Root>, crate::reaction::Trigger>;
 
 #[derive(Debug)]
 #[derive(thiserror::Error)]
@@ -14,13 +18,20 @@ pub enum Error {
     InvalidState
 }
 
+#[tagset(impl spru::Interaction {
+    type Action = crate::Actions; 
+    type Root = IdT<crate::game::Root>;
+    type Trigger = crate::reaction::Trigger;
+})]
+#[tagset(impl tagset::proxy::serde::Serialize)]
+#[tagset(impl<'de> tagset::serde::DeserializeFromDiscriminant<'de>)]
+#[tagset(impl<'de> tagset::proxy::serde::Deserialize<'de>)]
+#[tagset(Draw)]
+#[tagset(Play)]
+#[tagset(Discard)]
+pub struct Interaction;
 
-#[derive(serde::Serialize, serde::Deserialize)]
-pub enum Interaction {
-    Draw(Draw),
-    Play(Play),
-    Pass(Pass),
-}
+pub struct Output;
 
 // impl spru::interaction::Base for Interaction {
 //     type Error = Error;

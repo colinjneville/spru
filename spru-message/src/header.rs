@@ -1,14 +1,9 @@
-use crate::payload;
-
 #[derive(Debug)]
 #[derive(deku::DekuRead, deku::DekuWrite)]
 #[deku(endian = "big")]
 pub struct Header {
     // Length in bytes of payload. 
     pub payload_size: usize,
-    // Identifies which message variant this is.
-    // Used internally to check type casts.
-    pub variant_id: payload::variant::Id,
 }
 
 impl Header {
@@ -29,6 +24,8 @@ impl Header {
 
         len
     }
+
+    
 
     pub fn to_bytes(&self) -> Box<[u8]> {
         deku::DekuContainerWrite::to_bytes(self)

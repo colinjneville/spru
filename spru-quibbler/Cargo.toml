@@ -1,7 +1,7 @@
 [package]
 name = "spru-quibbler"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -12,6 +12,8 @@ spru-smol = { path = "../spru-smol" }
 spru-bevy = { path = "../spru-bevy" }
 
 amass.workspace = true
+tagset.workspace = true
+telety.workspace = true
 
 rand.workspace = true
 rand_chacha.workspace = true
@@ -19,7 +21,13 @@ rand_chacha.workspace = true
 rust-fsm.workspace = true
 
 thiserror.workspace = true
-
-bevy.workspace = true
+anyhow.workspace = true
 
 serde.workspace = true
+
+wordnik_list = "0.2.1"
+
+[dependencies.bevy]
+workspace = true
+features = ["bevy_sprite"]
+

@@ -5,7 +5,7 @@ use crate::{action, item::{self}, log};
 
 #[derive(Debug)]
 #[derive(thiserror::Error)]
-pub enum Error<LookupError, ActionCatalogError> {
+pub enum Error<LookupError, ActionError> {
     #[error(transparent)]
     Lookup(LookupError),
     #[error(transparent)]
@@ -13,31 +13,31 @@ pub enum Error<LookupError, ActionCatalogError> {
     #[error(transparent)]
     Version(item::version::MismatchError),
     #[error(transparent)]
-    ActionCatalog(ActionCatalogError),
+    Action(ActionError),
 }
 
-impl<LookupError, ActionCatalogError> From<action::catalog::Error<LookupError, ActionCatalogError>> for Error<LookupError, ActionCatalogError> {
-    fn from(value: action::catalog::Error<LookupError, ActionCatalogError>) -> Self {
+impl<LookupError, ActionError> From<crate::action::Error<LookupError, ActionError>> for Error<LookupError, ActionError> {
+    fn from(value: crate::action::Error<LookupError, ActionError>) -> Self {
         match value {
-            action::catalog::Error::Lookup(e) => Self::Lookup(e),
-            action::catalog::Error::Item(e) => Self::Item(e),
-            action::catalog::Error::Version(e) => Self::Version(e),
-            action::catalog::Error::Action(e) => Self::ActionCatalog(e),
+            action::Error::Lookup(e) => Self::Lookup(e),
+            action::Error::Item(e) => Self::Item(e),
+            action::Error::Version(e) => Self::Version(e),
+            action::Error::Action(e) => Self::Action(e),
         }
     }
 }
 
 #[derive(Debug, Clone)]
 #[derive(serde::Serialize, serde::Deserialize)]
-pub(crate) struct Packed<ActionCatalog> {
+pub(crate) struct Packed<Action> {
     item_id: item::Id,
     version_change: item::version::Change,
-    action: ActionCatalog,
-    appended_actions: Vec<ActionCatalog>,
+    action: Action,
+    appended_actions: Vec<Action>,
 }
 
-impl<ActionCatalog> Packed<ActionCatalog> {
-    pub(crate) fn new(item_id: item::Id, version_change: item::version::Change, action: ActionCatalog) -> Self {
+impl<Action> Packed<Action> {
+    pub(crate) fn new(item_id: item::Id, version_change: item::version::Change, action: Action) -> Self {
         Self {
             item_id,
             version_change,
@@ -46,7 +46,7 @@ impl<ActionCatalog> Packed<ActionCatalog> {
         }
     }
 
-    pub fn append(&mut self, action: ActionCatalog) {
+    pub fn append(&mut self, action: Action) {
         self.appended_actions.push(action);
     }
 
@@ -58,35 +58,35 @@ impl<ActionCatalog> Packed<ActionCatalog> {
         self.version_change
     }
 
-    pub(crate) fn expand(&self) -> impl Iterator<Item = Record<ActionCatalog>> {
+    pub(crate) fn expand(&self) -> impl Iterator<Item = Record<Action>> {
         (0..self.appended_actions.len() + 1).into_iter()
             .map(|i| Record::new(self, i))
     }
 
-    pub(crate) fn into_action(self) -> ActionCatalog {
+    pub(crate) fn into_action(self) -> Action {
         self.action
     }
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct Record<'r, ActionCatalog> {
-    packed: &'r Packed<ActionCatalog>,
+pub struct Record<'r, Action> {
+    packed: &'r Packed<Action>,
     index: usize,
 }
 
-impl<'r, ActionCatalog> Record<'r, ActionCatalog> {
-    pub(crate) fn new(packed: &'r Packed<ActionCatalog>, index: usize) -> Self {
+impl<'r, Action> Record<'r, Action> {
+    pub(crate) fn new(packed: &'r Packed<Action>, index: usize) -> Self {
         Self {
             packed,
             index,
         }
     }
 
-    fn apply_internal<Lookup: item::Lookup>(&self, lookup: &mut Lookup) -> Result<Option<ActionCatalog>, Error<Lookup::Error, ActionCatalog::Error>> 
+    fn apply_internal<Lookup: item::Lookup>(&self, lookup: &mut Lookup) -> Result<Option<Action>, Error<Lookup::Error, Action::Error>> 
     where 
-        ActionCatalog: action::Catalog<Lookup> 
+        Action: crate::Action<Lookup, Undo = Action>,  
     {
-        let undo = self.action().apply(action::adapter::Data::new(lookup, self.item_id().clone(), self.version_change()))?;
+        let undo = self.action().apply(action::Context::new(lookup, self.item_id().clone(), self.version_change()))?;
         Ok(undo)
     }
 
@@ -98,7 +98,7 @@ impl<'r, ActionCatalog> Record<'r, ActionCatalog> {
         self.packed.version_change
     }
 
-    pub(crate) fn action(&self) -> &ActionCatalog {
+    pub(crate) fn action(&self) -> &Action {
         match self.index.checked_sub(1) {
             Some(index) => &self.packed.appended_actions[index],
             None => &self.packed.action,
@@ -108,45 +108,60 @@ impl<'r, ActionCatalog> Record<'r, ActionCatalog> {
 
 #[derive(Debug, Clone)]
 #[derive(serde::Serialize, serde::Deserialize)]
-pub(crate) struct Records<ActionCatalog> {
-    records: VecDeque<Packed<ActionCatalog>>,
+pub(crate) struct Records<Action> {
+    records: VecDeque<Packed<Action>>,
 }
 
-impl<ActionCatalog> Records<ActionCatalog> {
+impl<Action> Records<Action> {
     pub fn new() -> Self {
         Self::default()
     }
 
-    pub fn push(&mut self, record: Packed<ActionCatalog>) {
+    pub fn push(&mut self, record: Packed<Action>) {
         self.records.push_back(record);
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = Record<ActionCatalog>> {
+    pub fn extend(&mut self, other: Self) {
+        self.records.extend(other.records);
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = Record<Action>> {
         self.records.iter()
             .flat_map(Packed::expand)
     }
+
+    pub(crate) fn trim_start(&mut self, count: usize) {
+        for _ in 0..count {
+            let _ = self.records.pop_front()
+                .expect("not enough records");
+        }
+    }
+
+    pub(crate) fn len(&self) -> usize {
+        self.records.len()
+    }
 }
 
-impl<ActionCatalog> Default for Records<ActionCatalog> {
+impl<Action> Default for Records<Action> {
     fn default() -> Self {
         Self { records: Default::default() }
     }
 }
 
-impl<ActionCatalog> Records<ActionCatalog> {
+impl<Action> Records<Action> {
     pub fn apply<'l, Lookup: item::Lookup>(&self, lookup: &'l mut Lookup) 
-        -> Result<Self, Error<Lookup::Error, ActionCatalog::Error>> 
+        -> Result<Self, Error<Lookup::Error, Action::Error>> 
     where 
-        ActionCatalog: action::Catalog<Lookup> 
+        Action: crate::Action<Lookup, Undo = Action>, 
     {
         self.apply_internal(lookup)
             .map_err(|(_, e)| e)
     }
 
     pub fn apply_or_revert<'l, Lookup: item::Lookup>(&self, lookup: &'l mut Lookup) 
-        -> Result<Self, log::Error<Lookup::Error, ActionCatalog::Error>> 
+        -> Result<Self, log::Error<Lookup::Error, Action::Error>> 
     where 
-        ActionCatalog: action::Catalog<Lookup> 
+        Action: crate::Action<Lookup, Undo = Action>, 
     {
         match self.apply_internal(lookup) {
             Ok(undo) => Ok(undo),
@@ -161,9 +176,9 @@ impl<ActionCatalog> Records<ActionCatalog> {
     }
 
     fn apply_internal<'l, Lookup: item::Lookup>(&self, lookup: &'l mut Lookup) 
-        -> Result<Self, (Self, Error<Lookup::Error, ActionCatalog::Error>)> 
+        -> Result<Self, (Self, Error<Lookup::Error, Action::Error>)> 
     where 
-        ActionCatalog: action::Catalog<Lookup> 
+        Action: crate::Action<Lookup, Undo = Action> 
     {
         let mut undo = Self::default();
 

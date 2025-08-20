@@ -4,18 +4,18 @@ use crate::{action, item, log, record::{self, Records}, transaction};
 
 #[derive(Debug, Clone)]
 #[derive(serde::Serialize, serde::Deserialize)]
-pub struct Transactions<ActionCatalog> {
-    transactions: VecDeque<Transaction<ActionCatalog>>,
+pub struct Transactions<Action> {
+    transactions: VecDeque<Transaction<Action>>,
     start_id: transaction::Id,
 }
 
-impl<ActionCatalog> Default for Transactions<ActionCatalog> {
+impl<Action> Default for Transactions<Action> {
     fn default() -> Self {
         Self::new(transaction::Id::new(0))
     }
 }
 
-impl<ActionCatalog> Transactions<ActionCatalog> {
+impl<Action> Transactions<Action> {
     pub(crate) fn new(start_id: transaction::Id) -> Self {
         Self {
             transactions: Default::default(),
@@ -23,13 +23,13 @@ impl<ActionCatalog> Transactions<ActionCatalog> {
         }
     }
 
-    pub(crate) fn into_iter(self) -> impl DoubleEndedIterator<Item = transaction::Confirmed<ActionCatalog>> {
+    pub(crate) fn into_iter(self) -> impl DoubleEndedIterator<Item = transaction::Confirmed<Action>> {
         self.transactions.into_iter()
             .enumerate()
             .map(move |(i, tx)| transaction::Confirmed::new(transaction::Id::new(self.start_id.get() + i), tx))
     }
 
-    pub(crate) fn drain(&mut self) -> impl DoubleEndedIterator<Item = transaction::Confirmed<ActionCatalog>> + '_ {
+    pub(crate) fn drain(&mut self) -> impl DoubleEndedIterator<Item = transaction::Confirmed<Action>> + '_ {
         let old_start_id = self.start_id.get();
         self.start_id = transaction::Id::new(old_start_id + self.transactions.len());
         self.transactions.drain(..)
@@ -45,7 +45,7 @@ impl<ActionCatalog> Transactions<ActionCatalog> {
         transaction::Id::new(self.start_id.0 + self.transactions.len())
     }
 
-    pub(crate) fn get(&self, id: transaction::Id) -> Option<&Transaction<ActionCatalog>> {
+    pub(crate) fn get(&self, id: transaction::Id) -> Option<&Transaction<Action>> {
         if let Some(index) = id.index_of(&self.start_id) {
             self.transactions.get(index)
         } else {
@@ -53,13 +53,13 @@ impl<ActionCatalog> Transactions<ActionCatalog> {
         }
     }
 
-    pub(crate) fn push_back(&mut self, transaction: Transaction<ActionCatalog>) -> transaction::Id {
+    pub(crate) fn push_back(&mut self, transaction: Transaction<Action>) -> transaction::Id {
         let id = self.next_id();
         self.transactions.push_back(transaction);
         id
     }
 
-    pub(crate) fn pop_front(&mut self) -> Option<Transaction<ActionCatalog>> {
+    pub(crate) fn pop_front(&mut self) -> Option<Transaction<Action>> {
         if let Some(transaction) = self.transactions.pop_front() {
             self.start_id = self.start_id.next();
             Some(transaction)
@@ -68,7 +68,7 @@ impl<ActionCatalog> Transactions<ActionCatalog> {
         }
     }
 
-    pub(crate) fn pop_back(&mut self) -> Option<Transaction<ActionCatalog>> {
+    pub(crate) fn pop_back(&mut self) -> Option<Transaction<Action>> {
         self.transactions.pop_back()
     }
 
@@ -82,22 +82,22 @@ impl<ActionCatalog> Transactions<ActionCatalog> {
 
 #[derive(Debug, Clone)]
 #[derive(serde::Serialize, serde::Deserialize)]
-pub struct Transaction<ActionCatalog> {
-    records: Records<ActionCatalog>,
+pub struct Transaction<Action> {
+    records: Records<Action>,
 }
 
-impl<ActionCatalog> Transaction<ActionCatalog> {
-    pub(crate) fn new(records: Records<ActionCatalog>) -> Self {
+impl<Action> Transaction<Action> {
+    pub(crate) fn new(records: Records<Action>) -> Self {
         Self {
             records,
         }
     }
 
     pub(crate) fn apply<'l, Lookup>(&self, lookup: &mut Lookup) 
-        -> Result<Transaction<ActionCatalog>, record::Error<Lookup::Error, ActionCatalog::Error>> 
+        -> Result<Transaction<Action>, record::Error<Lookup::Error, Action::Error>> 
     where 
         Lookup: item::Lookup + 'l,
-        ActionCatalog: action::Catalog<Lookup> 
+        Action: crate::Action<Lookup, Undo = Action>, 
     {
         let undo_records = self.records.apply(lookup)?;
 
@@ -105,18 +105,22 @@ impl<ActionCatalog> Transaction<ActionCatalog> {
     }
 
     pub(crate) fn apply_or_revert<Lookup>(&self, lookup: &mut Lookup) 
-        -> Result<Transaction<ActionCatalog>, log::Error<Lookup::Error, ActionCatalog::Error>> 
+        -> Result<Transaction<Action>, log::Error<Lookup::Error, Action::Error>> 
     where 
         Lookup: item::Lookup,
-        ActionCatalog: action::Catalog<Lookup> 
+        Action: crate::Action<Lookup, Undo = Action>, 
     {
         let undo_records = self.records.apply_or_revert(lookup)?;
 
         Ok(Transaction { records: undo_records })
     }
 
-    pub(crate) fn records(&self) -> &Records<ActionCatalog> {
+    pub(crate) fn records(&self) -> &Records<Action> {
         &self.records
+    }
+
+    pub(crate) fn into_records(self) -> Records<Action> {
+        self.records
     }
 }
 
@@ -167,13 +171,13 @@ pub mod id {
 
 #[derive(Debug, Clone)]
 #[derive(serde::Serialize, serde::Deserialize)]
-pub struct Confirmed<ActionCatalog> {
+pub struct Confirmed<Action> {
     pub id: transaction::Id,
-    pub transaction: Transaction<ActionCatalog>,
+    pub transaction: Transaction<Action>,
 }
 
-impl<ActionCatalog> Confirmed<ActionCatalog> {
-    pub(crate) fn new(id: transaction::Id, transaction: Transaction<ActionCatalog>) -> Self {
+impl<Action> Confirmed<Action> {
+    pub(crate) fn new(id: transaction::Id, transaction: Transaction<Action>) -> Self {
         Self {
             id,
             transaction,

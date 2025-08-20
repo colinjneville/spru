@@ -1,6 +1,6 @@
 use std::any;
 
-use crate::{header, payload, Header, Payload, SerializeError};
+use crate::{header, Header, SerializeError};
 
 #[derive(Debug)]
 pub struct Message<P> {
@@ -9,57 +9,35 @@ pub struct Message<P> {
     _p: (),
 }
 
-impl<T> Message<T> {
-    pub fn into_variant<V>(self) -> Result<V, Error<T>> 
-    where 
-        T: payload::IntoVariant<V>,
-        T::Payload: payload::Variant<V>,
-    {
-        if self.header.variant_id == <T::Payload as payload::Variant<V>>::variant_id()  {
-            let Self {
-                header,
-                payload,
-                _p: (),
-            } = self;
-    
-            payload.into_variant()
-                .map_err(|payload| Error::Cast(Self {
-                    header,
-                    payload,
-                    _p: (),
-                }))
-        } else {
-            Err(Error::Variant(self))
-        }
-    }
-}
-
 impl<V> Message<V> {
-    pub fn into_raw<P>(self) -> Message<payload::Raw<P>>
-    where 
-        P: payload::Variant::<V>,
-        V: any::Any + Send,
-    {
-        let Self {
-            header,
-            payload,
-            _p,
-        } = self;
-        Message::<P>::new_raw(payload)
+    pub async fn read_async<R: futures_io::AsyncRead>(reader: &mut R) -> std::io::Result<V> {
+        
     }
+    // pub fn into_raw<P>(self) -> Message<payload::Raw<P>>
+    // where 
+    //     P: payload::Variant::<V>,
+    //     V: any::Any + Send,
+    // {
+    //     let Self {
+    //         header,
+    //         payload,
+    //         _p,
+    //     } = self;
+    //     Message::<P>::new_raw(payload)
+    // }
 
-    pub fn into_serialized<P>(&self) -> Result<Message<payload::Serialized<P>>, SerializeError>
-    where 
-        P: payload::Variant::<V>,
-        V: serde::Serialize,
-    {
-        let Self {
-            header,
-            payload,
-            _p,
-        } = self;
-        Message::<P>::new_serialized(payload)
-    }
+    // pub fn into_serialized<P>(&self) -> Result<Message<payload::Serialized<P>>, SerializeError>
+    // where 
+    //     P: payload::Variant::<V>,
+    //     V: serde::Serialize,
+    // {
+    //     let Self {
+    //         header,
+    //         payload,
+    //         _p,
+    //     } = self;
+    //     Message::<P>::new_serialized(payload)
+    // }
 }
 
 impl<P> Message<P> {

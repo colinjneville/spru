@@ -10,7 +10,7 @@ impl Id {
         Self(0)
     }
 
-    pub fn next(&self) -> Self {
+    pub(crate) fn next(&self) -> Self {
         Self(self.0 + 1)
     }
 
@@ -43,8 +43,8 @@ impl<T> IdT<T> {
         }
     }
 
-    pub fn untyped(&self) -> &Id {
-        &self.id
+    pub fn untyped(&self) -> Id {
+        self.id
     }
 }
 
@@ -149,19 +149,19 @@ impl Reservation {
         Range::new(start..self.end_of_id_reservation)
     }
 
-    pub(crate) fn claim_id(&self) -> Result<Id, ()> {
+    pub(crate) fn claim_id(&self) -> Option<Id> {
         loop {
             let current_value = self.next_id.load(atomic::Ordering::Acquire);
             if current_value >= self.end_of_id_reservation {
-                return Err(());
+                return None;
             }
             if let Ok(current) = self.next_id.compare_exchange(current_value, current_value + 1, atomic::Ordering::AcqRel, atomic::Ordering::Acquire) {
-                return Ok(Id(current));
+                return Some(Id(current));
             }
         }
     }
 
-    pub fn split(&mut self, new_reservation_count: usize) -> Result<(Self, Range), ()> {
+    pub(crate) fn split(&mut self, new_reservation_count: usize) -> Result<(Self, Range), ()> {
         if self.end_of_id_reservation >= new_reservation_count {
             let end_of_id_reservation = self.end_of_id_reservation;
             self.end_of_id_reservation -= new_reservation_count;

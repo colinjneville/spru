@@ -23,10 +23,10 @@ impl Adapter for Destroy {
         } = data;
         let lookup = lookup.take().expect("Data is only accessed here");
 
-        let stateful = lookup.lookup(&item::IdT::new(id.clone()))
+        let stateful = lookup.lookup(item::IdT::new(id))
             .map_err(action::catalog::Error::Lookup)?;
         if version.before == stateful.version() {
-            let stateful = lookup.destroy(&item::IdT::new(id.clone()))
+            let stateful = lookup.destroy(item::IdT::new(id))
                 .map_err(action::catalog::Error::Lookup)?;
             Ok(stateful.into_value())
         } else {

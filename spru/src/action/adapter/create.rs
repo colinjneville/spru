@@ -29,10 +29,10 @@ impl Adapter for Create {
         let lookup = lookup.take().expect("Data is only accessed here");
         let Output { undo, out } = output;
 
-        if let Ok(stateful) = lookup.lookup(&item::IdT::new(id.clone())) {
-            Err(action::catalog::Error::Item(item::id::Error::AlreadyExists { id: id.clone(), version: stateful.version() }.into()))
+        if let Ok(stateful) = lookup.lookup(item::IdT::new(id)) {
+            Err(action::catalog::Error::Item(item::id::Error::AlreadyExists { id, version: stateful.version() }.into()))
         } else {
-            let stateful = Item::new(item::IdT::new(id.clone()), version.after, out);
+            let stateful = Item::new(item::IdT::new(id), version.after, out);
             lookup.create(stateful).map_err(action::catalog::Error::Lookup)?;
             undo.as_ref().expect("create Action must return an undo record");
             Ok(undo)
@@ -57,10 +57,10 @@ impl<'l, Lookup: item::Lookup> Creator<'l, Lookup> {
 
     pub fn create<T>(self, value: T) -> Result<(), Error<Lookup::Error>>
     where Lookup: lookup::OfTypeMut<T> {
-        if let Ok(stateful) = self.lookup.lookup(&item::IdT::new(self.id.clone())) {
+        if let Ok(stateful) = self.lookup.lookup(item::IdT::new(self.id)) {
             Err(Error::Item(item::id::Error::AlreadyExists { id: self.id, version: stateful.version() }.into()))
         } else {
-            let stateful = Item::new(item::IdT::new(self.id.clone()), self.version.after, value);
+            let stateful = Item::new(item::IdT::new(self.id), self.version.after, value);
             Ok(self.lookup.create(stateful).map_err(Error::Lookup)?)
         }
     }

@@ -25,10 +25,10 @@ impl<'l> spru::item::Lookup for BevyLookup<'l> {
 }
 
 impl<'l, T: Send + Sync + 'static> spru::item::lookup::OfType<T> for BevyLookup<'l> {
-    fn lookup(&self, id: &item::IdT<T>) -> Result<&spru::Item<T>, Self::Error> {
+    fn lookup(&self, id: item::IdT<T>) -> Result<&spru::Item<T>, Self::Error> {
         let id = id.untyped();
         let entity = self.world.resource::<EntityMap>().get(id)?;
-        Ok(self.world.get::<item::Component<T>>(entity).ok_or(BevyError::ComponentNotFound(*id, entity, any::TypeId::of::<T>()))?.stateful())
+        Ok(self.world.get::<item::Component<T>>(entity).ok_or(BevyError::ComponentNotFound(id, entity, any::TypeId::of::<T>()))?.item())
     }
 }
 
@@ -56,11 +56,11 @@ impl<'l> spru::item::Lookup for BevyLookupMut<'l> {
 }
 
 impl<'l, T: Send + Sync + 'static> spru::item::lookup::OfType<T> for BevyLookupMut<'l> {
-    fn lookup(&self, id: &item::IdT<T>) -> Result<&Item<T>, Self::Error> {
+    fn lookup(&self, id: item::IdT<T>) -> Result<&Item<T>, Self::Error> {
         println!("Looking up {:?}", id);
         let id = id.untyped();
         let entity = self.world.resource::<EntityMap>().get(id)?;
-        Ok(self.world.get::<item::Component<T>>(entity).ok_or(BevyError::ComponentNotFound(*id, entity, any::TypeId::of::<T>()))?.stateful())
+        Ok(self.world.get::<item::Component<T>>(entity).ok_or(BevyError::ComponentNotFound(id, entity, any::TypeId::of::<T>()))?.item())
     }
 }
 
@@ -68,32 +68,29 @@ impl<'l, T: Send + Sync + 'static> spru::item::lookup::OfTypeMut<T> for BevyLook
     type Mut<'lr> = bevy::prelude::Mut<'lr, Item<T>>
     where Self: 'lr;    
 
-    fn lookup_mut(&mut self, id: &item::IdT<T>) -> Result<Self::Mut<'_>, Self::Error> {
+    fn lookup_mut(&mut self, id: item::IdT<T>) -> Result<Self::Mut<'_>, Self::Error> {
         println!("Looking up mut {:?}", id);
         let id = id.untyped();
         let entity = self.world.resource::<EntityMap>().get(id)?;
-        Ok(self.world.get_mut::<item::Component<T>>(entity).ok_or(BevyError::ComponentNotFound(*id, entity, any::TypeId::of::<T>()))?.map_unchanged(|sc| sc.stateful_mut()))
+        Ok(self.world.get_mut::<item::Component<T>>(entity).ok_or(BevyError::ComponentNotFound(id, entity, any::TypeId::of::<T>()))?.map_unchanged(|sc| sc.item_mut()))
     }
 
     fn create(&mut self, value: Item<T>) -> Result<(), Self::Error> {
         self.world.resource_scope::<EntityMap, _>(|world, mut entity_map| {
             println!("Creating {:?} {}", value.id(), value.version());
-            entity_map.insert_as(*value.id().untyped(), || Ok(world.spawn(item::Component::new(value)).id())).map(|_| ())
+            entity_map.insert_as(value.id().untyped(), || Ok(world.spawn(item::Component::new(value)).id())).map(|_| ())
         })
     }
 
-    fn destroy(&mut self, id: &item::IdT<T>) -> Result<Item<T>, Self::Error> {
+    fn destroy(&mut self, id: item::IdT<T>) -> Result<Item<T>, Self::Error> {
         let id = id.untyped();
         self.world.resource_scope::<EntityMap, _>(|world, mut entity_map| {
-            entity_map.remove_as(*id, |entity| {
-                let mut entity_mut = world.get_entity_mut(entity).ok_or(BevyError::EntityNotFound(*id, entity))?;
-                match entity_mut.get_mut::<item::Component<T>>() {
-                    Some(mut sc) => {
-                        let stateful = sc.take();
-                        entity_mut.remove::<item::Component<T>>();
-                        Ok(stateful)
-                    }
-                    None => Err(BevyError::ComponentNotFound(*id, entity, any::TypeId::of::<T>())),
+            entity_map.remove_as(id, |entity| {
+                let mut entity_mut = world.get_entity_mut(entity)
+                    .map_err(|_| BevyError::EntityNotFound(id, entity))?;
+                match entity_mut.take::<item::Component<T>>() {
+                    Some(crate::item::Component(item)) => Ok(item),
+                    None => Err(BevyError::ComponentNotFound(id, entity, any::TypeId::of::<T>())),
                 }
             })
         })
@@ -116,8 +113,8 @@ pub struct EntityMap {
 }
 
 impl EntityMap {
-    pub fn get(&self, id: &item::Id) -> Result<Entity, BevyError> {
-        self.map.get(id).copied().ok_or(BevyError::IdNotFound(*id))
+    pub fn get(&self, id: item::Id) -> Result<Entity, BevyError> {
+        self.map.get(&id).copied().ok_or(BevyError::IdNotFound(id))
     }
 
     // fn insert(&mut self, entity: Entity) -> Id {

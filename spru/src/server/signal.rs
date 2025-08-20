@@ -1,4 +1,4 @@
-use crate::{interaction, transaction};
+use crate::{interaction, item::lookup::canonical, transaction};
 
 
 
@@ -16,9 +16,11 @@ pub struct Ret {
 
 #[derive(Debug)]
 #[derive(thiserror::Error)]
-pub enum Error {
+pub enum Error<ActionError> {
     #[error(transparent)]
     Temp(#[from] crate::TempError),
+    #[error("The server has entered an inconsistent state due to a bug: {0}")]
+    Inconsistency(#[from] crate::log::RevertError<canonical::Error, ActionError>),
 }
 
 #[derive(Debug)]

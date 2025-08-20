@@ -1,5 +1,6 @@
 #[derive(Debug)]
 #[derive(derive_more::From)]
+#[non_exhaustive]
 pub enum Event<GameOutcome> {
     GameComplete(GameComplete<GameOutcome>),
 }
@@ -9,7 +10,6 @@ pub struct GameComplete<GameOutcome> {
     pub game_outcome: GameOutcome,
 }
 
-#[allow(unused_variables)]
 pub trait Reader<GameOutcome> {
     fn read_all(&mut self, events: Vec<Event<GameOutcome>>) {
         for event in events {
@@ -23,5 +23,7 @@ pub trait Reader<GameOutcome> {
         }
     }
 
-    fn game_complete(&mut self, event: GameComplete<GameOutcome>) { }
+    fn game_complete(&mut self, event: GameComplete<GameOutcome>) { 
+        let _ = event;
+    }
 }

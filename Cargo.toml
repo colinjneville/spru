@@ -6,36 +6,39 @@ members = [
 	"spru-macro", 
 	"spru-message",
 	"spru-quibbler", 
-	"spru-smol", "spru-test",
+	"spru-smol", 
+	"spru-test",
 	"spru-util",
 ]
 
 [workspace.dependencies]
-telety = "0.2"
-amass = "0.1"
+telety = "0.3"
+amass = "0.1.1"
+tagset = "0.1.1"
 
-halfbrown = { version = "0.2.5", features = ["serde"] }
-thiserror = "1.0.50"
+halfbrown = { version = "0.3.0", features = ["serde"] }
+thiserror = "2.0.12"
 anyhow = "1.0.89"
 
 derive_more = "1.0.0"
-perfect-derive = "0.1.3"
+derive-where = { version = "1.5.0", features = ["serde"] }
 num-traits = "0.2.17"
 
-rand = { version = "0.8.5", features = [  ] }
-rand_chacha = "0.3.1"
+rand = { version = "0.9.1", features = [  ] }
+rand_chacha = "0.9.0"
 
-rust-fsm = "0.7.0"
+rust-fsm = "0.8.0"
 
 # logging
 tracing = "0.1.40"
 
 # async
 atomicell = "0.2.0"
+futures-io = "0.3.31"
 moro = "0.4.0"
 
 # async (smol ecosystem)
-async-broadcast = "0.7.1"
+async-broadcast = "0.7.2"
 async-lazy = "0.1.0"
 async-once-cell = "0.5.3"
 async-task = "4.7.1"
@@ -49,8 +52,6 @@ smol = "2.0.0"
 proc-macro2 = "1.0.69"
 quote = "1.0.33"
 syn = "2.0.38"
-
-sea-bae = "0.2.0"
 
 # serialization
 rmp-serde = "=1.3.0"
@@ -66,11 +67,16 @@ features = [
 ]
 
 [workspace.dependencies.bevy]
-version = "0.14.0"
+version = "0.16.1"
 default-features = false
 features = [
     
 ]
 
 [patch.crates-io]
-telety-macro = { path = "../telety-ws/telety-macro" } 
+telety = { path = "../telety-ws/telety" } 
+amass = { path = "../amass/amass" } 
+#tagset = { git = "https://github.com/colinjneville/tagset.git" }
+tagset = { path = "../tagit/tagset" }
+#tagset-macro = { git = "https://github.com/colinjneville/tagset.git" }
+tagset-macro = { path = "../tagit/tagset-macro" }

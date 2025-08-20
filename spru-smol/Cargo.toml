@@ -1,7 +1,7 @@
 [package]
 name = "spru-smol"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 [dependencies]
 
@@ -29,5 +29,7 @@ rmp-serde.workspace = true
 
 [dev-dependencies]
 spru-util = { path = "../spru-util" }
+tagset.workspace = true
+telety.workspace = true
 
 amass.workspace = true

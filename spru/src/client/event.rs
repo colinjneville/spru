@@ -1,5 +1,6 @@
 #[derive(Debug)]
 #[derive(derive_more::From)]
+#[non_exhaustive]
 pub enum Event<GameOutcome> {
     GameComplete(GameComplete<GameOutcome>),
 }
