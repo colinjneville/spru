@@ -18,7 +18,7 @@ impl spru::Interaction for Play {
     type Error = crate::Error;
     
     fn apply<Lookup>(&self, interactor: &mut super::Interactor<Lookup>)
-         -> Result<(), spru::interaction::Error<Lookup::Error, Self::Error>>
+         -> Result<(), spru::interaction::Error<lookup::Error, Self::Error>>
     where 
         Lookup: spru::item::Lookup, 
         Self::Action: spru::Action<Lookup>,

@@ -178,7 +178,7 @@ pub(crate) fn derive_action_catalog(input: TokenStream) -> syn::Result<TokenStre
         impl #action_catalog_impl_generics ::spru::action::Catalog<Lookup> for #item_ident #base_ty_generics
         #action_catalog_where_clause
         {
-            fn apply(&self, data: ::spru::action::adapter::Data<Lookup>) -> Result<::std::option::Option<Self>, ::spru::action::catalog::Error<Lookup::Error, Self::Error>> {
+            fn apply(&self, data: ::spru::action::adapter::Data<Lookup>) -> Result<::std::option::Option<Self>, ::spru::action::catalog::Error<lookup::Error, Self::Error>> {
                 use ::spru::action::catalog::Entry as _;
                 match self {
                     #arms
@@ -189,7 +189,7 @@ pub(crate) fn derive_action_catalog(input: TokenStream) -> syn::Result<TokenStre
         impl #action_impl_generics ::spru::action::catalog::Entry<Lookup> for #item_ident #base_ty_generics
         #action_where_clause {
             // type Adapter = ::spru::action::adapter::Passthrough;
-            // type Error = ::spru::action::catalog::Error<Lookup::Error, <Self as ::spru::action::Catalog>::Error>;
+            // type Error = ::spru::action::catalog::Error<lookup::Error, <Self as ::spru::action::Catalog>::Error>;
         
             // type Undo = Self;
 

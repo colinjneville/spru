@@ -8,7 +8,7 @@ pub mod revert_interaction;
 pub mod signal;
 pub mod stage_interaction;
 
-use crate::{interaction, item, log, player, server, state, Interactor, Transaction};
+use crate::{interaction, interactor, item, log, player, server, state, Interactor, Transaction};
 
 
 #[derive(Debug)]
@@ -79,7 +79,6 @@ impl<Action, Root, Interaction, GameOutcome> Client<Action, Root, Interaction, G
         init: init::Arg<State, Action, Root>,
     ) -> Result<Self, init::Error>
     where 
-        Lookup: item::Lookup,
         Action: crate::Action<Lookup, Undo = Action>,
         State: crate::State<Lookup, Repr: TryFrom<state::Index>>,
         Root: Clone,
@@ -120,7 +119,6 @@ impl<Action, Root, Interaction, GameOutcome> Client<Action, Root, Interaction, G
     pub fn stage_interaction<Lookup>(&mut self, lookup: &mut Lookup, arg: stage_interaction::Arg<Interaction>) 
         -> Result<Output<Interaction, GameOutcome, stage_interaction::Ret>, stage_interaction::Error>
     where
-        Lookup: item::Lookup,
         Action: crate::Action<Lookup, Undo = Action>,
         Interaction: crate::Interaction<Action = Action, Root = Root>,
     {
@@ -133,16 +131,41 @@ impl<Action, Root, Interaction, GameOutcome> Client<Action, Root, Interaction, G
         let context = interaction::Context::new(&self.root, self.local_player_id);
         let mut interactor = Interactor::new(lookup, &self.reservation, context);
         
-        interaction.apply(&mut interactor)
-            .map_err(crate::TempError::discard)?;
-        let expected_versions = interactor.expected_versions();
-        let records = interactor.take_records();
+        let interaction_result = 'result: {
+            if let Err(e) = interaction.apply(&mut interactor) {
+                break 'result Err(e);
+            }
+        
+            interactor.flush()
+                .map_err(Into::into)
+        };
+
+        if let Err(initial_error) = interaction_result {
+
+            // The interaction failed, attempt revert and return regardless
+            let (Ok(err) | Err(err)) = interactor
+                .revert(initial_error)
+                .map(log::Error::from);
+
+            return Err(stage_interaction::Error::Temp(crate::TempError::discard(err)));
+        }
+        
+        let interactor::Complete {
+            expected_versions,
+            do_records,
+            undo_records,
+            output,
+        } = interactor.complete();
+
+        // The client can discard any Triggers, those are the server's responsibility
+        // and the confirmed transaction message will contain any generated records
+        let _ = output;
         
         let interaction = interaction::Staged {
             interaction,
             expected_versions,
         };
-        let pending_transaction_id = self.log.stage_pending(lookup, interaction, Transaction::new(records))
+        let pending_transaction_id = self.log.stage_pending(interaction, Transaction::new(undo_records))
             .map_err(crate::TempError::discard)?;
 
         Ok(state.into_output(stage_interaction::Ret {
@@ -153,7 +176,6 @@ impl<Action, Root, Interaction, GameOutcome> Client<Action, Root, Interaction, G
     pub fn apply_interaction<Lookup>(&mut self, _lookup: &mut Lookup, arg: apply_interaction::Arg)
         -> Result<Output<Interaction, GameOutcome, apply_interaction::Ret>, apply_interaction::Error>
     where
-        Lookup: item::Lookup,
         Action: crate::Action<Lookup>,
     {
         let apply_interaction::Arg {
@@ -177,7 +199,6 @@ impl<Action, Root, Interaction, GameOutcome> Client<Action, Root, Interaction, G
     pub fn revert_interaction<Lookup>(&mut self, lookup: &mut Lookup, arg: revert_interaction::Arg)
         -> Result<Output<Interaction, GameOutcome, revert_interaction::Ret>, revert_interaction::Error>
     where
-        Lookup: item::Lookup,
         Action: crate::Action<Lookup, Undo = Action>,
     {
         let revert_interaction::Arg {
@@ -193,9 +214,8 @@ impl<Action, Root, Interaction, GameOutcome> Client<Action, Root, Interaction, G
     }
 
     pub fn signal<Lookup>(&mut self, lookup: &mut Lookup, arg: signal::Arg<Action, GameOutcome>)
-        -> Result<Output<Interaction, GameOutcome, signal::Ret>, signal::Error<Lookup::Error, Action::Error>>
+        -> signal::Result<Output<Interaction, GameOutcome, signal::Ret>>
     where 
-        Lookup: item::Lookup,
         Action: crate::Action<Lookup, Undo = Action>,
     {
         let signal::Arg {
@@ -214,9 +234,8 @@ impl<Action, Root, Interaction, GameOutcome> Client<Action, Root, Interaction, G
     }
 
     fn interaction_result<Lookup>(&mut self, _state: &mut State<Interaction, GameOutcome>, lookup: &mut Lookup, interaction_result: signal::InteractionResult<Action>)
-        -> Result<signal::Ret, signal::Error<Lookup::Error, Action::Error>>
+        -> signal::Result<signal::Ret>
     where 
-        Lookup: item::Lookup,
         Action: crate::Action<Lookup, Undo = Action>,
     {
         let signal::InteractionResult {
@@ -236,9 +255,8 @@ impl<Action, Root, Interaction, GameOutcome> Client<Action, Root, Interaction, G
     }
 
     fn confirmed_transaction<Lookup>(&mut self, _state: &mut State<Interaction, GameOutcome>, lookup: &mut Lookup, confirmed_transaction: signal::ConfirmedTransaction<Action>)
-        -> Result<signal::Ret, signal::Error<Lookup::Error, Action::Error>>
+        -> signal::Result<signal::Ret>
     where 
-        Lookup: item::Lookup,
         Action: crate::Action<Lookup, Undo = Action>,
     {
         let signal::ConfirmedTransaction {
@@ -252,9 +270,8 @@ impl<Action, Root, Interaction, GameOutcome> Client<Action, Root, Interaction, G
     }
 
     fn end_game<Lookup>(&mut self, state: &mut State<Interaction, GameOutcome>, lookup: &mut Lookup, end_game: signal::EndGame<GameOutcome>)
-        -> Result<signal::Ret, signal::Error<Lookup::Error, Action::Error>>
+        -> signal::Result<signal::Ret>
     where 
-        Lookup: item::Lookup,
         Action: crate::Action<Lookup, Undo = Action>,
     {
         let signal::EndGame {
@@ -268,22 +285,3 @@ impl<Action, Root, Interaction, GameOutcome> Client<Action, Root, Interaction, G
         Ok(signal::Ret::new())
     }
 }
-
-// ???
-// #[derive(Debug)]
-// #[derive(thiserror::Error)]
-// pub enum Error<LookupError, ActionsError> {
-//     #[error(transparent)]
-//     Lookup(LookupError),
-//     #[error(transparent)]
-//     Action(ActionsError),
-//     // TODO
-//     #[error("Other synchronization error")]
-//     Other,
-// }
-
-// impl<LookupError, ActionsError> From<crate::TempError> for Error<LookupError, ActionsError> {
-//     fn from(_value: crate::TempError) -> Self {
-//         Self::Other
-//     }
-// }

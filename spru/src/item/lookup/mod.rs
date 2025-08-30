@@ -1,53 +1,88 @@
 pub mod canonical;
 pub use canonical::Canonical;
 
-use std::ops;
+use std::{any, fmt, ops};
 
-use crate::{Item, item::IdT};
+use crate::{item::{self, IdT}, Item};
 
-pub trait Lookup {
-    type Error;
-}
-
-pub trait OfType<T>: Lookup {
-    fn lookup(&self, id: IdT<T>) -> Result<&Item<T>, Self::Error>;
-}
-
-pub trait OfTypeMut<T>: OfType<T> {    
+pub trait Lookup<T> {
     type Mut<'lr>: ops::DerefMut<Target=Item<T>> + 'lr
     where Self: 'lr;
-    
-    fn lookup_mut(&mut self, id: IdT<T>) -> Result<Self::Mut<'_>, Self::Error>;
 
-    fn create(&mut self, value: Item<T>) -> Result<(), Self::Error>;
-    fn destroy(&mut self, id: IdT<T>) -> Result<Item<T>, Self::Error>;
+    fn lookup(&self, id: IdT<T>) -> Result<&Item<T>, Error>;
+    fn lookup_mut(&mut self, id: IdT<T>) -> Result<Self::Mut<'_>, Error>;
+
+    fn exists(&self, id: IdT<T>) -> bool {
+        self.lookup(id).is_ok()
+    }
+
+    fn create(&mut self, value: Item<T>) -> Result<(), Error>;
+    fn destroy(&mut self, id: IdT<T>) -> Result<Item<T>, Error>;
 }
 
-// pub struct Mut<T, LookupMut>(LookupMut, PhantomData<T>);
+#[derive(Debug, Default)]
+pub struct Error {
+    inner: Option<Box<dyn std::error::Error>>,
+    id: Option<item::Id>,
+    type_name: Option<&'static str>,
+}
 
-// impl<T, LookupMut> Mut<T, LookupMut> {
-//     pub(crate) fn new(lookup_mut: LookupMut) -> Self {
-//         Self(lookup_mut, PhantomData::default())
-//     }
-// }
+impl Error {
+    pub fn new<E: std::error::Error + 'static>(error: E) -> Self {
+        Self {
+            inner: Some(Box::new(error)),
+            id: None,
+            type_name: None,
+        }
+    }
 
-// impl<T, LookupMut> ops::Deref for Mut<T, LookupMut>
-// where
-//     LookupMut: ops::Deref<Target=Item<T>>,
-// {
-//     type Target = T;
+    pub(crate) fn set_id<T>(&mut self, id: IdT<T>) {
+        self.id = Some(id.untyped());
+        self.type_name = Some(any::type_name::<T>());
+    }
 
-//     fn deref(&self) -> &Self::Target {
-//         self.0.get()
-//     }
-// }
+    pub fn try_cast<E: std::error::Error + 'static>(self) -> Result<E, Self> {
+        let Self {
+            mut inner,
+            id,
+            type_name,
+        } = self;
 
-// impl<T, LookupMut> ops::DerefMut for Mut<T, LookupMut>
-// where 
-//     LookupMut: ops::DerefMut<Target=Item<T>>,
-// {
-//     fn deref_mut(&mut self) -> &mut Self::Target {
-//         self.0.get_mut()
-//     }
-// }
+        if let Some(some_inner) = inner {
+            match some_inner.downcast() {
+                Ok(e) => return Ok(*e),
+                Err(e) => inner = Some(e),
+            }
+        }
 
+        Err(Self {
+            inner,
+            id,
+            type_name,
+        })
+    }
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Item ")?;
+        if let Some(id) = &self.id {
+            write!(f, "{id} ")?;
+        }
+        if let Some(type_name)  = &self.type_name {
+            write!(f, "({type_name}) ")?;
+        }
+        write!(f, "not found")?;
+
+        if let Some(inner) = &self.inner {
+            write!(f, ": {inner}")?;
+        }
+        Ok(())
+    }
+}
+
+impl<E: std::error::Error + 'static> From<E> for Error {
+    fn from(value: E) -> Self {
+        Self::new(value)
+    }
+}

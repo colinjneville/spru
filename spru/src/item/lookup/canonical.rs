@@ -1,6 +1,6 @@
 use std::{any, cmp, fmt, hash, marker::PhantomData};
 
-use crate::{item, snapshot, state, Item};
+use crate::{item::{self, lookup}, snapshot, state, Item};
 
 #[derive(Debug)]
 pub struct Canonical<State> {
@@ -19,22 +19,7 @@ impl<State> Canonical<State> {
     }
 }
 
-impl<State> item::Lookup for Canonical<State> {
-    type Error = Error;
-}
-
-impl<State, T> item::lookup::OfType<T> for Canonical<State> 
-where 
-    State: tagset::TagSetDiscriminant<T, Repr: Into<state::Index>>,
-    T: any::Any,
-{
-    fn lookup(&self, id: item::IdT<T>) -> Result<&Item<T>, Self::Error> {
-        self.items_map.get(id)
-            .ok_or(Error::Temp)
-    }
-}
-
-impl<State, T> item::lookup::OfTypeMut<T> for Canonical<State> 
+impl<State, T> item::lookup::Lookup<T> for Canonical<State> 
 where 
     State: tagset::TagSetDiscriminant<T, Repr: Into<state::Index>>,
     T: any::Any + serde::Serialize,
@@ -42,19 +27,24 @@ where
     type Mut<'lr> = &'lr mut Item<T>
     where Self: 'lr;
 
-    fn lookup_mut(&mut self, id: item::IdT<T>) -> Result<Self::Mut<'_>, Self::Error> {
-        self.items_map.get_mut(id)
-            .ok_or(Error::Temp)
+    fn lookup(&self, id: item::IdT<T>) -> Result<&Item<T>, lookup::Error> {
+        self.items_map.get(id)
+            .ok_or(lookup::Error::default())
     }
 
-    fn create(&mut self, value: Item<T>) -> Result<(), Self::Error> {
+    fn lookup_mut(&mut self, id: item::IdT<T>) -> Result<Self::Mut<'_>, lookup::Error> {
+        self.items_map.get_mut(id)
+            .ok_or(lookup::Error::default())
+    }
+
+    fn create(&mut self, value: Item<T>) -> Result<(), lookup::Error> {
         self.items_map.insert(value);
         Ok(())
     }
 
-    fn destroy(&mut self, id: item::IdT<T>) -> Result<Item<T>, Self::Error> {
+    fn destroy(&mut self, id: item::IdT<T>) -> Result<Item<T>, lookup::Error> {
         self.items_map.remove(id)
-            .ok_or(Error::Temp)
+            .ok_or(lookup::Error::default())
     }
 }
 
@@ -304,7 +294,7 @@ mod test {
     #[test]
     fn round_trip() {
         
-        use item::lookup::OfTypeMut as _;
+        use item::lookup::Lookup as _;
 
         extern crate self as spru;
 

@@ -5,7 +5,7 @@ use std::{collections::VecDeque, marker::PhantomData};
 pub use event::Event;
 pub mod signal;
 
-use crate::{client, game, interaction, item::{self, lookup::{canonical, Canonical}}, log, player, reaction, record::{self, Records}, snapshot, state, transaction::{self, Transactions}, visibility, Interactor, Save, Snapshot, Transaction};
+use crate::{client, game, interaction, item::{self, lookup::{self, canonical, Canonical}}, log, player, reaction, record::{self, Records}, snapshot, state, transaction::{self, Transactions}, visibility, Interactor, Save, Snapshot, Transaction};
 
 #[derive(Debug)]
 pub struct Output<Action, GameOutcome, Ret> {
@@ -52,13 +52,13 @@ impl<Action, GameOutcome> Messaging<Action, GameOutcome> {
 
 #[derive(Debug)]
 #[derive(thiserror::Error)]
-pub enum NewError<GameInitError, ActionError> {
+pub enum NewError {
+    #[error("{0}")]
+    Lookup(#[from] lookup::Error),
     #[error(transparent)]
-    Lookup(#[from] canonical::Error),
+    Init(game::init::Error),
     #[error(transparent)]
-    Init(GameInitError),
-    #[error(transparent)]
-    Log(#[from] log::Error<canonical::Error, ActionError>)
+    Log(#[from] log::Error)
 }
 
 impl<GameInitError, ActionError> From<game::init::Error<GameInitError>> for NewError<GameInitError, ActionError> {
@@ -74,20 +74,20 @@ impl<GameInitError, ActionError> From<game::init::Error<GameInitError>> for NewE
 #[derive(thiserror::Error)]
 pub enum LoadError {
     #[error(transparent)]
-    Snapshot(#[from] snapshot::ApplyError<canonical::Error>),
+    Snapshot(#[from] snapshot::ApplyError),
 }
 
 #[derive(Debug)]
 #[derive(thiserror::Error)]
-pub enum AddPlayerError<PlayerInitError, ActionError> {
+pub enum AddPlayerError {
     #[error(transparent)]
     Snapshot(#[from] snapshot::CreateError),
     #[error(transparent)]
     Lookup(#[from] canonical::Error), 
+    #[error("{0}")]
+    Init(player::init::Error),
     #[error(transparent)]
-    Init(PlayerInitError),
-    #[error(transparent)]
-    Log(#[from] log::Error<canonical::Error, ActionError>),
+    Log(#[from] log::Error),
 }
 
 impl<PlayerInitError, ActionError> From<player::manager::InitializeError<PlayerInitError>> for AddPlayerError<PlayerInitError, ActionError> {
@@ -99,24 +99,24 @@ impl<PlayerInitError, ActionError> From<player::manager::InitializeError<PlayerI
     }
 }
 
-#[derive(Debug)]
-#[derive(thiserror::Error)]
-pub enum ApplyInteractionError<ActionError, InteractionError> {
-    Lookup(#[from] canonical::Error), 
-    Log(#[from] log::Error<canonical::Error, ActionError>),
-    Interaction(InteractionError),
-    /// Interaction uses older versions than on the server
-    Stale,
-}
+// #[derive(Debug)]
+// #[derive(thiserror::Error)]
+// pub enum ApplyInteractionError {
+//     Lookup(#[from] lookup::Error), 
+//     Log(#[from] log::Error),
+//     Interaction(interaction::Error),
+//     /// Interaction uses older versions than on the server
+//     Stale,
+// }
 
-impl<ActionError, InteractionError> From<interaction::Error<canonical::Error, InteractionError>> for ApplyInteractionError<ActionError, InteractionError> {
-    fn from(value: interaction::Error<canonical::Error, InteractionError>) -> Self {
-        match value {
-            interaction::Error::Lookup(e) => Self::Lookup(e),
-            interaction::Error::Interaction(e) => Self::Interaction(e),
-        }
-    }
-}
+// impl From<interaction::Error> for ApplyInteractionError {
+//     fn from(value: interaction::Error) -> Self {
+//         match value {
+//             interaction::Error::Lookup(e) => Self::Lookup(e),
+//             interaction::Error::Interaction(e) => Self::Interaction(e),
+//         }
+//     }
+// }
 
 #[derive(Debug)]
 pub struct Server<State, Action, Root, PlayerInit, Interaction, Reaction> {
@@ -135,7 +135,7 @@ impl<State, Action, Root, PlayerInit, Interaction, Reaction> Server<State, Actio
         game_init: GameInit, 
         player_init: PlayerInit,
         reaction: Reaction,
-    ) -> Result<Self, NewError<GameInit::Error, Action::Error>> 
+    ) -> Result<Self, NewError> 
     where 
         Action: crate::Action<Canonical<State>, Undo = Action>,
         State: crate::State<Canonical<State>>,
@@ -224,7 +224,7 @@ impl<State, Action, Root, PlayerInit, Interaction, Reaction> Server<State, Actio
     pub fn apply_signal(&mut self, sender: player::Id,  arg: signal::Arg<Interaction>) 
         -> Result<
             Output<Action, Reaction::GameOutcome, signal::Ret>, 
-            signal::Error<Action::Error>,
+            signal::Error,
         >
     where
         Action: crate::Action<Canonical<State>, Undo = Action> + Clone,
@@ -327,7 +327,7 @@ impl<State, Action, Root, PlayerInit, Interaction, Reaction> Server<State, Actio
         player_context: Option<player::Id>,
         triggers: VecDeque<Reaction::Trigger>,
     )
-        -> Result<(transaction::Confirmed<Action>, Option<Reaction::GameOutcome>), log::Error<canonical::Error, Action::Error>>
+        -> log::Result<(transaction::Confirmed<Action>, Option<Reaction::GameOutcome>)>
     where
         Reaction: crate::Reaction<State = State, Action = Action, Root = Root, GameOutcome: Clone>, 
         Action: crate::Action<Canonical<State>, Undo = Action> + Clone,
@@ -355,7 +355,7 @@ impl<State, Action, Root, PlayerInit, Interaction, Reaction> Server<State, Actio
         player_context: Option<player::Id>,
         triggers: VecDeque<Reaction::Trigger>,
     )
-        -> Result<(transaction::Confirmed<Action>, Option<Reaction::GameOutcome>), log::Error<canonical::Error, Action::Error>>
+        -> log::Result<(transaction::Confirmed<Action>, Option<Reaction::GameOutcome>)>
     where
         Reaction: crate::Reaction<State = State, Action = Action, Root = Root>, 
         Action: crate::Action<Canonical<State>, Undo = Action>,

@@ -90,7 +90,7 @@ fn spru_startup(
     let lookup = item::BevyLookup::new(world);
 
     for player in world.resource::<Server>().players() {
-        use spru_bevy::item::lookup::OfType;
+        use spru_bevy::item::lookup::Lookup;
         let player_root = lookup.lookup(player.root()).unwrap();
         println!("{}", player_root.data.username);
     }

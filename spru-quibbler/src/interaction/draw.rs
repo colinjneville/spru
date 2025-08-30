@@ -24,7 +24,7 @@ impl spru::Interaction for Draw {
         &self, 
         interactor: &mut super::Interactor<Lookup>, 
     ) 
-        -> Result<(), spru::interaction::Error<Lookup::Error, Self::Error>> 
+        -> Result<(), spru::interaction::Error<lookup::Error, Self::Error>> 
     where 
         Lookup: item::Lookup, 
         crate::Actions: spru::Action<Lookup>,

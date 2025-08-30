@@ -93,3 +93,77 @@ impl TempError {
         Self::new()
     }
 }
+
+
+#[derive(Debug, Default)]
+pub struct CustomError<const ImplError: bool = false> {
+    inner: Option<Box<dyn std::error::Error>>,
+}
+
+impl<const ImplError: bool> CustomError<ImplError> {
+    pub fn new<E: std::error::Error + 'static>(e: E) -> Self {
+        Self {
+            inner: Some(Box::new(e)),
+        }
+    }
+
+    pub fn get(&self) -> Option<&dyn std::error::Error> {
+        self.inner.as_ref()
+            .map(|e| &**e)
+    }
+
+    pub fn try_cast<E: std::error::Error + 'static>(self) -> Result<E, Self> {
+        let Self {
+            mut inner,
+        } = self;
+
+        if let Some(some_inner) = inner {
+            match some_inner.downcast() {
+                Ok(e) => return Ok(*e),
+                Err(e) => inner = Some(e),
+            }
+        }
+
+        Err(Self {
+            inner,
+        })
+    }
+}
+
+impl CustomError<false> {
+    pub fn into_error(self) -> CustomError<true> {
+        let Self {
+            inner,
+        } = self;
+
+        CustomError {
+            inner,
+        }
+    }
+}
+
+impl<E: std::error::Error + 'static> From<E> for CustomError<false> {
+    fn from(value: E) -> Self {
+        Self::new(value)
+    }
+}
+
+impl<const ImplError: bool> std::fmt::Display for CustomError<ImplError> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if let Some(inner) = &self.inner {
+            std::fmt::Display::fmt(inner, f)?;
+        } else {
+            write!(f, "Generic Error")?;
+        }
+
+        Ok(())
+    }
+}
+
+impl std::error::Error for CustomError<true> {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        self.get()
+            .map(std::error::Error::source)
+            .flatten()
+    }
+}

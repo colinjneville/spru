@@ -3,15 +3,15 @@ use crate::{action::{self, adapter::{Data}, Adapter, Output}, item::{self}};
 pub struct Destroy;
 
 impl Adapter for Destroy {
-    type In<'l, T, Lookup: item::lookup::OfTypeMut<T>> = T
+    type In<'l, T, Lookup: item::lookup::OfType<T>> = T
     where 
         T: 'l,
         Lookup: 'l,
     ;
-    type Out<T, Lookup: item::lookup::OfTypeMut<T>> = ();
+    type Out<T, Lookup: item::lookup::OfType<T>> = ();
 
-    fn input<'l, T, Lookup: item::lookup::OfTypeMut<T>, Error>(data: &mut Data<'l, Lookup>) 
-        -> Result<Self::In<'l, T, Lookup>, action::catalog::Error<Lookup::Error, Error>>
+    fn input<'l, T, Lookup: item::lookup::OfType<T>, Error>(data: &mut Data<'l, Lookup>) 
+        -> Result<Self::In<'l, T, Lookup>, action::catalog::Error<lookup::Error, Error>>
     where 
         T: 'l,
         Lookup: 'l,
@@ -34,8 +34,8 @@ impl Adapter for Destroy {
         }
     }
 
-    fn output<T, Lookup: item::lookup::OfTypeMut<T>, Undo, Error>(_data: &mut Data<Lookup>, output: Output<Undo, Self::Out<T, Lookup>>) 
-        -> Result<Option<Undo>, action::catalog::Error<Lookup::Error, Error>>
+    fn output<T, Lookup: item::lookup::OfType<T>, Undo, Error>(_data: &mut Data<Lookup>, output: Output<Undo, Self::Out<T, Lookup>>) 
+        -> Result<Option<Undo>, action::catalog::Error<lookup::Error, Error>>
     {
         let Output { out: (), undo } = output;
 

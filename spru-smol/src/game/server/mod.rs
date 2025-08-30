@@ -20,7 +20,7 @@ impl<GameData, PlayerInit, PlayerData, Actions, Reaction, Payload> Server<GameDa
         reaction: Reaction,
         lobby_output: lobby::Output<LobbyInfo, MemberInfo>,
         router: Router<Payload>,
-    ) -> Result<Self, NewError<Lookup::Error, GameInit::Error, PlayerInit::Error, Actions::Error>> 
+    ) -> Result<Self, NewError<lookup::Error, GameInit::Error, PlayerInit::Error, Actions::Error>> 
     where 
         Lookup: spru::item::Lookup,
         GameInit: spru::Init<PlayerData, Lookup, In = LobbyInfo, Out = GameData, Action = Actions>,

@@ -17,7 +17,10 @@ impl spru::item::Lookup for Standalone {
     type Error = Error;
 }
 
-impl<T: 'static> spru::item::lookup::OfType<T> for Standalone {
+impl<T: 'static> spru::item::lookup::Lookup<T> for Standalone {
+    type Mut<'lr> = &'lr mut spru::Item<T>
+    where Self: 'lr;
+
     fn lookup(&self, id: IdT<T>) -> Result<&Item<T>, Self::Error> {
         let type_id = any::TypeId::of::<T>();
         let item = if let Some(inner_map) = self.map.get(&type_id) {
@@ -30,13 +33,6 @@ impl<T: 'static> spru::item::lookup::OfType<T> for Standalone {
         };
         item.ok_or(Error::IdNotFound(id.untyped().clone()))
     }
-}
-
-type InnerMap<T> = HashMap<item::IdT<T>, Item<T>>;
-
-impl<T: 'static> spru::item::lookup::OfTypeMut<T> for Standalone {
-    type Mut<'lr> = &'lr mut spru::Item<T>
-    where Self: 'lr;
 
     fn lookup_mut(&mut self, id: IdT<T>) -> Result<Self::Mut<'_>, Self::Error> {
         let type_id = any::TypeId::of::<T>();
@@ -51,7 +47,7 @@ impl<T: 'static> spru::item::lookup::OfTypeMut<T> for Standalone {
         item.ok_or(Error::IdNotFound(id.untyped().clone()))
     }
 
-    fn create(&mut self, value: spru::Item<T>) -> Result<(), Self::Error> {
+    fn put(&mut self, value: spru::Item<T>) -> Result<(), Self::Error> {
         let id = value.id();
         let type_id = any::TypeId::of::<T>();
         let inner_map = self.map.entry(type_id)
@@ -67,7 +63,7 @@ impl<T: 'static> spru::item::lookup::OfTypeMut<T> for Standalone {
         }
     }
 
-    fn destroy(&mut self, id: IdT<T>) -> Result<spru::Item<T>, Self::Error> {
+    fn take(&mut self, id: IdT<T>) -> Result<spru::Item<T>, Self::Error> {
         let type_id = any::TypeId::of::<T>();
         let item = if let Some(inner_map) = self.map.get_mut(&type_id) {
             let inner_map = inner_map.downcast_mut::<InnerMap<T>>()
@@ -82,6 +78,8 @@ impl<T: 'static> spru::item::lookup::OfTypeMut<T> for Standalone {
     }
 }
 
+type InnerMap<T> = HashMap<item::IdT<T>, Item<T>>;
+
 #[derive(Debug)]
 #[derive(thiserror::Error)]
 pub enum Error {
@@ -93,13 +91,13 @@ pub enum Error {
 
 #[cfg(test)]
 mod test {
-    use item::lookup::OfType;
+    use item::lookup::Lookup;
 
     use super::*;
 
     #[test]
     fn standalone() {
-        use spru::item::lookup::OfTypeMut as _;
+        use spru::item::lookup::Lookup as _;
         let mut lookup = Standalone::new();
 
         let id0 = spru::item::IdT::test_new(0);

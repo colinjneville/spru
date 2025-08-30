@@ -43,9 +43,8 @@ impl<Action, Interaction> Client<Action, Interaction> {
         }
     }
     pub(crate) fn apply_confirmed<Lookup>(&mut self, lookup: &mut Lookup, transaction: transaction::Confirmed<Action>)
-        -> Result<(), log::ConfirmError<Lookup::Error, Action::Error>>
+        -> Result<(), log::ConfirmError>
     where
-        Lookup: item::Lookup,
         Action: crate::Action<Lookup, Undo = Action>,
     {
         if self.next_confirmed_id == transaction.id {
@@ -59,9 +58,8 @@ impl<Action, Interaction> Client<Action, Interaction> {
     }
 
     fn apply_records<Lookup>(&mut self, lookup: &mut Lookup, records: &Records<Action>)
-        -> Result<(), log::Error<Lookup::Error, Action::Error>>
+        -> log::Result<()>
     where
-        Lookup: item::Lookup,
         Action: crate::Action<Lookup, Undo = Action>,
     {
         match records.apply_or_revert(lookup) {
@@ -87,18 +85,16 @@ impl<Action, Interaction> Client<Action, Interaction> {
 
     pub fn stage_pending<Lookup>(
         &mut self, 
-        lookup: &mut Lookup, 
         interaction: interaction::Staged<Interaction>, 
-        transaction: Transaction<Action>
+        undo_transaction: Transaction<Action>,
     )
-        -> Result<transaction::Pending, log::Error<Lookup::Error, Action::Error>>
+        -> log::Result<transaction::Pending>
     where
-        Lookup: item::Lookup,
         Action: crate::Action<Lookup, Undo = Action>,
     {
         let id = self.next_pending_id;
         self.next_pending_id = self.next_pending_id.next();
-        let undo_transaction = transaction.apply_or_revert(lookup)?;
+        // let undo_transaction = transaction.apply_or_revert(lookup)?;
         let pending = PendingTransaction {
             id,
             undo_transaction,
@@ -137,7 +133,6 @@ impl<Action, Interaction> Client<Action, Interaction> {
     )
         -> Result<(), crate::TempError>
     where
-        Lookup: item::Lookup,
         Action: crate::Action<Lookup, Undo = Action>,
     {
         match self.pending_undo_transactions.get(0) {
@@ -165,9 +160,8 @@ impl<Action, Interaction> Client<Action, Interaction> {
     }
 
     pub fn revert_pending<Lookup>(&mut self, lookup: &mut Lookup, until: Option<transaction::Pending>) 
-        -> Result<(), record::Error<Lookup::Error, Action::Error>> 
+        -> Result<(), record::Error> 
     where 
-        Lookup: item::Lookup,
         Action: crate::Action<Lookup, Undo = Action>,
     {
         // pop_back_if: https://github.com/rust-lang/rust/issues/135889

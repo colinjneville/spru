@@ -1,6 +1,6 @@
 use std::{collections::VecDeque, fmt};
 
-use crate::{action, item, log, record::{self, Records}, transaction};
+use crate::{log, record::{self, Records}, transaction};
 
 #[derive(Debug, Clone)]
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -93,10 +93,9 @@ impl<Action> Transaction<Action> {
         }
     }
 
-    pub(crate) fn apply<'l, Lookup>(&self, lookup: &mut Lookup) 
-        -> Result<Transaction<Action>, record::Error<Lookup::Error, Action::Error>> 
+    pub(crate) fn apply<Lookup>(&self, lookup: &mut Lookup) 
+        -> record::Result<Transaction<Action>> 
     where 
-        Lookup: item::Lookup + 'l,
         Action: crate::Action<Lookup, Undo = Action>, 
     {
         let undo_records = self.records.apply(lookup)?;
@@ -105,9 +104,8 @@ impl<Action> Transaction<Action> {
     }
 
     pub(crate) fn apply_or_revert<Lookup>(&self, lookup: &mut Lookup) 
-        -> Result<Transaction<Action>, log::Error<Lookup::Error, Action::Error>> 
+        -> log::Result<Transaction<Action>> 
     where 
-        Lookup: item::Lookup,
         Action: crate::Action<Lookup, Undo = Action>, 
     {
         let undo_records = self.records.apply_or_revert(lookup)?;

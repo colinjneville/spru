@@ -158,7 +158,7 @@ impl spru::Interaction for Interaction {
     type Error = Error;
 
     fn apply<Lookup>(&self, interactor: &mut spru::interaction::Interactor<Lookup, Actions, IdT<GameRoot>, Trigger>) 
-        -> Result<(), spru::interaction::Error<Lookup::Error, Self::Error>>
+        -> Result<(), spru::interaction::Error<lookup::Error, Self::Error>>
     where 
         Lookup: spru::item::Lookup,
         Actions: spru::Action<Lookup>,

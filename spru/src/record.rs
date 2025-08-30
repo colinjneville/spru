@@ -1,31 +1,52 @@
-use std::collections::VecDeque;
+use std::{collections::VecDeque, fmt};
 
-use crate::{action, item::{self}, log};
+use crate::{action, item::{self, lookup}, log};
 
 
 #[derive(Debug)]
-#[derive(thiserror::Error)]
-pub enum Error<LookupError, ActionError> {
-    #[error(transparent)]
-    Lookup(LookupError),
-    #[error(transparent)]
+pub enum Error {
+    Lookup(lookup::Error),
     Item(item::id::Error),
-    #[error(transparent)]
-    Version(item::version::MismatchError),
-    #[error(transparent)]
-    Action(ActionError),
+    Version(item::version::Error),
+    Action(action::Error),
 }
 
-impl<LookupError, ActionError> From<crate::action::Error<LookupError, ActionError>> for Error<LookupError, ActionError> {
-    fn from(value: crate::action::Error<LookupError, ActionError>) -> Self {
-        match value {
-            action::Error::Lookup(e) => Self::Lookup(e),
-            action::Error::Item(e) => Self::Item(e),
-            action::Error::Version(e) => Self::Version(e),
-            action::Error::Action(e) => Self::Action(e),
+impl From<lookup::Error> for Error {
+    fn from(value: lookup::Error) -> Self {
+        Self::Lookup(value)
+    }
+}
+
+impl From<item::id::Error> for Error {
+    fn from(value: item::id::Error) -> Self {
+        Self::Item(value)
+    }
+}
+
+impl From<item::version::Error> for Error {
+    fn from(value: item::version::Error) -> Self {
+        Self::Version(value)
+    }
+}
+
+impl From<action::Error> for Error {
+    fn from(value: action::Error) -> Self {
+        Self::Action(value)
+    }
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Error::Lookup(e) => fmt::Display::fmt(e, f),
+            Error::Item(e) => fmt::Display::fmt(e, f),
+            Error::Version(e) => fmt::Display::fmt(e, f),
+            Error::Action(e) => fmt::Display::fmt(e, f),
         }
     }
 }
+
+pub type Result<T> = std::result::Result<T, self::Error>;
 
 #[derive(Debug, Clone)]
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -82,7 +103,7 @@ impl<'r, Action> Record<'r, Action> {
         }
     }
 
-    fn apply_internal<Lookup: item::Lookup>(&self, lookup: &mut Lookup) -> Result<Option<Action>, Error<Lookup::Error, Action::Error>> 
+    fn apply_internal<Lookup>(&self, lookup: &mut Lookup) -> self::Result<Option<Action>> 
     where 
         Action: crate::Action<Lookup, Undo = Action>,  
     {
@@ -149,8 +170,8 @@ impl<Action> Default for Records<Action> {
 }
 
 impl<Action> Records<Action> {
-    pub fn apply<'l, Lookup: item::Lookup>(&self, lookup: &'l mut Lookup) 
-        -> Result<Self, Error<Lookup::Error, Action::Error>> 
+    pub fn apply<'l, Lookup>(&self, lookup: &'l mut Lookup) 
+        -> self::Result<Self> 
     where 
         Action: crate::Action<Lookup, Undo = Action>, 
     {
@@ -158,8 +179,8 @@ impl<Action> Records<Action> {
             .map_err(|(_, e)| e)
     }
 
-    pub fn apply_or_revert<'l, Lookup: item::Lookup>(&self, lookup: &'l mut Lookup) 
-        -> Result<Self, log::Error<Lookup::Error, Action::Error>> 
+    pub fn apply_or_revert<'l, Lookup>(&self, lookup: &'l mut Lookup) 
+        -> log::Result<Self> 
     where 
         Action: crate::Action<Lookup, Undo = Action>, 
     {
@@ -175,8 +196,8 @@ impl<Action> Records<Action> {
         }
     }
 
-    fn apply_internal<'l, Lookup: item::Lookup>(&self, lookup: &'l mut Lookup) 
-        -> Result<Self, (Self, Error<Lookup::Error, Action::Error>)> 
+    fn apply_internal<'l, Lookup>(&self, lookup: &'l mut Lookup) 
+        -> std::result::Result<Self, (Self, self::Error)> 
     where 
         Action: crate::Action<Lookup, Undo = Action> 
     {

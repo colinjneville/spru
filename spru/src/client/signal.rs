@@ -1,4 +1,4 @@
-use crate::{record::Records, transaction};
+use crate::{action, item::lookup, record::Records, transaction};
 
 #[derive(Debug)]
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -20,21 +20,35 @@ impl Ret {
 
 #[derive(Debug)]
 #[derive(thiserror::Error)]
-pub enum Error<LookupError, ActionsError> {
-    #[error(transparent)]
-    Lookup(LookupError),
-    #[error(transparent)]
-    Action(ActionsError),
+pub enum Error {
+    #[error("{0}")]
+    Lookup(lookup::Error),
+    #[error("{0}")]
+    Action(action::Error),
     // TODO
     #[error("Other synchronization error: {0}")]
     Other(crate::TempError),
 }
 
-impl<LookupError, ActionsError> From<crate::TempError> for Error<LookupError, ActionsError> {
+impl From<crate::TempError> for Error {
     fn from(value: crate::TempError) -> Self {
         Self::Other(value)
     }
 }
+
+impl From<lookup::Error> for Error {
+    fn from(value: lookup::Error) -> Self {
+        Self::Lookup(value)
+    }
+}
+
+impl From<action::Error> for Error {
+    fn from(value: action::Error) -> Self {
+        Self::Action(value)
+    }
+}
+
+pub type Result<T> = std::result::Result<T, self::Error>;
 
 #[derive(Debug)]
 #[derive(derive_more::From)]

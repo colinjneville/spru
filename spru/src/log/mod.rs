@@ -5,27 +5,38 @@ pub(crate) use client::Client;
 pub(crate) mod server;
 pub(crate) use server::Server;
 
-use crate::{record, transaction};
+use crate::{record, transaction, CustomError};
 
 #[derive(Debug)]
 #[derive(thiserror::Error)]
-pub enum Error<LookupError, ActionError> {
+pub enum Error {
+    #[error("{0}")]
+    Record(record::Error),
     #[error(transparent)]
-    Record(#[from] record::Error<LookupError, ActionError>),
-    #[error(transparent)]
-    Revert(#[from] RevertError<LookupError, ActionError>),
-}
-#[derive(Debug)]
-#[derive(thiserror::Error)]
-pub struct RevertError<LookupError, ActionError> {
-    pub initial: Option<record::Error<LookupError, ActionError>>, 
-    pub fatal: record::Error<LookupError, ActionError>,
+    Revert(#[from] RevertError),
 }
 
-impl<LookupError, ActionError> fmt::Display for RevertError<LookupError, ActionError>
-where 
-    record::Error<LookupError, ActionError>: fmt::Display
-{
+impl From<record::Error> for Error {
+    fn from(value: record::Error) -> Self {
+        Self::Record(value)
+    }
+}
+
+pub type Result<T> = std::result::Result<T, self::Error>;
+
+#[derive(Debug)]
+#[derive(thiserror::Error)]
+#[non_exhaustive]
+pub struct RevertError {
+    pub initial: Option<CustomError>, 
+    pub fatal: record::Error,
+}
+
+impl RevertError {
+    pub(crate) fn new<E: (initial: )
+}
+
+impl fmt::Display for RevertError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let Self {
             initial,
@@ -42,15 +53,17 @@ where
 
 #[derive(Debug)]
 #[derive(thiserror::Error)]
-pub(crate) enum UndoError<LookupError, ActionError> {
-    Log(#[from] Error<LookupError, ActionError>),
+#[error("Transaction undo failed: {0}")]
+pub(crate) enum UndoError {
+    Log(#[from] Error),
     Invalid(#[from] transaction::id::InvalidError),
 }
 
 #[derive(Debug)]
 #[derive(thiserror::Error)]
-pub enum ConfirmError<LookupError, ActionError> {
-    Log(#[from] Error<LookupError, ActionError>),
+#[error("Could not confirm transaction: {0}")]
+pub enum ConfirmError {
+    Log(#[from] Error),
     Mismatch(#[from] transaction::id::MismatchError),
 }
 

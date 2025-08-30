@@ -32,9 +32,8 @@ impl<Action> Server<Action> {
 
 impl<Action> Server<Action> {
     fn apply_or_revert<Lookup>(&mut self, lookup: &mut Lookup, transaction: Transaction<Action>) 
-        -> Result<transaction::Confirmed<Action>, log::Error<Lookup::Error, Action::Error>>
+        -> log::Result<transaction::Confirmed<Action>>
     where 
-        Lookup: item::Lookup,
         Action: crate::Action<Lookup, Undo = Action>,
     {
         self.release_undo();
@@ -60,9 +59,8 @@ impl<Action> Server<Action> {
     }
 
     pub fn undo<Lookup>(&mut self, lookup: &mut Lookup, transaction_id: transaction::Id) 
-        -> Result<transaction::Confirmed<Action>, log::UndoError<Lookup::Error, Action::Error>>
+        -> Result<transaction::Confirmed<Action>, log::UndoError>
     where 
-        Lookup: item::Lookup,
         Action: crate::Action<Lookup, Undo = Action> + Clone,
     {
         let transaction = self.undo_transactions.get(transaction_id)

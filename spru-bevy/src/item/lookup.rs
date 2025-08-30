@@ -24,7 +24,7 @@ impl<'l> spru::item::Lookup for BevyLookup<'l> {
     type Error = BevyError;
 }
 
-impl<'l, T: Send + Sync + 'static> spru::item::lookup::OfType<T> for BevyLookup<'l> {
+impl<'l, T: Send + Sync + 'static> spru::item::lookup::Lookup<T> for BevyLookup<'l> {
     fn lookup(&self, id: item::IdT<T>) -> Result<&spru::Item<T>, Self::Error> {
         let id = id.untyped();
         let entity = self.world.resource::<EntityMap>().get(id)?;
@@ -55,18 +55,16 @@ impl<'l> spru::item::Lookup for BevyLookupMut<'l> {
     type Error = BevyError;
 }
 
-impl<'l, T: Send + Sync + 'static> spru::item::lookup::OfType<T> for BevyLookupMut<'l> {
+impl<'l, T: Send + Sync + 'static> spru::item::lookup::Lookup<T> for BevyLookupMut<'l> {
+    type Mut<'lr> = bevy::prelude::Mut<'lr, Item<T>>
+    where Self: 'lr;  
+
     fn lookup(&self, id: item::IdT<T>) -> Result<&Item<T>, Self::Error> {
         println!("Looking up {:?}", id);
         let id = id.untyped();
         let entity = self.world.resource::<EntityMap>().get(id)?;
         Ok(self.world.get::<item::Component<T>>(entity).ok_or(BevyError::ComponentNotFound(id, entity, any::TypeId::of::<T>()))?.item())
     }
-}
-
-impl<'l, T: Send + Sync + 'static> spru::item::lookup::OfTypeMut<T> for BevyLookupMut<'l> {
-    type Mut<'lr> = bevy::prelude::Mut<'lr, Item<T>>
-    where Self: 'lr;    
 
     fn lookup_mut(&mut self, id: item::IdT<T>) -> Result<Self::Mut<'_>, Self::Error> {
         println!("Looking up mut {:?}", id);
@@ -75,14 +73,14 @@ impl<'l, T: Send + Sync + 'static> spru::item::lookup::OfTypeMut<T> for BevyLook
         Ok(self.world.get_mut::<item::Component<T>>(entity).ok_or(BevyError::ComponentNotFound(id, entity, any::TypeId::of::<T>()))?.map_unchanged(|sc| sc.item_mut()))
     }
 
-    fn create(&mut self, value: Item<T>) -> Result<(), Self::Error> {
+    fn put(&mut self, value: Item<T>) -> Result<(), Self::Error> {
         self.world.resource_scope::<EntityMap, _>(|world, mut entity_map| {
             println!("Creating {:?} {}", value.id(), value.version());
             entity_map.insert_as(value.id().untyped(), || Ok(world.spawn(item::Component::new(value)).id())).map(|_| ())
         })
     }
 
-    fn destroy(&mut self, id: item::IdT<T>) -> Result<Item<T>, Self::Error> {
+    fn take(&mut self, id: item::IdT<T>) -> Result<Item<T>, Self::Error> {
         let id = id.untyped();
         self.world.resource_scope::<EntityMap, _>(|world, mut entity_map| {
             entity_map.remove_as(id, |entity| {
@@ -94,6 +92,16 @@ impl<'l, T: Send + Sync + 'static> spru::item::lookup::OfTypeMut<T> for BevyLook
                 }
             })
         })
+    }
+
+    fn create(&mut self, value: Item<T>) -> Result<(), Self::Error> {
+        // TODO change tracking
+        self.put(value)
+    }
+
+    fn destroy(&mut self, id: item::IdT<T>) -> Result<Item<T>, Self::Error> {
+        // TODO change tracking
+        self.take(id)
     }
 }
 

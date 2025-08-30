@@ -30,7 +30,7 @@ fn derive_action(item: TokenStream, trait_path: syn::Path) -> syn::Result<TokenS
 
     let mut lookup_generics = generics.clone();
     lookup_generics.params.push(parse_quote!(#lookup_ident));
-    lookup_generics.make_where_clause().predicates.push(parse_quote!(#lookup_ident: ::spru::item::lookup::OfTypeMut<<Self as #trait_path>::Data>));
+    lookup_generics.make_where_clause().predicates.push(parse_quote!(#lookup_ident: ::spru::item::lookup::OfType<<Self as #trait_path>::Data>));
 
     let (impl_generics, type_generics, where_clause) = generics.split_for_impl();
     let (lookup_impl_generics, _lookup_type_generics, lookup_where_clause) = lookup_generics.split_for_impl();

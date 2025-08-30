@@ -41,7 +41,7 @@
 //             #const_ident => spru::__private::do_apply_item::<_, #ty>(#param_item, #param_lookup),
 //         };
 
-//         where_clause_extra.predicates.push(parse_quote!(#ty_param_lookup: spru::item::lookup::OfTypeMut<#ty>));
+//         where_clause_extra.predicates.push(parse_quote!(#ty_param_lookup: spru::item::lookup::OfType<#ty>));
 //     }
 
 //     let ident = &item_enum.ident;
@@ -54,7 +54,7 @@
 //         impl #impl_generics_extra spru::item::Catalog<#ty_param_lookup> for #ident #type_generics
 //         #where_clause_extra {
 //             #[doc(hidden)]
-//             fn apply_item(_index: spru::item::catalog::Index, data: &spru::Item<::std::boxed::Box<[u8]>>, lookup: &mut Lookup) -> Result<(), snapshot::ApplyError<Lookup::Error>> {
+//             fn apply_item(_index: spru::item::catalog::Index, data: &spru::Item<::std::boxed::Box<[u8]>>, lookup: &mut Lookup) -> Result<(), snapshot::ApplyError<lookup::Error>> {
 //                 #private_mod::do_apply_item::<_, Self>::(data, lookup)
 //             }
 //             fn apply_item(#param_index: spru::item::catalog::Index, #param_item: &spru::Item<Box<[u8]>>, #param_lookup: &mut #ty_param_lookup) -> ::std::result::Result<(), spru::snapshot::ApplyError<#ty_param_lookup::Error>> {

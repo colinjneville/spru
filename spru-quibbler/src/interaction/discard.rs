@@ -19,7 +19,7 @@ impl spru::Interaction for Discard {
         &self,
         interactor: &mut spru::interaction::Interactor<Lookup, Self::Action, Self::Root, Self::Trigger>
     )
-        -> Result<(), spru::interaction::Error<Lookup::Error, Self::Error>> 
+        -> Result<(), spru::interaction::Error<lookup::Error, Self::Error>> 
     where 
         Lookup: item::Lookup,
         Self::Action: spru::Action<Lookup>,

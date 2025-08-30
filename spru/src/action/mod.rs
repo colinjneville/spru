@@ -1,4 +1,6 @@
-use crate::{item, Item};
+use std::fmt;
+
+use crate::{item::{self, lookup}, record, CustomError, Item};
 
 pub use spru_macro::{Create, Update, Destroy};
 use tagset::tagset_meta;
@@ -8,8 +10,6 @@ use tagset::tagset_meta;
 pub trait Base {
     #[meta(default(Self))]
     type Undo;
-    #[meta(default(std::convert::Infallible))]
-    type Error;
 }
 
 #[telety::telety(crate::action, alias_traits = "always")]
@@ -22,42 +22,38 @@ pub trait Base {
             Error: Into<Self::Error>
         >,
 ))]
-pub trait Action<Lookup: item::Lookup>: Base {
+pub trait Action<Lookup>: Base {
     #[meta(default {
         match_by_value!(self, v => spru::Action::apply_map(v, context))
     })]
-    fn apply(&self, context: Context<'_, Lookup>) -> Result<Option<Self::Undo>, Error<Lookup::Error, Self::Error>>
+    fn apply(&self, context: Context<'_, Lookup>) -> record::Result<Option<Self::Undo>>
     where 
         Self: Sized;
 
-    fn apply_map<U, E>(&self, context: Context<'_, Lookup>) -> Result<Option<U>, Error<Lookup::Error, E>>
+    fn apply_map<U>(&self, context: Context<'_, Lookup>) -> record::Result<Option<U>>
     where 
         Self: Sized,
         Self::Undo: Into<U>,
-        Self::Error: Into<E>
     {
         self.apply(context)
             .map(|u| u.map(Into::into))
-            .map_err(Error::map_action)
     }
 }
 
 pub trait Create {
     type T;
     type Undo;
-    type Error;
 
-    fn create(&self) -> Result<(Self::T, Self::Undo), Self::Error>;
+    fn create(&self) -> self::Result<(Self::T, Self::Undo)>;
 }
 
 pub trait Update {
     type T;
     type Undo;
-    type Error;
     type Return<'t>;
 
     fn update<'t>(&self, value: &'t mut Self::T) 
-        -> Result<impl Into<UpdateReturn<Self::Undo, Self::Return<'t>>>, Self::Error>;
+        -> self::Result<impl Into<UpdateReturn<Self::Undo, Self::Return<'t>>>>;
 }
 
 pub struct UpdateReturn<Undo, Return> {
@@ -102,9 +98,8 @@ impl<Undo, Return> From<Return> for UpdateReturn<Undo, Return> {
 pub trait Destroy {
     type T;
     type Undo;
-    type Error;
 
-    fn destroy(&self, value: Self::T) -> Result<Self::Undo, Self::Error>;
+    fn destroy(&self, value: Self::T) -> self::Result<Self::Undo>;
 }
 
 #[derive(Debug)]
@@ -124,12 +119,11 @@ impl<'l, Lookup> Context<'l, Lookup> {
     }
 
     #[doc(hidden)]
-    pub fn create<C, O, E>(self, c: &C) -> Result<Option<O>, Error<Lookup::Error, E>> 
+    pub fn create<C, O>(self, c: &C) -> record::Result<Option<O>> 
     where 
-        Lookup: item::lookup::OfTypeMut<C::T>,
+        Lookup: item::lookup::Lookup<C::T>,
         C: Create,
         C::Undo: Into<O>,
-        C::Error: Into<E>,
     {
         let Self { 
             lookup, 
@@ -138,25 +132,23 @@ impl<'l, Lookup> Context<'l, Lookup> {
         } = self;
 
         if let Ok(stateful) = lookup.lookup(item::IdT::new(id)) {
-            Err(Error::Item(item::id::Error::AlreadyExists { id: id.clone(), version: stateful.version() }.into()))
+            Err(record::Error::Item(item::id::Error::AlreadyExists { id: id.clone(), version: stateful.version() }.into()))
         } else {
-            let (value, undo) = c.create()
-                .map_err(|e| Error::Action(e.into()))?;
+            let (value, undo) = c.create()?;
 
             let stateful = Item::new(item::IdT::new(id.clone()), version.after, value);
-            lookup.create(stateful).map_err(Error::Lookup)?;
+            lookup.create(stateful)?;
 
             Ok(Some(undo.into()))
         }
     }
 
     #[doc(hidden)]
-    pub fn update<U, O, E>(self, u: &U) -> Result<Option<O>, Error<Lookup::Error, E>> 
+    pub fn update<U, O>(self, u: &U) -> record::Result<Option<O>> 
     where 
-        Lookup: item::lookup::OfTypeMut<U::T>,
+        Lookup: item::lookup::Lookup<U::T>,
         U: Update,
         U::Undo: Into<O>,
-        U::Error: Into<E>,
     {
         let Self {
             lookup, 
@@ -164,26 +156,24 @@ impl<'l, Lookup> Context<'l, Lookup> {
             version,
         } = self;
 
-        let mut value = lookup.lookup_mut(item::IdT::new(id))
-            .map_err(Error::Lookup)?;
+        let mut value = lookup.lookup_mut(item::IdT::new(id))?;
         if version.before == (*value).version() {
             (*value).set_version(version.after);
             u.update(value.get_mut())
                 .map(Into::into)
                 .map(UpdateReturn::map_undo)
-                .map_err(|e| Error::Action(e.into()))
+                .map_err(Into::into)
         } else {
-            Err(Error::Version(item::version::MismatchError { expected: version.before, actual: (*value).version() }))
+            Err(record::Error::Version(item::version::Error { expected: version.before, actual: (*value).version() }))
         }
     }
 
     #[doc(hidden)]
-    pub fn destroy<D, O, E>(self, d: &D) -> Result<Option<O>, Error<Lookup::Error, E>> 
+    pub fn destroy<D, O>(self, d: &D) -> record::Result<Option<O>> 
     where 
-        Lookup: item::lookup::OfTypeMut<D::T>,
+        Lookup: item::lookup::Lookup<D::T>,
         D: Destroy,
         D::Undo: Into<O>,
-        D::Error: Into<E>,
     {
         let Self {
             lookup, 
@@ -191,40 +181,111 @@ impl<'l, Lookup> Context<'l, Lookup> {
             version,
         } = self;
 
-        let item = lookup.lookup(item::IdT::new(id))
-            .map_err(Error::Lookup)?;
+        let item = lookup.lookup(item::IdT::new(id))?;
         if version.before == item.version() {
-            let item = lookup.destroy(item::IdT::new(id))
-                .map_err(Error::Lookup)?;
-            let undo = d.destroy(item.into_value())
-                .map_err(|e| Error::Action(e.into()))?;
+            let item = lookup.destroy(item::IdT::new(id))?;
+            let undo = d.destroy(item.into_value())?;
             Ok(Some(undo.into()))
         } else {
-            Err(Error::Version(item::version::MismatchError { expected: version.before, actual: item.version() }))
+            Err(record::Error::Version(item::version::Error { expected: version.before, actual: item.version() }))
         }
     }
 }
 
 #[derive(Debug)]
-#[derive(thiserror::Error)]
-pub enum Error<LookupError, ActionError> {
-    Lookup(LookupError),
-    Item(item::id::Error),
-    Version(item::version::MismatchError),
-    Action(#[from] ActionError)
+pub struct Error<const ImplError: bool = false> {
+    kind: ErrorKind,
+    context: Option<ErrorContext>,
 }
 
-impl<LookupError, ActionError> Error<LookupError, ActionError> {
-    #[doc(hidden)]
-    pub fn map_action<ActionError2>(self) -> Error<LookupError, ActionError2> 
-    where
-        ActionError: Into<ActionError2>,
-    {
-        match self {
-            Error::Lookup(err) => Error::Lookup(err),
-            Error::Item(err) => Error::Item(err),
-            Error::Version(err) => Error::Version(err),
-            Error::Action(err) => Error::Action(err.into()),
+impl<const ImplError: bool = false> Error<ImplError> {
+    pub(crate) fn new(kind: ErrorKind) -> Self {
+        Self {
+            kind,
+            context: None,
+        }
+    }
+
+    pub(crate) fn with_context<Action>(mut self, action: &Action) -> Self {
+        self.context = Some(ErrorContext::new(action));
+        self
+    }
+}
+
+impl Error<false> {
+    pub fn into_error(self) -> Error<true> {
+        
+    }
+}
+
+impl From<lookup::Error> for Error {
+    fn from(value: lookup::Error) -> Self {
+        Self::new(ErrorKind::Lookup(value))
+    }
+}
+
+impl<E: std::error::Error + 'static> From<E> for Error {
+    fn from(value: E) -> Self {
+        Self::new(ErrorKind::Action(CustomError::new(value)))
+    }
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let Self {
+            kind,
+            context,
+        } = self;
+
+        if let Some(context) = context{
+            write!(f, "{context}")?;
+        } else {
+            write!(f, "Action")?;
+        }
+        write!(f, " failed: {kind}")?;
+
+        Ok(())
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct ErrorContext {
+    action_name: &'static str,
+}
+
+impl ErrorContext {
+    pub(crate) fn new<Action>(_action: &Action) -> Self {
+        Self {
+            action_name: std::any::type_name::<Action>(),
         }
     }
 }
+
+impl fmt::Display for ErrorContext {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let Self {
+            action_name,
+        } = self;
+
+        write!(f, "Action '{action_name}'")?;
+
+        Ok(())
+    }
+}
+
+#[derive(Debug)]
+pub enum ErrorKind {
+    Lookup(lookup::Error),
+    Action(CustomError),
+}
+
+impl fmt::Display for ErrorKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ErrorKind::Lookup(e) => fmt::Display::fmt(e, f),
+            ErrorKind::Action(e) => fmt::Display::fmt(e, f),
+        }
+    }
+}
+
+pub type Result<T> = std::result::Result<T, self::Error>;

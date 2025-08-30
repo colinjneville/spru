@@ -40,7 +40,7 @@ impl fmt::Display for Version {
 #[derive(Debug)]
 #[derive(thiserror::Error)]
 #[error("Expected {expected}, found {actual}")]
-pub struct MismatchError {
+pub struct Error {
     pub expected: Version,
     pub actual: Version,
 }

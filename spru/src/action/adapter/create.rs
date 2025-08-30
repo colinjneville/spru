@@ -3,14 +3,14 @@ use crate::{action::{self, adapter::Data, Adapter, Output}, item::{self, lookup}
 pub struct Create;
 
 impl Adapter for Create {
-    type In<'l, T, Lookup: item::lookup::OfTypeMut<T>> = ()
+    type In<'l, T, Lookup: item::lookup::OfType<T>> = ()
     where 
         T: 'l,
         Lookup: 'l,
     ;
-    type Out<T, Lookup: item::lookup::OfTypeMut<T>> = T;
+    type Out<T, Lookup: item::lookup::OfType<T>> = T;
     
-    fn input<'l, T, Lookup: item::lookup::OfTypeMut<T>, Error>(_data: &mut Data<'l, Lookup>) -> Result<(), action::catalog::Error<Lookup::Error, Error>>
+    fn input<'l, T, Lookup: item::lookup::OfType<T>, Error>(_data: &mut Data<'l, Lookup>) -> Result<(), action::catalog::Error<lookup::Error, Error>>
     where 
         T: 'l,
         Lookup: 'l,
@@ -18,8 +18,8 @@ impl Adapter for Create {
         Ok(())
     }
 
-    fn output<T, Lookup: item::lookup::OfTypeMut<T>, Undo, Error>(data: &mut Data<Lookup>, output: Output<Undo, T>) 
-        -> Result<Option<Undo>, action::catalog::Error<Lookup::Error, Error>>
+    fn output<T, Lookup: item::lookup::OfType<T>, Undo, Error>(data: &mut Data<Lookup>, output: Output<Undo, T>) 
+        -> Result<Option<Undo>, action::catalog::Error<lookup::Error, Error>>
     {
         let Data { 
             lookup, 
@@ -55,8 +55,8 @@ impl<'l, Lookup: item::Lookup> Creator<'l, Lookup> {
         }
     }
 
-    pub fn create<T>(self, value: T) -> Result<(), Error<Lookup::Error>>
-    where Lookup: lookup::OfTypeMut<T> {
+    pub fn create<T>(self, value: T) -> Result<(), Error<lookup::Error>>
+    where Lookup: lookup::OfType<T> {
         if let Ok(stateful) = self.lookup.lookup(item::IdT::new(self.id)) {
             Err(Error::Item(item::id::Error::AlreadyExists { id: self.id, version: stateful.version() }.into()))
         } else {

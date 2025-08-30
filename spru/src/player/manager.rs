@@ -55,18 +55,42 @@ impl<PlayerInit> Manager<PlayerInit> {
 
     pub(crate) fn add<State, Action, Root> (
         &mut self, 
-        interactor: &mut Interactor<item::lookup::Canonical<State>, Action, player::init::Context<Root>>, 
+        interactor: &mut player::init::Interactor<State, Action, Root>, 
         reservation_range: item::id::Range,
         input: PlayerInit::In,
-    ) -> Result<player::Id, player::init::Error<PlayerInit::Error>>
+    ) -> player::init::Result<player::Id>
     where 
-        Action: crate::Action<item::lookup::Canonical<State>>,
+        Action: crate::Action<item::lookup::Canonical<State>, Undo = Action>,
         State: crate::State<item::lookup::Canonical<State>>,
         PlayerInit: player::Init<State = State, Action = Action, Root = Root>, 
     {
         let id = player::Id(self.player_details.len());
         interactor.context_mut().player = id;
-        let player_root = self.init.initialize(interactor, input)?;
+        let result = 'result: {
+            if let Err(err) = self.init.initialize(interactor, input) {
+                let err = match err {
+                    player::init::Error::Lookup(error) => action::Error::Lookup(error),
+                    player::init::Error::Init(_) => None,
+                };
+                break 'result Err(err);
+            }
+
+            if let Err(err) = interactor.flush() {
+                break 'result Err(Some(err));
+            }
+
+            Ok(())
+        };
+
+        match result {
+            Ok(()) => {
+                let complete = interactor.complete();
+
+            }
+            Err(err) => {
+                interactor.flush()
+            }
+        }
         
         self.player_details.push(Details {
             reservation_range,
