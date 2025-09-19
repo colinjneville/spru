@@ -58,7 +58,7 @@ impl<'i> quote::ToTokens for ActionImpl<'i> {
         
         let mut lookup_generics = generics.clone();
         lookup_generics.params.push(parse_quote!(
-            #lookup_ident: ::spru::item::lookup::OfType<<Self as #trait_path>::T>
+            #lookup_ident: ::spru::item::Lookup<<Self as #trait_path>::T>
         ));
 
         let (impl_generics, type_generics, where_clause) = generics.split_for_impl();
@@ -68,12 +68,12 @@ impl<'i> quote::ToTokens for ActionImpl<'i> {
             impl #impl_generics ::spru::action::Base for #ident #type_generics
             #where_clause {
                 type Undo = <Self as #trait_path>::Undo;
-                type Error = <Self as #trait_path>::Error;
             }
 
             impl #lookup_impl_generics ::spru::Action<#lookup_ident> for #ident #type_generics
             #lookup_where_clause {
-                fn apply(&self, context: ::spru::action::Context<'_, #lookup_ident>) -> Result<Option<Self::Undo>, ::spru::action::Error<lookup::Error, Self::Error>>
+                fn apply(&self, context: ::spru::action::Context<'_, #lookup_ident>) 
+                    -> ::spru::action::Result<Option<Self::Undo>>
                 where 
                     Self: Sized,
                 {

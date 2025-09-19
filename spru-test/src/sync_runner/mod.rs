@@ -68,7 +68,7 @@ pub struct SyncRunner<State, Action, Root, PlayerInit, PlayerInitIn, Interaction
 impl<State, Action, Root, PlayerInit, Interaction, Reaction, GameOutcome, Lookup> 
     SyncRunner<State, Action, Root, PlayerInit, PlayerInit::In, Interaction, Reaction, GameOutcome, Lookup> 
 where
-    Lookup: spru::item::Lookup<Error: Anyhow> + Default,
+    Lookup: Default,
     State: 
         spru::State<spru::item::lookup::Canonical<State>> +
         spru::State<Lookup> +
@@ -76,11 +76,11 @@ where
     Action: 
         Clone + 
         spru::action::Base<Undo = Action> +
-        spru::Action<spru::item::lookup::Canonical<State>, Error: Anyhow> +
-        spru::Action<Lookup, Error: Anyhow>,
+        spru::Action<spru::item::lookup::Canonical<State>> +
+        spru::Action<Lookup>,
     Root: Clone,
-    PlayerInit: spru::player::Init<State = State, Action = Action, Root = Root, Error: Anyhow>,
-    Interaction: spru::Interaction<Action = Action, Root = Root>,
+    PlayerInit: spru::player::Init<State = State, Action = Action, Root = Root>,
+    Interaction: spru::Interaction<Action = Action, Root = Root> + Send,
     Reaction: spru::Reaction<State = State, Action = Action, Root = Root, Trigger = Interaction::Trigger, GameOutcome = GameOutcome>,
     GameOutcome: fmt::Debug + PartialEq + Clone,
 {
@@ -90,7 +90,7 @@ where
         reaction: Reaction,
     ) -> anyhow::Result<Self>
     where 
-        GameInit: spru::game::Init<State = State, Action = Action, Root = Root, Error: Anyhow>,
+        GameInit: spru::game::Init<State = State, Action = Action, Root = Root>,
     {
         let spru_server = spru::Server::new(game_init, player_init, reaction)?;
         let server = SyncServer::new(spru_server);

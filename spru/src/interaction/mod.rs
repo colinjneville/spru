@@ -1,16 +1,33 @@
-use std::{collections::VecDeque, fmt};
+pub mod error;
+pub use error::Error;
+
+use std::{collections::VecDeque};
 
 use derive_where::derive_where;
 use tagset::tagset_meta;
 use telety::telety;
 
-use crate::{action, interactor, item::{self, lookup}, player, record, CustomError};
+use crate::{interactor, item, player};
 
 #[derive(Debug)]
 #[non_exhaustive]
 pub struct Context<'r, Root> {
     pub root: &'r Root,
     pub player: player::Id,
+}
+
+impl<'r, Root> interactor::PlayerContext for Context<'r, Root> {
+    fn player_context(&self) -> Option<player::Id> {
+        Some(self.player)
+    }
+}
+
+impl<'r, Root> crate::interactor::GetRoot for Context<'r, Root> {
+    type Root = Root;
+
+    fn get_root(&self) -> &Self::Root {
+        &self.root
+    }
 }
 
 #[derive(Debug)]
@@ -23,11 +40,22 @@ pub struct Output<Trigger> {
 impl<Trigger> interactor::EnqueueTrigger for Output<Trigger> {
     type Trigger = Trigger;
 
-    fn enqueue_trigger(&mut self, trigger: Self::Trigger) {
+    fn enqueue_trigger(&mut self, trigger: Trigger) {
         self.triggers.push_back(trigger);
     }
 }
 
+impl<Trigger> interactor::TakeTriggers<Trigger> for Output<Trigger> {
+    fn take_triggers(&mut self) -> VecDeque<Trigger> {
+        std::mem::take(&mut self.triggers)
+    }
+}
+
+impl<Trigger, GameOutcome> interactor::TakeGameOutcome<GameOutcome> for Output<Trigger> {
+    fn take_game_outcome(&mut self) -> Option<GameOutcome> {
+        None
+    }
+}
 
 impl<'r, Root> Context<'r, Root> {
     pub(crate) fn new(root: &'r Root, player: player::Id) -> Self {
@@ -54,106 +82,6 @@ pub trait Interaction {
 }
 
 pub type Interactor<'l, 'r, Lookup, Action, Root, Trigger> = crate::Interactor<'l, Lookup, Action, Context<'r, Root>, Output<Trigger>>;
-
-#[derive(Debug, Default)]
-pub struct Error {
-    kind: ErrorKind,
-    context: Option<ErrorContext>,
-}
-
-impl Error {
-    pub(crate) fn new(kind: ErrorKind) -> Self {
-        Self {
-            kind,
-            context: None,
-        }
-    }
-}
-
-impl From<lookup::Error> for Error {
-    fn from(value: lookup::Error) -> Self {
-        Self::new(ErrorKind::Lookup(value))
-    }
-}
-
-impl From<record::Error> for Error {
-    fn from(value: record::Error) -> Self {
-        Self::new(ErrorKind::Record(value))
-    }
-}
-
-impl<E: std::error::Error + 'static> From<E> for Error {
-    fn from(value: E) -> Self {
-        Self::new(ErrorKind::Interaction(CustomError::new(value)))
-    }
-}
-
-impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let Self {
-            kind,
-            context,
-        } = self;
-
-        if let Some(context) = context {
-            write!(f, "{context}")?;
-        } else {
-            write!(f, "Interaction")?;
-        }
-
-        write!(f, " failed: {kind}")?;
-        
-        Ok(())
-    }
-}
-
-#[derive(Debug)]
-pub(crate) struct ErrorContext {
-    interaction_name: &'static str,
-}
-
-impl ErrorContext {
-    pub(crate) fn new<Interaction>(_interaction: &Interaction) -> Self {
-        Self {
-            interaction_name: std::any::type_name::<Interaction>(),
-        }
-    }
-}
-
-impl fmt::Display for ErrorContext {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let Self {
-            interaction_name,
-        } = self;
-
-        write!(f, "Interaction '{interaction_name}'")?;
-
-        Ok(())
-    }
-}
-
-#[derive(Debug)]
-pub enum ErrorKind {
-    Lookup(lookup::Error),
-    Record(record::Error),
-    Interaction(CustomError),
-}
-
-impl Default for ErrorKind {
-    fn default() -> Self {
-        Self::Interaction(CustomError::default())
-    }
-}
-
-impl fmt::Display for ErrorKind {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Lookup(e) => fmt::Display::fmt(e, f),
-            Self::Record(e) => fmt::Display::fmt(e, f),
-            Self::Interaction(e) => fmt::Display::fmt(e, f),
-        }
-    }
-}
 
 pub type Result<T> = std::result::Result<T, self::Error>;
 

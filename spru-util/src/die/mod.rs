@@ -3,6 +3,7 @@ use std::mem;
 use derive_where::derive_where;
 
 use rand::{seq::IndexedRandom, Rng};
+use spru::error::AnyResult;
 use tagset::tagset;
 use telety::telety;
 
@@ -62,14 +63,13 @@ pub struct SetFace<Die: self::Die> {
 impl<Die: self::Die<Face: Clone>> spru::action::Update for SetFace<Die> {
     type T = State<Die>;
     type Undo = Self;
-    type Error = std::convert::Infallible;
 
-    fn update(&self, value: &mut Self::T) -> Result<Option<Self::Undo>, Self::Error> {
+    fn update(&self, value: &mut Self::T) -> AnyResult<impl Into<Option<Self::Undo>>> {
         let face = mem::replace(&mut value.current_face, self.face.clone());
 
-        Ok(Some(Self {
+        Ok(Self {
             face,
-        }))
+        })
     }
 }
 

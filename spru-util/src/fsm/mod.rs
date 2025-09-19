@@ -4,7 +4,7 @@ use std::mem;
 
 use amass::amass_telety;
 use derive_where::derive_where;
-use spru::Serial;
+use spru::{error::AnyResult, Serial};
 pub use rust_fsm::StateMachineImpl;
 use tagset::tagset;
 use telety::telety;
@@ -88,9 +88,9 @@ where
 {    
     type T = State<FSM>;
     type Undo = Set<FSM>;
-    type Error = error::Transition;
     
-    fn update(&self, value: &mut Self::T) -> Result<Option<Self::Undo>, Self::Error> {
+    #[allow(refining_impl_trait)]
+    fn update(&self, value: &mut Self::T) -> AnyResult<Option<Self::Undo>> {
         match FSM::transition(&value.0, &self.input) {
             Some(new_state) => {
                 let old_state = mem::replace(&mut value.0, new_state);
@@ -99,7 +99,7 @@ where
             None => {
                 match self.strictness {
                     Strictness::BestEffort => Ok(None),
-                    Strictness::AllOrError => Err(error::Transition::TransitionImpossible(rust_fsm::TransitionImpossibleError)),
+                    Strictness::AllOrError => Err(error::Transition::TransitionImpossible(rust_fsm::TransitionImpossibleError).into()),
                 }
             }
         }
@@ -119,10 +119,10 @@ where
 {
     type T = State<FSM>;
     type Undo = Self;
-    type Error = std::convert::Infallible;
     
-    fn update(&self, value: &mut Self::T) -> Result<Option<Self::Undo>, Self::Error> {
+    #[allow(refining_impl_trait)]
+    fn update(&self, value: &mut Self::T) -> AnyResult<Self::Undo> {
         let old_state = mem::replace(&mut value.0, self.new_state.clone());
-        Ok(Some(Self { new_state: old_state }))
+        Ok(Self { new_state: old_state })
     }
 }

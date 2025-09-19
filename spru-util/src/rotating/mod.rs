@@ -1,6 +1,7 @@
 use std::marker::PhantomData;
 
 use derive_where::derive_where;
+use spru::error::AnyResult;
 use tagset::tagset;
 use telety::telety;
 
@@ -113,9 +114,9 @@ where
 {
     type T = State<T>;
     type Undo = Self;
-    type Error = std::convert::Infallible;
 
-    fn update(&self, value: &mut Self::T) -> Result<Option<Self::Undo>, Self::Error> {
+    #[allow(refining_impl_trait)]
+    fn update(&self, value: &mut Self::T) -> AnyResult<Option<Self::Undo>> {
         let Self {
             reverse,
             _p,
@@ -165,16 +166,16 @@ where
 {
     type T = State<T>;
     type Undo = Self;
-    type Error = Error;
 
-    fn update(&self, value: &mut Self::T) -> Result<Option<Self::Undo>, Self::Error> {
+    #[allow(refining_impl_trait)]
+    fn update(&self, value: &mut Self::T) -> AnyResult<Option<Self::Undo>> {
         let Self {
             mut position,
             _p,
         } = *self;
 
         if position >= value.items.len() {
-            Err(Error::InvalidPosition(position))
+            Err(Error::InvalidPosition(position).into())
         } else if position != value.position {
             std::mem::swap(&mut value.position, &mut position);
 
@@ -205,9 +206,10 @@ where
 {
     type T = State<T>;
     type Undo = Remove<T>;
-    type Error = Error;
 
-    fn update(&self, value: &mut Self::T) -> Result<Option<Self::Undo>, Self::Error> {
+
+    #[allow(refining_impl_trait)]
+    fn update(&self, value: &mut Self::T) -> AnyResult<Self::Undo> {
         let Self {
             position,
             ref item,
@@ -224,9 +226,9 @@ where
                 value.position += 1;
             }
 
-            Ok(Some(Remove { position, _p: PhantomData }))
+            Ok(Remove { position, _p: PhantomData })
         } else {
-            Err(Error::InvalidPosition(position))
+            Err(Error::InvalidPosition(position).into())
         }
     }
 }
@@ -245,9 +247,9 @@ where
 {
     type T = State<T>;
     type Undo = Insert<T>;
-    type Error = Error;
 
-    fn update(&self, value: &mut Self::T) -> Result<Option<Self::Undo>, Self::Error> {
+    #[allow(refining_impl_trait)]
+    fn update(&self, value: &mut Self::T) -> AnyResult<Self::Undo> {
         let Self {
             position,
             _p,
@@ -262,9 +264,9 @@ where
             if value.position == value.items.len() {
                 value.position = 0;
             }
-            Ok(Some(Insert { position, item, set_to_inserted }))
+            Ok(Insert { position, item, set_to_inserted })
         } else {
-            Err(Error::InvalidPosition(position))
+            Err(Error::InvalidPosition(position).into())
         }
     }
 }

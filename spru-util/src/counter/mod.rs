@@ -1,5 +1,6 @@
 mod range_type;
 pub use range_type::RangeType;
+use spru::error::AnyResult;
 
 use std::{ops::{self, RangeBounds}, cmp};
 
@@ -91,21 +92,29 @@ pub struct Add<T: AddSigned> {
     strictness: Strictness, 
 }
 
+impl<T> Add<T>
+where 
+    T: CounterType + Ord + AddSigned<Signed: spru::Serial> + spru::Serial,
+{
+    fn sum(&self, value: &State<T>) -> Result<T, self::Error<T>> {
+        match self.strictness {
+            Strictness::BestEffort => Ok(value.bounds.constrain(value.value.saturating_add(self.value))),
+            Strictness::AllOrError => value.value.checked_add(self.value)
+                .filter(|v| value.bounds.contains(v))
+                .ok_or(Error::InvalidModifier { value: value.value, modifier: self.value }),
+        }
+    }
+}
+
 impl<T> spru::action::Update for Add<T>
 where 
     T: CounterType + Ord + AddSigned<Signed: spru::Serial> + spru::Serial,
 {
     type T = State<T>;
     type Undo = Self;
-    type Error = Error<T>;
 
-    fn update(&self, value: &mut Self::T) -> Result<Option<Self::Undo>, Self::Error> {
-        let sum = match self.strictness {
-            Strictness::BestEffort => value.bounds.constrain(value.value.saturating_add(self.value)),
-            Strictness::AllOrError => value.value.checked_add(self.value)
-                .filter(|v| value.bounds.contains(v))
-                .ok_or(Error::InvalidModifier { value: value.value, modifier: self.value })?,
-        };
+    fn update(&self, value: &mut Self::T) -> AnyResult<impl Into<Option<Self::Undo>>> {
+        let sum = self.sum(value)?;
 
         // Absolute value of diff (T)
         let diff = sum.max(value.value) - sum.min(value.value);
@@ -115,20 +124,22 @@ where
 
         value.value = sum;
         
-        Ok(Some(Self {
+        Ok(Self {
             value: diff,
             strictness: Strictness::AllOrError,
-        }))
+        })
     }
 }
 
 impl<T> spru::action::UpdateReturn for Add<T>
-where Self: spru::action::Update
+where 
+    T: CounterType + Ord + AddSigned<Signed: spru::Serial> + spru::Serial,
 {
-    type ReturnValue = T;
+    type Return = T;
 
-    fn return_value(&self, t: &Self::T) -> Self::ReturnValue {
-        todo!()
+    fn return_value(&self, value: &Self::T) -> AnyResult<Self::Return> {
+        let sum = self.sum(value)?;
+        Ok(sum)
     }
 }
 
@@ -153,24 +164,29 @@ mod test {
         let (mut counter, _) = create(3u32).create().unwrap();
 
         add_checked(-5i32).update(&mut counter)
+            .map(Into::into)
             .unwrap_err();
 
         let undo = add_checked(-2).update(&mut counter)
+            .map(Into::into)
             .unwrap();
 
         assert_eq!(counter.value(), &1);
 
         undo.unwrap().update(&mut counter)
+            .map(Into::into)
             .unwrap();
 
         assert_eq!(counter.value(), &3);
 
         let undo = add_saturating(-5).update(&mut counter)
+            .map(Into::into)
             .unwrap();
 
         assert_eq!(counter.value(), &0);
 
         undo.unwrap().update(&mut counter)
+            .map(Into::into)
             .unwrap();
 
         assert_eq!(counter.value(), &3);
@@ -181,11 +197,13 @@ mod test {
         let (mut counter, _) = create_bounded(3u32, 2..).create().unwrap();
 
         let undo = add_saturating(-5).update(&mut counter)
+            .map(Into::into)
             .unwrap();
 
         assert_eq!(counter.value(), &2);
 
         undo.unwrap().update(&mut counter)
+            .map(Into::into)
             .unwrap();
 
         assert_eq!(counter.value(), &3);

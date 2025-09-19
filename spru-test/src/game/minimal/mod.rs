@@ -24,7 +24,7 @@ pub struct Trigger(spru::player::Id);
 pub struct GameOutcome(pub spru::player::Id);
 
 #[tagset(impl crate::proxy::std::fmt::Debug)]
-#[tagset(impl<Lookup: spru::item::Lookup> spru::State<Lookup>)]
+#[tagset(impl<Lookup> spru::State<Lookup>)]
 #[tagset(GameRoot)]
 #[tagset(PlayerData)]
 pub struct State;
@@ -33,7 +33,7 @@ pub struct State;
 #[tagset(derive(Clone))]
 #[tagset(impl crate::proxy::std::fmt::Debug)]
 #[tagset(impl spru::action::Base)]
-#[tagset(impl<Lookup: spru::item::Lookup> spru::Action<Lookup>)]
+#[tagset(impl<Lookup> spru::Action<Lookup>)]
 #[tagset(impl tagset::proxy::serde::Serialize)]
 #[tagset(impl<'de> tagset::serde::DeserializeFromDiscriminant<'de>)]
 #[tagset(impl<'de> tagset::proxy::serde::Deserialize<'de>)]
@@ -66,7 +66,7 @@ impl spru::Reaction for Reaction {
         interactor: &mut spru::reaction::Interactor<State, Actions, IdT<GameRoot>, Trigger, GameOutcome>, 
         input: Self::Trigger,
     ) 
-        -> Result<(), spru::item::lookup::canonical::Error>
+        -> spru::action::Result<()>
     {
         interactor.set_game_outcome(GameOutcome(input.0));
         Ok(())
@@ -90,25 +90,24 @@ pub struct PlayerInit;
 impl spru::player::Init for PlayerInit {
     type In = PlayerColor;
     type Root = IdT<GameRoot>;
-    type Error = Error;
     type State = State;
     type Action = Actions;
 
     fn initialize(
         &self, 
-        interactor: &mut spru::Interactor<spru::item::lookup::Canonical<State>, Actions, spru::player::init::Context<IdT<GameRoot>>>, 
+        interactor: &mut spru::player::init::Interactor<State, Actions, IdT<GameRoot>>, 
         input: Self::In
     ) 
-        -> Result<(), spru::player::init::Error<Self::Error>> 
+        -> spru::player::init::Result<()> 
     {
         let player_root = interactor.create(verbatim::create(PlayerData {
             color: input,
-        }))?;
+        }));
 
         let mut game_root = interactor.get_root()?
             .clone();
         
-        game_root.players.push(player_root);
+        game_root.players.push(player_root.id());
         interactor.get_root()?
             .update(spru_util::verbatim::update(game_root));
         
@@ -132,7 +131,6 @@ pub struct GameInit(pub LobbyInfo);
 
 impl spru::game::Init for GameInit {
     type Root = IdT<GameRoot>;
-    type Error = Error;
     type State = State;
     type Action = Actions;
 
@@ -140,11 +138,11 @@ impl spru::game::Init for GameInit {
         self, 
         interactor: &mut spru::game::init::Interactor<State, Actions>
     ) 
-        -> Result<Self::Root, spru::game::init::Error<Self::Error>> 
+        -> spru::game::init::Result<Self::Root> 
     {
-        let root = interactor.create(spru_util::verbatim::create(GameRoot::default()))?;
+        let root = interactor.create(spru_util::verbatim::create(GameRoot::default()));
 
-        Ok(root)
+        Ok(root.id())
     }
 }
 
@@ -155,12 +153,10 @@ impl spru::Interaction for Interaction {
     type Action = Actions;
     type Root = IdT<GameRoot>;
     type Trigger = Trigger;
-    type Error = Error;
 
     fn apply<Lookup>(&self, interactor: &mut spru::interaction::Interactor<Lookup, Actions, IdT<GameRoot>, Trigger>) 
-        -> Result<(), spru::interaction::Error<lookup::Error, Self::Error>>
+        -> spru::interaction::Result<()>
     where 
-        Lookup: spru::item::Lookup,
         Actions: spru::Action<Lookup>,
     {
         interactor.enqueue_trigger(Trigger(interactor.context().player));

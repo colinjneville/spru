@@ -4,7 +4,7 @@ use std::{collections::VecDeque, marker::PhantomData, mem};
 
 use amass::amass_telety;
 use derive_where::derive_where;
-use spru::Serial;
+use spru::{error::AnyResult, Serial};
 use tagset::tagset;
 use telety::telety;
 
@@ -165,11 +165,11 @@ where
 {
     type T = State<T>;
     type Undo = PopTop<T>;
-    type Error = std::convert::Infallible;
 
-    fn update(&self, value: &mut Self::T) -> Result<Option<Self::Undo>, Self::Error> {
+    #[allow(refining_impl_trait)]
+    fn update(&self, value: &mut Self::T) -> AnyResult<Self::Undo> {
         value.items.push_front(self.item.clone());
-        Ok(Some(pop_top()))
+        Ok(pop_top())
     }
 }
 
@@ -187,9 +187,9 @@ where
 {
     type T = State<T>;
     type Undo = PushTop<T>;
-    type Error = error::Pop;
 
-    fn update(&self, value: &mut Self::T) -> Result<Option<Self::Undo>, Self::Error> {
+    #[allow(refining_impl_trait)]
+    fn update(&self, value: &mut Self::T) -> AnyResult<Option<Self::Undo>> {
         Ok(match value.items.pop_front() {
             Some(item) => Some(push_top(item)),
             None => match self.strictness {
@@ -213,11 +213,11 @@ where
 {
     type T = State<T>;
     type Undo = PopBottom<T>;
-    type Error = std::convert::Infallible;
 
-    fn update(&self, value: &mut Self::T) -> Result<Option<Self::Undo>, Self::Error> {
+    #[allow(refining_impl_trait)]
+    fn update(&self, value: &mut Self::T) -> AnyResult<Self::Undo> {
         value.items.push_back(self.item.clone());
-        Ok(Some(pop_bottom()))
+        Ok(pop_bottom())
     }
 }
 
@@ -234,14 +234,14 @@ where
 {
     type T = State<T>;
     type Undo = PushBottom<T>;
-    type Error = error::Pop;
 
-    fn update(&self, value: &mut Self::T) -> Result<Option<Self::Undo>, Self::Error> {
+    #[allow(refining_impl_trait)]
+    fn update(&self, value: &mut Self::T) -> AnyResult<Option<Self::Undo>> {
         Ok(match value.items.pop_back() {
             Some(item) => Some(push_bottom(item)),
             None => match self.strictness {
                 Strictness::BestEffort => None,
-                Strictness::AllOrError => Err(Self::Error::Empty)?,
+                Strictness::AllOrError => Err(error::Pop::Empty)?,
         }})
     }
 }
@@ -260,9 +260,9 @@ where
 {
     type T = State<T>;
     type Undo = Self;
-    type Error = std::convert::Infallible;
 
-    fn update(&self, value: &mut Self::T) -> Result<Option<Self::Undo>, Self::Error> {
+    #[allow(refining_impl_trait)]
+    fn update(&self, value: &mut Self::T) -> AnyResult<Self::Undo> {
         use rand::{Rng, SeedableRng};
 
         let mut rng = crate::Rng::seed_from_u64(self.seed);
@@ -293,7 +293,7 @@ where
             }
         }
 
-        Ok(Some(self.invert()))
+        Ok(self.invert())
     }
 }
 
@@ -326,18 +326,18 @@ pub struct Insert<T> {
 impl<T: Clone> spru::action::Update for Insert<T> {
     type T = State<T>;
     type Undo = Remove<T>;
-    type Error = error::Insert;
 
-    fn update(&self, value: &mut Self::T) -> Result<Option<Self::Undo>, Self::Error> {
+    #[allow(refining_impl_trait)]
+    fn update(&self, value: &mut Self::T) -> AnyResult<Self::Undo> {
         let index = self.index;
         if index <= value.items.len() {
             value.items.insert(index, self.element.clone());
-            Ok(Some(Remove {
+            Ok(Remove {
                 index,
                 _p: PhantomData,
-            }))
+            })
         } else {
-            Err(error::Insert::Index(index, value.items.len()))
+            Err(error::Insert::Index(index, value.items.len()).into())
         }
     }
 }
@@ -352,17 +352,17 @@ pub struct Remove<T> {
 impl<T> spru::action::Update for Remove<T> {
     type T = State<T>;
     type Undo = Insert<T>;
-    type Error = error::Remove;
 
-    fn update(&self, value: &mut Self::T) -> Result<Option<Self::Undo>, Self::Error> {
+    #[allow(refining_impl_trait)]
+    fn update(&self, value: &mut Self::T) -> AnyResult<Self::Undo> {
         let index = self.index;
         if let Some(element) = value.items.remove(index) {
-            Ok(Some(Insert {
+            Ok(Insert {
                 index,
                 element,
-            }))
+            })
         } else {
-            Err(error::Remove::Index(index, value.items.len()))
+            Err(error::Remove::Index(index, value.items.len()).into())
         }
     }
 }
@@ -376,11 +376,11 @@ pub struct Clear<T> {
 impl<T> spru::action::Update for Clear<T> {
     type T = State<T>;
     type Undo = Update<T>;
-    type Error = std::convert::Infallible;
 
-    fn update(&self, value: &mut Self::T) -> Result<Option<Self::Undo>, Self::Error> {
+    #[allow(refining_impl_trait)]
+    fn update(&self, value: &mut Self::T) -> AnyResult<Self::Undo> {
         let items = mem::take(&mut value.items);
-        Ok(Some(update(items)))
+        Ok(update(items))
     }
 }
 
@@ -408,7 +408,7 @@ mod test {
 
         assert_ne!(pile.items, orig_order);
 
-        undo.unwrap().update(&mut pile)
+        undo.update(&mut pile)
             .unwrap();
 
         assert_eq!(pile.items, orig_order);

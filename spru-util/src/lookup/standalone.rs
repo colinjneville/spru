@@ -1,6 +1,6 @@
 use std::{any, collections::HashMap};
 
-use spru::{item::{self, IdT}, Item};
+use spru::{error::AnyResult, item::{self, IdT}, Item};
 
 #[derive(Debug, Default)]
 pub struct Standalone {
@@ -13,15 +13,11 @@ impl Standalone {
     }
 }
 
-impl spru::item::Lookup for Standalone {
-    type Error = Error;
-}
-
-impl<T: 'static> spru::item::lookup::Lookup<T> for Standalone {
+impl<T: 'static> spru::item::Lookup<T> for Standalone {
     type Mut<'lr> = &'lr mut spru::Item<T>
     where Self: 'lr;
 
-    fn lookup(&self, id: IdT<T>) -> Result<&Item<T>, Self::Error> {
+    fn lookup(&self, id: IdT<T>) -> spru::item::lookup::Result<&Item<T>> {
         let type_id = any::TypeId::of::<T>();
         let item = if let Some(inner_map) = self.map.get(&type_id) {
             let inner_map = inner_map.downcast_ref::<HashMap<item::IdT<T>, Item<T>>>()
@@ -32,9 +28,10 @@ impl<T: 'static> spru::item::lookup::Lookup<T> for Standalone {
             None
         };
         item.ok_or(Error::IdNotFound(id.untyped().clone()))
+            .map_err(Into::into)
     }
 
-    fn lookup_mut(&mut self, id: IdT<T>) -> Result<Self::Mut<'_>, Self::Error> {
+    fn lookup_mut(&mut self, id: IdT<T>) -> spru::item::lookup::Result<Self::Mut<'_>> {
         let type_id = any::TypeId::of::<T>();
         let item = if let Some(inner_map) = self.map.get_mut(&type_id) {
             let inner_map = inner_map.downcast_mut::<InnerMap<T>>()
@@ -45,9 +42,10 @@ impl<T: 'static> spru::item::lookup::Lookup<T> for Standalone {
             None
         };
         item.ok_or(Error::IdNotFound(id.untyped().clone()))
+            .map_err(Into::into)
     }
 
-    fn put(&mut self, value: spru::Item<T>) -> Result<(), Self::Error> {
+    fn create(&mut self, value: spru::Item<T>) -> spru::item::lookup::Result<()> {
         let id = value.id();
         let type_id = any::TypeId::of::<T>();
         let inner_map = self.map.entry(type_id)
@@ -56,14 +54,14 @@ impl<T: 'static> spru::item::lookup::Lookup<T> for Standalone {
         let inner_map = inner_map.downcast_mut::<InnerMap<T>>()
             .expect("Interal type mismatch");
         if inner_map.contains_key(&id) {
-            Err(Error::IdAlreadyExists(id.untyped().clone()))
+            Err(Error::IdAlreadyExists(id.untyped().clone()).into())
         } else {
             inner_map.insert(id.clone(), value);
             Ok(())
         }
     }
 
-    fn take(&mut self, id: IdT<T>) -> Result<spru::Item<T>, Self::Error> {
+    fn destroy(&mut self, id: IdT<T>) -> spru::item::lookup::Result<spru::Item<T>> {
         let type_id = any::TypeId::of::<T>();
         let item = if let Some(inner_map) = self.map.get_mut(&type_id) {
             let inner_map = inner_map.downcast_mut::<InnerMap<T>>()
@@ -74,7 +72,7 @@ impl<T: 'static> spru::item::lookup::Lookup<T> for Standalone {
             None
         };
 
-        item.ok_or(Error::IdNotFound(id.untyped().clone()))
+        item.ok_or(Error::IdNotFound(id.untyped().clone()).into())
     }
 }
 

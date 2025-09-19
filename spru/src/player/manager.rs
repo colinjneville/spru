@@ -1,22 +1,5 @@
 
-use crate::{action, Interactor, item::{self}, player};
-
-
-#[derive(Debug)]
-#[derive(thiserror::Error)]
-pub enum InitializeError<PlayerInitError> {
-    Lookup(item::lookup::canonical::Error),
-    Init(PlayerInitError),
-}
-
-impl<PlayerInitError> From<player::init::Error<PlayerInitError>> for InitializeError<PlayerInitError> {
-    fn from(value: player::init::Error<PlayerInitError>) -> Self {
-        match value {
-            player::init::Error::Lookup(e) => Self::Lookup(e),
-            player::init::Error::Init(e) => Self::Init(e),
-        }
-    }
-}
+use crate::{action, error::RecoverableResult, interactor, item::{self}, player, Interactor};
 
 #[derive(Debug)]
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -53,50 +36,27 @@ impl<PlayerInit> Manager<PlayerInit> {
     //     Ok(output)
     // }
 
-    pub(crate) fn add<State, Action, Root> (
+    pub(crate) fn add<'r, State, Action, Root> (
         &mut self, 
-        interactor: &mut player::init::Interactor<State, Action, Root>, 
+        mut interactor: player::init::Interactor<'_, 'r, State, Action, Root>, 
         reservation_range: item::id::Range,
         input: PlayerInit::In,
-    ) -> player::init::Result<player::Id>
+    ) -> RecoverableResult<player::init::Complete<'r, Action, Root>, player::init::Error>
     where 
         Action: crate::Action<item::lookup::Canonical<State>, Undo = Action>,
-        State: crate::State<item::lookup::Canonical<State>>,
+        // State: crate::State<item::lookup::Canonical<State>>,
         PlayerInit: player::Init<State = State, Action = Action, Root = Root>, 
     {
         let id = player::Id(self.player_details.len());
         interactor.context_mut().player = id;
-        let result = 'result: {
-            if let Err(err) = self.init.initialize(interactor, input) {
-                let err = match err {
-                    player::init::Error::Lookup(error) => action::Error::Lookup(error),
-                    player::init::Error::Init(_) => None,
-                };
-                break 'result Err(err);
-            }
 
-            if let Err(err) = interactor.flush() {
-                break 'result Err(Some(err));
-            }
-
-            Ok(())
-        };
-
-        match result {
-            Ok(()) => {
-                let complete = interactor.complete();
-
-            }
-            Err(err) => {
-                interactor.flush()
-            }
-        }
+        let init_error = self.init.initialize(&mut interactor, input).err();
         
+        let complete = interactor.complete(init_error)?;
         self.player_details.push(Details {
             reservation_range,
         });
-        
-        Ok(id)
+        Ok(complete)
     }
 
     pub(crate) fn revert_add(&mut self) {

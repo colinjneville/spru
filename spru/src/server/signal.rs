@@ -19,8 +19,6 @@ pub struct Ret {
 pub enum Error {
     #[error(transparent)]
     Temp(#[from] crate::TempError),
-    #[error("The server has entered an inconsistent state due to a bug: {0}")]
-    Inconsistency(#[from] crate::log::RevertError),
 }
 
 #[derive(Debug)]

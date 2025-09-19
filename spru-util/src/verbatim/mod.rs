@@ -1,6 +1,7 @@
 use std::{marker::PhantomData, mem};
 
 use derive_where::derive_where;
+use spru::error::AnyResult;
 use tagset::tagset;
 use telety::telety;
 
@@ -45,9 +46,8 @@ where
 {
     type T = T;
     type Undo = Destroy<T>;
-    type Error = std::convert::Infallible;
 
-    fn create(&self) -> Result<(Self::T, Self::Undo), Self::Error> {
+    fn create(&self) -> AnyResult<(Self::T, Self::Undo)> {
         Ok((self.value.clone(), Destroy(PhantomData)))
     }
 }
@@ -60,9 +60,8 @@ pub struct Destroy<T>(PhantomData<fn() -> T>);
 impl<T> spru::action::Destroy for Destroy<T> {
     type T = T;
     type Undo = Create<T>;
-    type Error = std::convert::Infallible;
 
-    fn destroy(&self, value: Self::T) -> Result<Self::Undo, Self::Error> {
+    fn destroy(&self, value: Self::T) -> AnyResult<Self::Undo> {
         Ok(Create { value })
     }
 }
@@ -78,12 +77,12 @@ pub struct Update<T> {
 impl<T: Clone> spru::action::Update for Update<T> {
     type T = T;
     type Undo = Self;
-    type Error = std::convert::Infallible;
     
-    fn update(&self, value: &mut Self::T) -> Result<Option<Self::Undo>, Self::Error> {
+    #[allow(refining_impl_trait)]
+    fn update(&self, value: &mut Self::T) -> AnyResult<Self::Undo> {
         let old = mem::replace(&mut *value, self.value.clone());
-        Ok(Some(Self {
+        Ok(Self {
             value: old
-        }))
+        })
     }
 }

@@ -15,7 +15,7 @@ pub(crate) fn derive_state(input: TokenStream) -> syn::Result<TokenStream> {
     let private_path = quote!(#crate_path::__private);
     let lookup_ident: syn::Ident = parse_quote!(Lookup);
     let mut lookup_generics = generics.clone();
-    lookup_generics.params.push(parse_quote!(#lookup_ident: #crate_path::item::lookup::OfType<Self>));
+    lookup_generics.params.push(parse_quote!(#lookup_ident: #crate_path::item::Lookup<Self>));
     lookup_generics.make_where_clause()
         .predicates.push(parse_quote!(Self: for<'de> #private_path::serde::Serialize));
     lookup_generics.make_where_clause()

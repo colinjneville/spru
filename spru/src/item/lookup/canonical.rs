@@ -261,14 +261,6 @@ impl<State> ItemsMap<State> {
     }
 }
 
-#[derive(Debug)]
-#[derive(thiserror::Error)]
-pub enum Error {
-    // TODO
-    #[error("TODO")]
-    Temp
-}
-
 #[cfg(test)]
 mod test {
     use crate::{transaction, Snapshot};

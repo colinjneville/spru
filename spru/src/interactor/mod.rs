@@ -1,6 +1,6 @@
-use std::{cell::{self, Cell, RefCell}, collections::{HashMap, VecDeque}, ops};
+use std::{cell::RefCell, collections::{HashMap, VecDeque}, ops};
 
-use crate::{action, interaction, item::{self, lookup, IdT}, log, player, reaction, record::{self, Records}, Item};
+use crate::{action, error::{RecoverableError, RecoverableResult}, interactor, item::{self, lookup, IdT}, player, record::{self, Records}, Item};
 
 #[macro_export]
 macro_rules! follow {
@@ -90,7 +90,7 @@ impl<Action> ItemStatus<Action> {
     }
 
     fn flush<Lookup>(&mut self, id: item::Id, lookup: &mut Lookup) 
-        -> record::Result<()>
+        -> action::Result<()>
     where 
         Action: crate::Action<Lookup, Undo = Action>,
     {
@@ -127,7 +127,7 @@ impl<Action> ItemStatus<Action> {
         self.version_change.before
     }
 
-    fn into_packed(self, id: item::Id) -> Option<(record::Packed<Action>, record::Packed<Action>)> {
+    fn into_records(self, id: item::Id) -> Option<(record::Packed<Action>, record::Packed<Action>)> {
         if !self.is_flushed() {
             panic!("Interactor must be flushed first");
         }
@@ -181,7 +181,7 @@ impl<Action> ItemsStatus<Action> {
     }
 
     fn flush<Lookup>(&mut self, lookup: &mut Lookup)
-        -> record::Result<()>
+        -> action::Result<()>
     where 
         Action: crate::Action<Lookup, Undo = Action>,
     {
@@ -190,6 +190,15 @@ impl<Action> ItemsStatus<Action> {
         }
         
         Ok(())
+    }
+
+    fn is_item_flushed(&self, id: item::Id) -> bool {
+        let items = self.items.borrow();
+        if let Some(item) = items.get(&id) {
+            item.is_flushed()
+        } else {
+            true
+        }
     }
 
     fn revert<Lookup>(self, lookup: &mut Lookup)
@@ -213,11 +222,11 @@ impl<Action> ItemsStatus<Action> {
         item::version::Expected::new(versions.into_iter())
     }
 
-    fn into_packed(self) -> (Vec<record::Packed<Action>>, Vec<record::Packed<Action>>) {
-        let mut packed_do = vec![];
-        let mut packed_undo = vec![];
+    fn into_records(self) -> (Records<Action>, Records<Action>) {
+        let mut packed_do = Records::new();
+        let mut packed_undo = Records::new();
         for (item_id, item) in self.items.into_inner() {
-            if let Some((item_do, item_undo)) = item.into_packed(item_id) {
+            if let Some((item_do, item_undo)) = item.into_records(item_id) {
                 packed_do.push(item_do);
                 packed_undo.push(item_undo);
             }
@@ -235,7 +244,7 @@ struct Inner<'l, Lookup, Action> {
 }
 
 #[derive(Debug)]
-pub(crate) struct Interactor<'l, Lookup, Action, Context, Output> {
+pub struct Interactor<'l, Lookup, Action, Context, Output> {
     inner: Inner<'l, Lookup, Action>,
     context: Context,
     output: RefCell<Output>,
@@ -268,7 +277,7 @@ impl<'l, Lookup, Action, Context, Output> Interactor<'l, Lookup, Action, Context
     }
 
     pub fn create<Create>(&self, create: Create)
-        -> Pending<Lookup, Action, Create::T>
+        -> Pending<'_, Lookup, Action, Create::T>
     where 
         Create:
             Into<Action> + 
@@ -285,7 +294,7 @@ impl<'l, Lookup, Action, Context, Output> Interactor<'l, Lookup, Action, Context
     }
 
     pub fn get<T>(&self, id: IdT<T>)
-        -> Result<Existing<Lookup, Action, T>, lookup::Error>
+        -> lookup::Result<Existing<'_, Lookup, Action, T>>
     where
         Lookup: lookup::Lookup<T>,
     {
@@ -296,6 +305,16 @@ impl<'l, Lookup, Action, Context, Output> Interactor<'l, Lookup, Action, Context
             inner: &self.inner,
             item,
         })
+    }
+
+    pub fn get_root<Root>(&self)
+        -> lookup::Result<Existing<'_, Lookup, Action, Root>>
+    where
+        Lookup: lookup::Lookup<Root>,
+        Context: GetRoot<Root=IdT<Root>>,
+    {
+        let root_id = *self.context.get_root();
+        self.get(root_id)
     }
 
     pub fn enqueue_trigger(&self, trigger: Output::Trigger)
@@ -313,59 +332,79 @@ impl<'l, Lookup, Action, Context, Output> Interactor<'l, Lookup, Action, Context
     }
 
     pub fn flush(&mut self)
-        -> record::Result<()>
+        -> action::Result<()>
     where 
         Action: crate::Action<Lookup, Undo = Action>,
     {
         self.inner.items_status.flush(self.inner.lookup)
-            .map_err(Into::into)
     }
 
-    pub(crate) fn revert(self, initial: record::Error)
-        -> log::Result<record::Error>
+    pub(crate) fn revert<E>(self, err: E)
+        -> RecoverableError<E>
     where 
         Action: crate::Action<Lookup, Undo = Action>,
     {
-        match self.inner.items_status.revert(self.inner.lookup) {
-            Ok(()) => Ok(initial),
-            Err(fatal) => {
-                Err(log::Error::Revert(log::RevertError {
-                    initial: Some(initial.into()),
-                    fatal: fatal.into(),
-                }))
-            }
+        let mut recoverable_error = RecoverableError::new(err);
+        if let Err(recovery_err) = self.inner.items_status.revert(self.inner.lookup) {
+            recoverable_error.set_recovery_error(recovery_err);
+        }
+
+        recoverable_error
+    }
+
+    pub(crate) fn complete<E>(mut self, error: Option<E>) 
+        -> RecoverableResult<interactor::Complete<Action, Context, Output>, E> 
+    where 
+        Action: crate::Action<Lookup, Undo = Action>,
+        action::Error: Into<E>,
+    {
+        let result = match error {
+            None => self.flush()
+                .map_err(Into::into),
+            Some(err) => Err(err),
+        };
+
+        match result {
+            Ok(_) => Ok(self.complete_internal()),
+            Err(err) => Err(self.revert(err)),
         }
     }
 
     // Interactor must be flushed before calling `complete`
-    pub(crate) fn complete(self) -> Complete<Action, Output> {
+    fn complete_internal(self) -> Complete<Action, Context, Output> {
         let Self {
             inner: Inner {
                 lookup: _lookup,
                 items_status,
                 reservation: _reservation,
             },
-            context: _context,
+            context,
             output,
         } = self;
 
         let expected_versions = items_status.expected_versions();
-        let (do_records, undo_records) = items_status.into_packed();
+        let (do_records, undo_records) = items_status.into_records();
 
         Complete {
             expected_versions,
             do_records,
             undo_records,
+            context,
             output: output.into_inner(),
         }
     }
 }
 
-pub(crate) struct Complete<Action, Output> {
+pub(crate) struct Complete<Action, Context, Output> {
     pub(crate) expected_versions: item::version::Expected,
-    pub(crate) do_records: Vec<record::Packed<Action>>,
-    pub(crate) undo_records: Vec<record::Packed<Action>>,
+    pub(crate) do_records: Records<Action>,
+    pub(crate) undo_records: Records<Action>,
+    pub(crate) context: Context,
     pub(crate) output: Output,
+}
+
+impl<Action, Context, Output> Complete<Action, Context, Output> {
+    
 }
 
 #[doc(hidden)]
@@ -382,6 +421,24 @@ pub trait SetGameOutcome {
     fn set_game_outcome(&mut self, game_outcome: Self::GameOutcome);
 }
 
+pub(crate) trait TakeTriggers<Trigger> {
+    fn take_triggers(&mut self) -> VecDeque<Trigger>;
+}
+
+pub(crate) trait TakeGameOutcome<GameOutcome> {
+    fn take_game_outcome(&mut self) -> Option<GameOutcome>;
+}
+
+pub(crate) trait PlayerContext {
+    fn player_context(&self) -> Option<player::Id>;
+}
+
+pub(crate) trait GetRoot {
+    type Root;
+
+    fn get_root(&self) -> &Self::Root;
+}
+
 #[derive(Debug)]
 pub struct Pending<'i, Lookup, Action, T> {
     inner: &'i Inner<'i, Lookup, Action>,
@@ -389,6 +446,10 @@ pub struct Pending<'i, Lookup, Action, T> {
 }
 
 impl<'i, Lookup, Action, T> Pending<'i, Lookup, Action, T> {
+    pub fn id(&self) -> IdT<T> {
+        self.item_id
+    }
+
     pub fn update<Update>(&self, update: Update) 
         -> &Self
     where 
@@ -398,6 +459,30 @@ impl<'i, Lookup, Action, T> Pending<'i, Lookup, Action, T> {
     {
         self.inner.items_status.enqueue(self.item_id.untyped(), update.into());
         self
+    }
+
+    /// Update the item and return a value provided by the UpdateReturn Action.
+    /// If the item has been modified by this [Interactor], it must be flushed
+    /// before calling this function
+    pub fn update_value<Update>(&self, update: Update)
+        -> action::Result<Update::Return>
+    where
+        Lookup:
+            item::Lookup<Update::T>,
+        Update:
+            Into<Action> +
+            action::UpdateReturn<T = T>,
+    {
+        if self.inner.items_status.is_item_flushed(self.item_id.untyped()) {
+            let item = self.inner.lookup.lookup(self.item_id)?;
+            let value = update.return_value(item)?;
+            self.update(update);
+
+            Ok(value)
+        } else {
+            // TODO Is there any point for this to be an error?
+            panic!("Updated items must be flushed before calling update_value")
+        }
     }
 }
 
@@ -434,219 +519,5 @@ impl<'i, Lookup, Action, T> ops::Deref for Existing<'i, Lookup, Action, T> {
 
     fn deref(&self) -> &Self::Target {
         self.item.get()
-    }
-}
-
-// #[derive(Debug)]
-// pub(crate) struct Get<'l, 'i, Lookup, Action, Context, Output, T> {
-//     interactor: &'i Interactor<'l, Lookup, Action, Context, Output>,
-//     item_id: IdT<T>,
-// }
-
-// impl<'l, 'i, Lookup, Action, Context, Output, T> Get<'l, 'i, Lookup, Action, Context, Output, T> {
-//     pub fn get(&self) -> Result<&T, lookup::Error> {
-
-//     }
-
-//     pub(crate) fn insert_action(&self, version: item::Version, do_action: Action, undo_action: Action) {
-//         self.interactor.mutable.borrow_mut().insert_action(self.item_id.untyped(), version, do_action, undo_action);
-//     }
-// }
-
-// impl<'l, Lookup, Action, Context> Interactor<'l, Lookup, Action, Context> {
-//     pub(crate) fn new(lookup: &'l Lookup, reservation: &'l item::id::Reservation, context: Context) -> Self {
-//         Self {
-//             lookup,
-//             context,
-//             reservation,
-//             versioned: RefCell::new(HashMap::new()),
-//         }
-//     }
-
-//     pub fn lookup(&self) -> &'l Lookup {
-//         self.lookup
-//     }
-
-//     pub(crate) fn expected_versions(&self) -> item::version::Expected {
-//         let versioned = self.versioned.borrow();
-//         let iter = versioned.iter()
-//             .map(|(&id, versioned)| (id, versioned.expected()));
-//         item::version::Expected::new(iter)
-//     }
-
-//     pub(crate) fn take_records(&mut self) -> Records<Action> {
-//         let mut records = Records::new();
-//         for (_, versioned) in self.versioned.borrow_mut().drain() {
-//             if let Versioned::Record(packed) = versioned {
-//                 records.push(packed);
-//             }
-//         }
-
-//         records
-//     }
-
-//     pub(crate) fn into_context(self) -> Context {
-//         self.context
-//     }
-
-//     pub fn get<'i, T>(&'i self, id: IdT<T>) -> Result<Get<'l, 'i, Lookup, Action, Context, T>, lookup::Error> 
-//     where
-//         Lookup: lookup::OfType<T>,
-//     {
-//         let item: &Item<T> = self.lookup.lookup(id)?;
-
-//         Ok(Get::new(self, item))
-//     }
-
-//     pub fn create<Create>(&self, create: Create) -> Result<IdT<Create::T>, lookup::Error> 
-//     where 
-//         Lookup: item::Lookup,
-//         Create: 
-//             Into<Action> + 
-//             action::Create,
-//     {
-//         let id = self.reservation.claim_id().unwrap_or_else(|| unimplemented!());
-
-//         insert_action(&mut self.versioned.borrow_mut(), id, item::version::Change::create(), create.into());
-        
-//         Ok(IdT::new(id))
-//     }
-
-//     pub fn context(&self) -> &Context {
-//         &self.context
-//     }
-
-//     // Workaround for player::Manager
-//     pub(crate) fn context_mut(&mut self) -> &mut Context {
-//         &mut self.context
-//     }
-// }
-
-// impl<Lookup, Root, Action, Trigger> interaction::Interactor<'_, '_, Lookup, Root, Action, Trigger> {
-//     pub fn enqueue_trigger(&mut self, trigger: Trigger) {
-//         self.context.enqueue_trigger(trigger);
-//     }
-// }
-
-// impl<State, Root, Action, Trigger, GameOutcome> reaction::Interactor<'_, '_, State, Root, Action, Trigger, GameOutcome> {
-//     pub fn enqueue_trigger(&mut self, trigger: Trigger) {
-//         self.context.enqueue_trigger(trigger);
-//     }
-
-//     pub fn set_game_outcome(&mut self, game_outcome: GameOutcome) -> Option<GameOutcome> {
-//         self.context.set_game_outcome(game_outcome)
-//     }
-// }
-
-// macro_rules! impl_get_root {
-//     ($(<$($ty_param:ident),*> $ty:ty),+) => {
-//         $(
-//             impl<'l, 'r, Lookup, Action, Root, $($ty_param),*> Interactor<'l, Lookup, Action, $ty> {
-//                 pub fn get_root(&mut self) -> Result<Get<'l, '_, Lookup, Action, $ty, Root>, lookup::Error>
-//                 where 
-//                     Lookup: item::lookup::OfType<Root>,
-//                 {
-//                     self.get(*self.context().root)
-//                 }
-//             }
-//         )+
-//     };
-// }
-
-// impl_get_root! {
-//     <> player::init::Context<'r, IdT<Root>>,
-//     <Trigger> interaction::Context<'r, IdT<Root>, Trigger>,
-//     <Trigger, GameOutcome> reaction::Context<'r, IdT<Root>, Trigger, GameOutcome>
-// }
-
-// fn insert_action<Action>(versioned: &mut HashMap<item::Id, Versioned<Action>>, id: item::Id, version: item::version::Change, action: Action) {
-//     let record = record::Packed::new(id, version, action);
-
-//     use std::collections::hash_map::Entry;
-//     match versioned.entry(id) {
-//         Entry::Occupied(mut oe) => match oe.get_mut() {
-//             Versioned::Read(_) => {
-//                 oe.insert(Versioned::Record(record));
-//             }
-//             Versioned::Record(packed) => packed.append(record.into_action()),
-//         },
-//         Entry::Vacant(ve) => {
-//             ve.insert(Versioned::Record(record));
-//         }
-//     }
-// }
-
-// pub struct Get<'l, 'i, Lookup, Action, Context, T> {
-//     interactor: &'i Interactor<'l, Lookup, Action, Context>,
-//     item: &'l Item<T>,
-// }
-
-// impl<'l, 'i, Lookup, Action, Context, T> Get<'l, 'i, Lookup, Action, Context, T> {
-//     fn new(interactor: &'i Interactor<'l, Lookup, Action, Context>, item: &'l Item<T>) -> Self {
-//         interactor.versioned.borrow_mut()
-//             .entry(item.id().untyped())
-//             .or_insert(Versioned::Read(item.version()));
-
-//         Self {
-//             interactor,
-//             item,
-//         }
-//     }
-
-//     pub fn get(&self) -> &T {
-//         self.item.get()
-//     }
-
-//     pub fn update<Update>(&self, update: Update) 
-//         -> &Self
-//     where 
-//         Update:
-//             Into<Action> + 
-//             action::Update<T = T>,
-//     {
-//         insert_action(&mut self.interactor.versioned.borrow_mut(), self.item.id().untyped(), item::version::Change::update(self.item.version()), update.into());
-//         self
-//     }
-
-//     pub fn destroy<Destroy>(&self, destroy: Destroy)
-//         -> &Self
-//     where 
-//         Destroy: 
-//             Into<Action> + 
-//             action::Destroy<T = T>,
-//     {
-//         insert_action(&mut self.interactor.versioned.borrow_mut(), self.item.id().untyped(), item::version::Change::destroy(self.item.version()), destroy.into());
-//         self
-//     }
-
-//     pub fn follow<'u, U>(&'u self, id: IdT<U>) -> Result<Get<'l, 'u, Lookup, Action, Context, U>, lookup::Error> 
-//     where 
-//         'u: 'l,
-//         Lookup: lookup::OfType<U>,
-//     {
-//         self.interactor.get(id)
-//     }
-// }
-
-// impl<'l, 'i, Lookup, Action, Context, T> ops::Deref for Get<'l, 'i, Lookup, Action, Context, T> {
-//     type Target = T;
-
-//     fn deref(&self) -> &Self::Target {
-//         self.item.get()
-//     }
-// }
-
-#[derive(Debug)]
-enum Versioned<Action> {
-    Read(item::Version),
-    Record(record::Packed<Action>),
-}
-
-impl<Action> Versioned<Action> {
-    fn expected(&self) -> item::Version {
-        match self {
-            Versioned::Read(version) => *version,
-            Versioned::Record(packed) => packed.version_change().before,
-        }
     }
 }

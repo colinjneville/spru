@@ -5,7 +5,7 @@ use std::{collections::VecDeque, marker::PhantomData};
 pub use event::Event;
 pub mod signal;
 
-use crate::{client, game, interaction, item::{self, lookup::{self, canonical, Canonical}}, log, player, reaction, record::{self, Records}, snapshot, state, transaction::{self, Transactions}, visibility, Interactor, Save, Snapshot, Transaction};
+use crate::{action, client, error::{RecoverableError, RecoverableResult}, game, interaction, interactor::{self, TakeGameOutcome, TakeTriggers}, item::{self, lookup::{self, Canonical}}, log, player, reaction, record::{self, Records}, snapshot, state, transaction::{self, Transactions}, visibility, Interactor, Save, Snapshot, Transaction};
 
 #[derive(Debug)]
 pub struct Output<Action, GameOutcome, Ret> {
@@ -50,53 +50,29 @@ impl<Action, GameOutcome> Messaging<Action, GameOutcome> {
     }
 }
 
-#[derive(Debug)]
-#[derive(thiserror::Error)]
-pub enum NewError {
-    #[error("{0}")]
-    Lookup(#[from] lookup::Error),
-    #[error(transparent)]
-    Init(game::init::Error),
-    #[error(transparent)]
-    Log(#[from] log::Error)
-}
+// #[derive(Debug)]
+// #[derive(thiserror::Error)]
+// pub enum NewError {
+//     #[error("{0}")]
+//     Lookup(#[from] lookup::Error),
+//     #[error(transparent)]
+//     Init(game::init::Error),
+// }
 
-impl<GameInitError, ActionError> From<game::init::Error<GameInitError>> for NewError<GameInitError, ActionError> {
-    fn from(value: game::init::Error<GameInitError>) -> Self {
-        match value {
-            game::init::Error::Lookup(e) => Self::Lookup(e),
-            game::init::Error::Init(e) => Self::Init(e),
-        }
-    }
-}
+// impl From<game::init::Error> for NewError {
+//     fn from(value: game::init::Error) -> Self {
+//         match value {
+//             game::init::Error::Lookup(e) => Self::Lookup(e),
+//             game::init::Error::Init(e) => Self::Init(e),
+//         }
+//     }
+// }
 
 #[derive(Debug)]
 #[derive(thiserror::Error)]
 pub enum LoadError {
     #[error(transparent)]
     Snapshot(#[from] snapshot::ApplyError),
-}
-
-#[derive(Debug)]
-#[derive(thiserror::Error)]
-pub enum AddPlayerError {
-    #[error(transparent)]
-    Snapshot(#[from] snapshot::CreateError),
-    #[error(transparent)]
-    Lookup(#[from] canonical::Error), 
-    #[error("{0}")]
-    Init(player::init::Error),
-    #[error(transparent)]
-    Log(#[from] log::Error),
-}
-
-impl<PlayerInitError, ActionError> From<player::manager::InitializeError<PlayerInitError>> for AddPlayerError<PlayerInitError, ActionError> {
-    fn from(value: player::manager::InitializeError<PlayerInitError>) -> Self {
-        match value {
-            player::manager::InitializeError::Lookup(e) => Self::Lookup(e),
-            player::manager::InitializeError::Init(e) => Self::Init(e),
-        }
-    }
 }
 
 // #[derive(Debug)]
@@ -130,15 +106,29 @@ pub struct Server<State, Action, Root, PlayerInit, Interaction, Reaction> {
     reaction: Reaction,
 }
 
+// Temporary solution because we need split borrows for `root`
+macro_rules! build_transaction {
+    ($this:ident, $complete:ident) => {
+        Self::build_transaction_internal(
+            &mut $this.lookup, 
+            &mut $this.log, 
+            &$this.reservation, 
+            &$this.root, 
+            &$this.reaction, 
+            $complete,
+        )
+    }
+}
+
 impl<State, Action, Root, PlayerInit, Interaction, Reaction> Server<State, Action, Root, PlayerInit, Interaction, Reaction> {
     pub fn new<GameInit>(
         game_init: GameInit, 
         player_init: PlayerInit,
         reaction: Reaction,
-    ) -> Result<Self, NewError> 
+    ) -> Result<Self, crate::TempError> 
     where 
         Action: crate::Action<Canonical<State>, Undo = Action>,
-        State: crate::State<Canonical<State>>,
+        // State: crate::State<Canonical<State>>,
         GameInit: game::Init<State = State, Action = Action, Root = Root>,
         Reaction: crate::Reaction<State = State, Action = Action, Root = Root>,
     {
@@ -149,22 +139,26 @@ impl<State, Action, Root, PlayerInit, Interaction, Reaction> Server<State, Actio
         let mut lookup = Canonical::new();
 
         let context = game::init::Context { };
-        let mut interactor = Interactor::new(&lookup, &reservation, context);
-        let root = game_init.initialize(&mut interactor)?;
+
+        // If we fail at any point, there is no need to attempt undo since we scrapping the server anyway
+        let mut interactor = Interactor::new(&mut lookup, &reservation, context);
+        let root = game_init.initialize(&mut interactor)
+            .map_err(crate::TempError::discard)?;
+        let interactor_complete = interactor.complete(None::<action::Error>)
+            .map_err(crate::TempError::discard)?;
 
         let mut log = log::Server::new();
-        let records = interactor.take_records();
 
-        let _game_init_transaction = Self::build_transaction_internal(
-            &mut lookup, 
-            &mut log, 
-            &reservation, 
-            &root, 
-            &reaction, 
-            records, 
-            None, 
-            VecDeque::new(),
-        )?;
+        let (_game_init_transaction, _game_outcome) = 
+            Self::build_transaction_internal(
+                &mut lookup, 
+                &mut log, 
+                &reservation, 
+                &root, 
+                &reaction, 
+                interactor_complete,
+            )
+            .map_err(crate::TempError::discard)?;
 
         let server = Self {
             lookup,
@@ -251,7 +245,7 @@ impl<State, Action, Root, PlayerInit, Interaction, Reaction> Server<State, Actio
             add_player::Error
         > 
     where
-        State: crate::State<Canonical<State>>, 
+        // State: crate::State<Canonical<State>>, 
         Action: crate::Action<Canonical<State>, Undo = Action> + Clone,
         Reaction: crate::Reaction<State = State, Action = Action, Root = Root, GameOutcome: Clone>,
         PlayerInit: player::Init<State = State, Action = Action, Root = Root>,
@@ -275,21 +269,27 @@ impl<State, Action, Root, PlayerInit, Interaction, Reaction> Server<State, Actio
 
         let context = player::init::Context {
             root: &self.root,
-            // To be overwritten in player::Manager
+            // To be overwritten in player::Manager::add
             player: player::Id::ZERO,
         };
-        let mut interactor = Interactor::new(&self.lookup, &self.reservation, context);
+        let interactor = Interactor::new(&mut self.lookup, &self.reservation, context);
 
-        let local_player_id = self.player_manager.add(&mut interactor, reservation_range, init_input)
-            .map_err(crate::TempError::discard)?;
-
-        let records = interactor.take_records();
+        let result = match self.player_manager.add(interactor, reservation_range, init_input) {
+            Ok(complete) => {
+                let added_player_id = complete.context.player;
+                build_transaction!(self, complete)
+                // self.build_transaction(complete)
+                    .map(|(transaction, game_outcome)| (transaction, game_outcome, added_player_id))
+                    .map_err(RecoverableError::map)
+            }
+            Err(err) => Err(err),
+        };
         
-        match self.build_transaction(records, Some(local_player_id), VecDeque::new()) {
+        match result {
             // No reactions are currently permitted on init, so no GameOutcome is possible 
-            Ok((transaction, _game_outcome)) => {
+            Ok((transaction, _game_outcome, added_player_id)) => {
                 for player_id in self.player_manager.iter() {
-                    if player_id != local_player_id {
+                    if player_id != added_player_id {
                         messaging.push_signal(player_id, client::signal::ConfirmedTransaction {
                             confirmed_transaction: transaction.clone(),
                         });
@@ -305,12 +305,12 @@ impl<State, Action, Root, PlayerInit, Interaction, Reaction> Server<State, Actio
                     snapshot,
                     transactions,
                     reservation,
-                    local_player_id,
+                    local_player_id: added_player_id,
                 };
 
                 Ok(messaging.into_output(add_player::Ret {
                     client_init,
-                    player_id: local_player_id,
+                    player_id: added_player_id,
                 }))
             },
             Err(err) => {
@@ -321,16 +321,16 @@ impl<State, Action, Root, PlayerInit, Interaction, Reaction> Server<State, Actio
         }
     }
 
-    fn build_transaction(
+    fn build_transaction<Context, Output>(
         &mut self,
-        initial_records: Records<Action>,
-        player_context: Option<player::Id>,
-        triggers: VecDeque<Reaction::Trigger>,
+        interactor_complete: interactor::Complete<Action, Context, Output>,
     )
-        -> log::Result<(transaction::Confirmed<Action>, Option<Reaction::GameOutcome>)>
+        -> RecoverableResult<(transaction::Confirmed<Action>, Option<Reaction::GameOutcome>), action::Error>
     where
-        Reaction: crate::Reaction<State = State, Action = Action, Root = Root, GameOutcome: Clone>, 
-        Action: crate::Action<Canonical<State>, Undo = Action> + Clone,
+        Reaction: crate::Reaction<State = State, Action = Action, Root = Root>, 
+        Action: crate::Action<Canonical<State>, Undo = Action>,
+        Context: interactor::PlayerContext,
+        Output: interactor::TakeTriggers<Reaction::Trigger> + interactor::TakeGameOutcome<Reaction::Trigger>,
     {
         Self::build_transaction_internal(
             &mut self.lookup, 
@@ -338,161 +338,90 @@ impl<State, Action, Root, PlayerInit, Interaction, Reaction> Server<State, Actio
             &self.reservation, 
             &self.root, 
             &self.reaction, 
-            initial_records, 
-            player_context, 
-            triggers
+            interactor_complete,
         )
     }
 
-    fn build_transaction_internal(
+    fn build_transaction_internal<Context, Output>(
         lookup: &mut Canonical<State>,
         log: &mut log::Server<Action>,
         reservation: &item::id::Reservation,
         root: &Root,
         reaction: &Reaction,
 
-        initial_records: Records<Action>,
-        player_context: Option<player::Id>,
-        triggers: VecDeque<Reaction::Trigger>,
+        interactor_complete: interactor::Complete<Action, Context, Output>,
     )
-        -> log::Result<(transaction::Confirmed<Action>, Option<Reaction::GameOutcome>)>
+        -> RecoverableResult<(transaction::Confirmed<Action>, Option<Reaction::GameOutcome>), action::Error>
     where
         Reaction: crate::Reaction<State = State, Action = Action, Root = Root>, 
         Action: crate::Action<Canonical<State>, Undo = Action>,
+        Context: interactor::PlayerContext,
+        Output: interactor::TakeTriggers<Reaction::Trigger> + interactor::TakeGameOutcome<Reaction::Trigger>,
     {
-        let mut undo_records = initial_records.apply_or_revert(lookup)?;
-        let mut do_records = initial_records;
-        let mut reaction_context = reaction::Context::new(root, player_context, triggers);
-        
-        let result = 'result: {
-            while let Some(trigger) = reaction_context.dequeue_trigger() {
-                let mut interactor = Interactor::new(lookup, reservation, reaction_context);
-                match reaction.apply(&mut interactor, trigger) {
-                    Ok(()) => {
-                        let reaction_do_records = interactor.take_records();
-                        reaction_context = interactor.into_context();
+        let interactor::Complete {
+            expected_versions: _expected_versions,
+            do_records: mut all_do_records,
+            undo_records: mut all_undo_records,
+            context,
+            mut output,
+        } = interactor_complete;
 
-                        match reaction_do_records.apply_or_revert(lookup) {
-                            Ok(reaction_undo_records) => {
-                                do_records.extend(reaction_do_records);
-                                undo_records.extend(reaction_undo_records);
-                            }
-                            Err(err) => break 'result Err(err),
-                        }
-                    }
-                    Err(err) => break 'result Err(log::Error::Record(record::Error::Lookup(err))),
-                }
-            }
-            Ok(reaction_context.take_game_outcome())
+        let mut reaction_context = reaction::Context {
+            root, 
+            player: context.player_context(),
         };
 
-        match result {
-            Ok(game_outcome) => { 
-                let transaction_id = log.register_undo(Transaction::new(undo_records));
-                Ok((transaction::Confirmed::new(transaction_id, Transaction::new(do_records)), game_outcome))
+        let mut triggers = output.take_triggers();
+        let mut game_outcome = None;
+
+        while let Some(trigger) = triggers.pop_front() {
+            let mut interactor = Interactor::new(lookup, reservation, reaction_context);
+            if let Some(go) = game_outcome.take() {
+                interactor.set_game_outcome(go);
             }
-            // Unrecoverable error
-            Err(err @ log::Error::Revert(_)) => {
-                Err(err)
-            }
-            // Recoverable error, attempt undo
-            Err(log::Error::Record(initial_error)) => {
-                match undo_records.apply(lookup) {
-                    // Undo succeeded, return a recoverable error
-                    Ok(_) => Err(log::Error::Record(initial_error)),
-                    // Undo failed, state is inconsistent
-                    Err(undo_error) => 
-                        Err(log::Error::Revert(log::RevertError { initial: Some(initial_error), fatal: undo_error }))
+            
+            let interactor_error = reaction.apply(&mut interactor, trigger).err().map(Into::into);
+            match interactor.complete(interactor_error) {
+                Ok(complete) => {
+                    let crate::interactor::Complete {
+                        expected_versions: _expected_versions,
+                        do_records,
+                        undo_records,
+                        context,
+                        mut output,
+                    } = complete;
+
+                    all_do_records.extend(do_records);
+                    all_undo_records.extend(undo_records);
+
+                    triggers.append(&mut output.take_triggers());
+
+                    game_outcome = output.take_game_outcome();
+
+                    reaction_context = context;
+                },
+                Err(mut err) => {
+                    // Only bother with undo if we haven't hit an unrecoverable error already
+                    if err.is_recovered() {
+
+                        if let Err(undo_error) = all_undo_records.apply(lookup) {
+                            // Undo failed, state is inconsistent
+                            err.recovery_error = Some(undo_error);
+                        }
+                    }
+
+                    return Err(err);
                 }
             }
         }
-    }
 
-    // fn apply_transaction2(
-    //     &mut self, 
-    //     messaging: &mut Messaging<Action, Reaction::GameOutcome>, 
-    //     interaction_transaction: Option<InteractionTransaction<Interaction::Trigger>>, 
-    //     transaction: Transaction<Action>,
-    //     pending_transaction_id: Option<transaction::Pending>,
-    //     reaction_context: reaction::Context<Root, Reaction::Trigger, Reaction::GameOutcome>,
+        let undo_transaction = Transaction::new(all_undo_records);
+        let transaction_id = log.register_undo(undo_transaction);
+
+        let do_transaction = transaction::Confirmed::new(transaction_id, Transaction::new(all_do_records));
         
-    // ) 
-    //     -> Result<(), signal::Error>
-    // where
-    //     Interaction: crate::Interaction<Action = Action, Root = Root, Trigger = Reaction::Trigger>,
-    //     Reaction: crate::Reaction<State = State, Action = Action, Root = Root, GameOutcome: Clone>, 
-    //     Action: crate::Action<Canonical<State>, Undo = Action> + Clone,
-    // {
-    //     match self.log.apply_or_revert(&mut self.lookup, transaction) {
-    //         // Desync if revert fails
-    //         Err(log::Error::Revert(revert_error)) => return Err(crate::TempError::discard(revert_error).into()),
-    //         // Reject if transaction fails
-    //         Err(_) => { },
-    //         Ok(confirmed_transaction) => {
-    //             let context = reaction::Context::new(&self.root, Some(player_context),);
-    //             let mut interactor = Interactor::new(&self.lookup, &self.reservation, context);
-
-    //             let (game_outcome, pending_transaction) = if let Some(interaction_transaction) = interaction_transaction {
-    //                 // TODO instead of desyncing, we could hard undo the transaction (no one else has observed it yet)
-    //                 self.reaction.apply(&mut interactor, interaction_transaction.interaction_output)
-    //                     .map_err(crate::TempError::discard)?;
-
-    //                 (game_outcome, Some((interaction_transaction.sender, interaction_transaction.pending_transaction_id)))
-    //             } else {
-    //                 (None, None)
-    //             };
-
-    //             let transaction = interactor.take_transaction();
-    //             let reaction = self.log.apply_or_revert(&mut self.lookup, transaction)
-    //                 .map_err(crate::TempError::discard)?;
-
-    //             for player_id in self.player_manager.iter() {
-    //                 let signal: Option<client::signal::Internal<_, _>> = if let Some((owner, pending_transaction_id)) = pending_transaction {
-    //                     // If this transaction originated from a a player interaction, they only need a confirmation (and final tx id),
-    //                     // but all other clients need the whole transaction details
-    //                     if owner == player_id {
-    //                         Some(client::signal::InteractionResult {
-    //                             pending_transaction_id,
-    //                             confirmed_transaction_id: Some(confirmed_transaction.id),
-    //                         }.into())
-    //                     } else {
-    //                         None
-    //                     }
-    //                 } else {
-    //                     None
-    //                 };
-
-    //                 let signal = if let Some(signal) = signal {
-    //                     signal
-    //                 } else {
-    //                     client::signal::ConfirmedTransaction {
-    //                         confirmed_transaction: confirmed_transaction.clone(),
-    //                     }.into()
-    //                 };
-                    
-    //                 messaging.push_signal(player_id, signal);
-
-    //                 messaging.push_signal(player_id, 
-    //                     client::signal::ConfirmedTransaction {
-    //                         confirmed_transaction: reaction.clone(),
-    //                     });
-
-    //                 if let Some(game_outcome) = game_outcome.as_ref() {
-    //                     messaging.push_signal(player_id, 
-    //                         client::signal::EndGame {
-    //                             game_outcome: game_outcome.clone(),
-    //                         });
-    //                 }
-    //             }
-
-    //             if let Some(game_outcome) = game_outcome {
-    //                 messaging.push_event(event::GameComplete { game_outcome });
-    //             }
-    //         }
-    //     }
-
-    //     Ok(())
-    // }
+        Ok((do_transaction, game_outcome))
+    }
 
     fn apply_interaction(&mut self, messaging: &mut Messaging<Action, Reaction::GameOutcome>, sender: player::Id, apply_interaction: signal::ApplyInteraction<Interaction>) 
         -> Result<(), crate::TempError>
@@ -510,65 +439,78 @@ impl<State, Action, Root, PlayerInit, Interaction, Reaction> Server<State, Actio
         } = apply_interaction;
         
         let context = interaction::Context::new(&self.root, sender);
-        let mut interactor = Interactor::new(&self.lookup, &self.reservation, context);
+        let mut interactor = Interactor::new(&mut self.lookup, &self.reservation, context);
+        let interaction_error = interaction.apply(&mut interactor).err();
+        let result = match interactor.complete(interaction_error) {
+            Ok(complete) => {
+                // let records = interactor.take_records();
+                let interaction_record_count = complete.do_records.len();
 
-        // Interaction must first succeeed...
-        if let Ok(()) = interaction.apply(&mut interactor) {
-            let actual_versions = interactor.expected_versions();
-            let records = interactor.take_records();
-            let interaction_record_count = records.len();
+                // Auto-reject if versions don't match
+                if complete.expected_versions == expected_versions {
+                    
+                    // match self.build_transaction(complete) {
+                    match build_transaction!(self, complete) {
+                        Ok((confirmed_transaction, game_outcome)) => {
+                            // Everything succeeded, exit before the failure signal below
 
-            // Auto-reject if versions don't match
-            if actual_versions == expected_versions {                
-                let triggers = interactor.into_context().into_triggers();
-                if let Ok((confirmed_transaction, game_outcome)) = self.build_transaction(records, Some(sender), triggers) {
-                    // Everything succeeded, exit before the failure signal below
+                            // Send the whole transaction to all other players
+                            for player_id in self.player_manager.iter() {
+                                if player_id != sender {
+                                    messaging.push_signal(player_id, client::signal::ConfirmedTransaction {
+                                        confirmed_transaction: confirmed_transaction.clone(),
+                                    });
+                                }
+                            }
 
-                    // Send the whole transaction to all other players
-                    for player_id in self.player_manager.iter() {
-                        if player_id != sender {
-                            messaging.push_signal(player_id, client::signal::ConfirmedTransaction {
-                                confirmed_transaction: confirmed_transaction.clone(),
+                            // Confirm the tentative transaction with the sender + the log generated by reactions
+                            let confirmed_transaction_id = confirmed_transaction.id;
+                            let mut records = confirmed_transaction.transaction.into_records();
+                            records.trim_start(interaction_record_count);
+
+                            messaging.push_signal(sender, 
+                            client::signal::InteractionResult {
+                                pending_transaction_id,
+                                confirmed_transaction_id: Some((confirmed_transaction_id, records)),
                             });
+
+                            if let Some(game_outcome) = game_outcome {
+                                for player_id in self.player_manager.iter() {
+                                    messaging.push_signal(player_id, client::signal::EndGame {
+                                        game_outcome: game_outcome.clone(),
+                                    })
+                                }
+
+                                messaging.push_event(event::GameComplete {
+                                    game_outcome,
+                                });
+                            }
+
+                            Ok(())
                         }
+                        Err(err) => Err(crate::TempError::discard::<RecoverableError<action::Error>>(err)),
                     }
+                } else {
+                    // Invalid versions
+                    Err(crate::TempError::new())
+                }
+            },
+            Err(err) => Err(crate::TempError::discard(err)),
+        };
 
-                    // Confirm the tentative transaction with the sender + the log generated by reactions
-                    let confirmed_transaction_id = confirmed_transaction.id;
-                    let mut records = confirmed_transaction.transaction.into_records();
-                    records.trim_start(interaction_record_count);
-
-                    messaging.push_signal(sender, 
+        match result {
+            Ok(()) => Ok(()),
+            Err(err) => {
+                // Something failed, reject the interaction
+                messaging.push_signal(sender, 
                     client::signal::InteractionResult {
                         pending_transaction_id,
-                        confirmed_transaction_id: Some((confirmed_transaction_id, records)),
+                        confirmed_transaction_id: None,
                     });
 
-                    if let Some(game_outcome) = game_outcome {
-                        for player_id in self.player_manager.iter() {
-                            messaging.push_signal(player_id, client::signal::EndGame {
-                                game_outcome: game_outcome.clone(),
-                            })
-                        }
-
-                        messaging.push_event(event::GameComplete {
-                            game_outcome,
-                        });
-                    }
-
-                    return Ok(());
-                }
+                Err(err)
             }
         }
-
-        // Something failed, reject the interaction
-        messaging.push_signal(sender, 
-            client::signal::InteractionResult {
-                pending_transaction_id,
-                confirmed_transaction_id: None,
-            });
-
-        Ok(())
     }
 
     pub fn snapshot(&mut self) -> Result<Snapshot<State, Root>, snapshot::CreateError> 

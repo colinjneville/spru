@@ -4,7 +4,7 @@ pub use error::Error;
 use std::marker::PhantomData;
 
 use derive_where::derive_where;
-use spru::{item::IdT, player};
+use spru::{error::AnyResult, item::IdT, player};
 use tagset::tagset;
 use telety::telety;
 
@@ -58,19 +58,19 @@ pub struct AddPlayer<PlayerState> {
 impl<PlayerState: Clone> spru::action::Update for AddPlayer<PlayerState> {
     type T = State<PlayerState>;
     type Undo = RemovePlayer<PlayerState>;
-    type Error = Error;
 
-    fn update(&self, value: &mut Self::T) -> Result<Option<Self::Undo>, Self::Error> {
+    #[allow(refining_impl_trait)]
+    fn update(&self, value: &mut Self::T) -> AnyResult<Self::Undo> {
         let index = self.id.into_usize();
         while value.map.len() <= index {
             value.map.push(None);
         }
 
         match &mut value.map[index] {
-            Some(_) => Err(Error::PlayerAlreadyExists(self.id)),
+            Some(_) => Err(Error::PlayerAlreadyExists(self.id).into()),
             option @ None => {
                 *option = Some((self.id, self.player_state.clone()));
-                Ok(Some(remove_player(self.id)))
+                Ok(remove_player(self.id))
             }
         }
     }
@@ -93,17 +93,17 @@ pub struct RemovePlayer<PlayerState> {
 impl<PlayerState> spru::action::Update for RemovePlayer<PlayerState> {
     type T = State<PlayerState>;
     type Undo = AddPlayer<PlayerState>;
-    type Error = Error;
 
-    fn update(&self, value: &mut Self::T) -> Result<Option<Self::Undo>, Self::Error> {
+    #[allow(refining_impl_trait)]
+    fn update(&self, value: &mut Self::T) -> AnyResult<Self::Undo> {
         let index = self.id.into_usize();
         if let Some(player_state) = value.map.get_mut(index) {
             if let Some((_, player_state)) = player_state.take() {
-                return Ok(Some(add_player(self.id, player_state)))
+                return Ok(add_player(self.id, player_state))
             }
         }
 
-        Err(Error::PlayerDoesNotExist(self.id))
+        Err(Error::PlayerDoesNotExist(self.id).into())
     }
 }
 

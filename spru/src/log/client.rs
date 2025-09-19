@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 
-use crate::{action, interaction, item, log, record::{self, Records}, transaction, Transaction};
+use crate::{action, error::{RecoverableError, RecoverableResult}, interaction, item, log::{self, error::ConfirmError}, record::{self, Records}, transaction, Transaction};
 
 #[derive(Debug)]
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -43,7 +43,7 @@ impl<Action, Interaction> Client<Action, Interaction> {
         }
     }
     pub(crate) fn apply_confirmed<Lookup>(&mut self, lookup: &mut Lookup, transaction: transaction::Confirmed<Action>)
-        -> Result<(), log::ConfirmError>
+        -> RecoverableResult<(), ConfirmError>
     where
         Action: crate::Action<Lookup, Undo = Action>,
     {
@@ -51,35 +51,40 @@ impl<Action, Interaction> Client<Action, Interaction> {
             self.next_confirmed_id = self.next_confirmed_id.next();
 
             self.apply_records(lookup, transaction.transaction.records())
-                .map_err(log::ConfirmError::Log)
+                .map_err(|e| e.map_with(Into::into))
         } else {
-            Err(log::ConfirmError::Mismatch(transaction::id::MismatchError { expected: self.next_confirmed_id, actual: transaction.id }))
+            Err(ConfirmError::Mismatch(transaction::id::MismatchError { expected: self.next_confirmed_id, actual: transaction.id }).into())
         }
     }
 
     fn apply_records<Lookup>(&mut self, lookup: &mut Lookup, records: &Records<Action>)
-        -> log::Result<()>
+        -> RecoverableResult<(), action::Error>
     where
         Action: crate::Action<Lookup, Undo = Action>,
     {
         match records.apply_or_revert(lookup) {
             Ok(_) => Ok(()),
-            // Failed to apply transaction, and revert 
-            Err(e @ log::Error::Revert(_)) => Err(e),
-            Err(log::Error::Record(e)) => {
-                // Log apply failed, discard our local pending changes...
-                // TODO we could instead look for the earliest incompatible transaction
-                // and only rollback until there
-                match self.revert_pending(lookup, None) {
-                    Ok(()) => {
-                        // Then try one more time on what should be a clean slate
-                        records.apply(lookup)
-                            .map(|_| ())
-                            .map_err(log::Error::Record)
-                    },
-                    Err(e2) => Err(log::Error::Revert(log::RevertError { initial: Some(e), fatal: e2 })),
+            Err(mut re) => 
+                if re.is_recovered() {
+                    // Log apply failed, discard our local pending changes...
+                    // TODO we could instead look for the earliest incompatible transaction
+                    // and only rollback until there
+                    match self.revert_pending(lookup, None) {
+                        Ok(()) => {
+                            // Then try one more time on what should be a clean slate
+                            records.apply(lookup)
+                                .map(|_| ())
+                                .map_err(Into::into)
+                        },
+                        Err(e) => {
+                            re.recovery_error = Some(e);
+                            Err(re)
+                        }
+                    }
+                } else {
+                    // Failed to apply transaction, and revert
+                    Err(re)
                 }
-            },
         }
     }
 
@@ -88,20 +93,20 @@ impl<Action, Interaction> Client<Action, Interaction> {
         interaction: interaction::Staged<Interaction>, 
         undo_transaction: Transaction<Action>,
     )
-        -> log::Result<transaction::Pending>
+        -> transaction::Pending
     where
         Action: crate::Action<Lookup, Undo = Action>,
     {
         let id = self.next_pending_id;
         self.next_pending_id = self.next_pending_id.next();
-        // let undo_transaction = transaction.apply_or_revert(lookup)?;
+        
         let pending = PendingTransaction {
             id,
             undo_transaction,
             interaction: Some(interaction),
         };
         self.pending_undo_transactions.push_back(pending);
-        Ok(id)
+        id
     }
 
     pub fn apply_pending(&mut self, pending_transaction_id: transaction::Pending)
@@ -160,7 +165,7 @@ impl<Action, Interaction> Client<Action, Interaction> {
     }
 
     pub fn revert_pending<Lookup>(&mut self, lookup: &mut Lookup, until: Option<transaction::Pending>) 
-        -> Result<(), record::Error> 
+        -> Result<(), action::Error> 
     where 
         Action: crate::Action<Lookup, Undo = Action>,
     {

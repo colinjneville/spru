@@ -1,6 +1,6 @@
 use std::{sync::{atomic::{self, AtomicUsize}, Arc, Mutex}};
 
-use crate::{item, log, transaction::{self, Transactions}, Transaction};
+use crate::{action, error::{RecoverableError, RecoverableResult}, item, log::{self, error::UndoError}, record, transaction::{self, Transactions}, Transaction};
 
 #[derive(Debug)]
 pub(crate) struct Server<Action> {
@@ -32,7 +32,7 @@ impl<Action> Server<Action> {
 
 impl<Action> Server<Action> {
     fn apply_or_revert<Lookup>(&mut self, lookup: &mut Lookup, transaction: Transaction<Action>) 
-        -> log::Result<transaction::Confirmed<Action>>
+        -> RecoverableResult<transaction::Confirmed<Action>, action::Error>
     where 
         Action: crate::Action<Lookup, Undo = Action>,
     {
@@ -59,14 +59,18 @@ impl<Action> Server<Action> {
     }
 
     pub fn undo<Lookup>(&mut self, lookup: &mut Lookup, transaction_id: transaction::Id) 
-        -> Result<transaction::Confirmed<Action>, log::UndoError>
+        -> RecoverableResult<transaction::Confirmed<Action>, UndoError>
     where 
         Action: crate::Action<Lookup, Undo = Action> + Clone,
     {
         let transaction = self.undo_transactions.get(transaction_id)
-            .ok_or(log::UndoError::Invalid(transaction::id::InvalidError(transaction_id)))?.clone();
+            .ok_or(UndoError::Invalid(transaction::id::InvalidError(transaction_id)))?
+            .clone();
         
-        Ok(self.apply_or_revert(lookup, transaction)?)
+        let confirmed = self.apply_or_revert(lookup, transaction)
+            .map_err(|e| e.map_with(Into::into))?;
+        
+        Ok(confirmed)
     }
 
     pub fn pin_undo(&self) -> UndoPin {

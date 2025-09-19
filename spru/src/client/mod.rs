@@ -8,7 +8,7 @@ pub mod revert_interaction;
 pub mod signal;
 pub mod stage_interaction;
 
-use crate::{interaction, interactor, item, log, player, server, state, Interactor, Transaction};
+use crate::{error::RecoverableError, interaction, interactor, item, log, player, server, state, Interactor, Transaction};
 
 
 #[derive(Debug)]
@@ -131,31 +131,17 @@ impl<Action, Root, Interaction, GameOutcome> Client<Action, Root, Interaction, G
         let context = interaction::Context::new(&self.root, self.local_player_id);
         let mut interactor = Interactor::new(lookup, &self.reservation, context);
         
-        let interaction_result = 'result: {
-            if let Err(e) = interaction.apply(&mut interactor) {
-                break 'result Err(e);
-            }
-        
-            interactor.flush()
-                .map_err(Into::into)
-        };
-
-        if let Err(initial_error) = interaction_result {
-
-            // The interaction failed, attempt revert and return regardless
-            let (Ok(err) | Err(err)) = interactor
-                .revert(initial_error)
-                .map(log::Error::from);
-
-            return Err(stage_interaction::Error::Temp(crate::TempError::discard(err)));
-        }
+        let interaction_error = interaction.apply(&mut interactor).err();
+        let complete = interactor.complete(interaction_error)
+            .map_err(crate::TempError::discard)?;
         
         let interactor::Complete {
             expected_versions,
-            do_records,
+            do_records: _do_records,
             undo_records,
+            context: _context,
             output,
-        } = interactor.complete();
+        } = complete;
 
         // The client can discard any Triggers, those are the server's responsibility
         // and the confirmed transaction message will contain any generated records
@@ -165,8 +151,7 @@ impl<Action, Root, Interaction, GameOutcome> Client<Action, Root, Interaction, G
             interaction,
             expected_versions,
         };
-        let pending_transaction_id = self.log.stage_pending(interaction, Transaction::new(undo_records))
-            .map_err(crate::TempError::discard)?;
+        let pending_transaction_id = self.log.stage_pending(interaction, Transaction::new(undo_records));
 
         Ok(state.into_output(stage_interaction::Ret {
             pending_transaction_id,

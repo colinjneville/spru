@@ -75,6 +75,7 @@ features = [
 
 [patch.crates-io]
 telety = { path = "../telety-ws/telety" } 
+telety-macro = { path = "../telety-ws/telety-macro" } 
 amass = { path = "../amass/amass" } 
 #tagset = { git = "https://github.com/colinjneville/tagset.git" }
 tagset = { path = "../tagit/tagset" }
