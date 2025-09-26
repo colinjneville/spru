@@ -1,11 +1,11 @@
 pub mod add_player;
 pub mod event;
-use std::{collections::VecDeque, marker::PhantomData};
+use std::marker::PhantomData;
 
 pub use event::Event;
 pub mod signal;
 
-use crate::{action, client, error::{RecoverableError, RecoverableResult}, game, interaction, interactor::{self, TakeGameOutcome, TakeTriggers}, item::{self, lookup::{self, Canonical}}, log, player, reaction, record::{self, Records}, snapshot, state, transaction::{self, Transactions}, visibility, Interactor, Save, Snapshot, Transaction};
+use crate::{action, client, error::{RecoverableError, RecoverableResult}, game, interaction, interactor::{self, TakeGameOutcome, TakeTriggers}, item::{self, lookup::Canonical}, log, player, reaction, snapshot, state, transaction::{self, Transactions}, visibility, Interactor, Save, Snapshot, Transaction};
 
 #[derive(Debug)]
 pub struct Output<Action, GameOutcome, Ret> {
@@ -29,7 +29,8 @@ impl<Action, GameOutcome> Messaging<Action, GameOutcome> {
     }
 
     pub fn push_signal<S: Into<client::signal::Internal<Action, GameOutcome>>>(&mut self, player_id: player::Id, signal: S) {
-        self.outbound.push((player_id, client::signal::Arg { signal: signal.into() }));
+        // TODO seq ids not yet implemented
+        self.outbound.push((player_id, client::signal::Arg { seq: 0, signal: signal.into() }));
     }
 
     pub fn push_event<E: Into<Event<GameOutcome>>>(&mut self, event: E) {
@@ -94,6 +95,96 @@ pub enum LoadError {
 //     }
 // }
 
+pub trait Bounded: Sized {
+    type State: crate::State<Canonical<Self::State>, Repr: TryFrom<state::Index>>;
+    type Action: crate::Action<Canonical<Self::State>, Undo = Self::Action> + Clone;
+    type Root: Clone;
+    type PlayerInit: crate::player::Init<State = Self::State, Action = Self::Action, Root = Self::Root>;
+    type Interaction: crate::Interaction<Action = Self::Action, Root = Self::Root, Trigger = <Self::Reaction as crate::Reaction>::Trigger>;
+    type Reaction: crate::Reaction<State = Self::State, Action = Self::Action, Root = Self::Root, GameOutcome: Clone>;
+
+    fn new<GameInit>(
+        game_init: GameInit, 
+        player_init: Self::PlayerInit,
+        reaction: Self::Reaction,
+    ) -> crate::TempResult<Self>
+    where
+        GameInit: game::Init<State = Self::State, Action = Self::Action, Root = Self::Root>,
+    ;
+
+    fn load_from_save(
+        save: Save<Self::State, Self::Root, Self::PlayerInit, Self::Reaction>,
+    ) -> Result<Self, LoadError>;
+
+    fn apply_signal(&mut self, sender: player::Id,  arg: signal::Arg<Self::Interaction>) 
+        -> signal::Result<Output<Self::Action, <Self::Reaction as crate::Reaction>::GameOutcome, signal::Ret>>;
+
+    fn add_player<'l>(&'l mut self, arg: add_player::Arg<<Self::PlayerInit as crate::player::Init>::In>) 
+        -> add_player::Result<Output<Self::Action, <Self::Reaction as crate::Reaction>::GameOutcome, add_player::Ret<Self::State, Self::Action, Self::Root>>>;
+
+    fn create_save(&self) 
+        -> Result<Save<Self::State, Self::Root, Self::PlayerInit, Self::Reaction>, snapshot::CreateError>
+    where 
+        Self::PlayerInit: Clone,
+        Self::Reaction: Clone,
+    ;
+}
+
+impl<State, Action, Root, PlayerInit, Interaction, Reaction> Bounded for Server<State, Action, Root, PlayerInit, Interaction, Reaction> 
+where
+    State: crate::State<Canonical<State>, Repr: TryFrom<state::Index>>,
+    Action: crate::Action<Canonical<State>, Undo = Action> + Clone,
+    Root: Clone,
+    PlayerInit: crate::player::Init<State = State, Action = Action, Root = Root>,
+    Interaction: crate::Interaction<Action = Action, Root = Root, Trigger = <Reaction as crate::Reaction>::Trigger>,
+    Reaction: crate::Reaction<State = State, Action = Action, Root = Root, GameOutcome: Clone>,
+{
+    type State = State;
+    type Action = Action;
+    type Root = Root;
+    type PlayerInit = PlayerInit;
+    type Interaction = Interaction;
+    type Reaction = Reaction;
+
+    fn new<GameInit>(
+        game_init: GameInit, 
+        player_init: Self::PlayerInit,
+        reaction: Self::Reaction,
+    ) -> crate::TempResult<Self>
+    where
+        GameInit: game::Init<State = Self::State, Action = Self::Action, Root = Self::Root>,
+    {
+        Self::new(game_init, player_init, reaction)
+    }
+
+    fn load_from_save(
+        save: Save<Self::State, Self::Root, Self::PlayerInit, Self::Reaction>,
+    ) -> Result<Self, LoadError> {
+        Self::load_from_save(save)
+    }
+
+    fn apply_signal(&mut self, sender: player::Id,  arg: signal::Arg<Self::Interaction>) 
+        -> signal::Result<Output<Self::Action, <Self::Reaction as crate::Reaction>::GameOutcome, signal::Ret>> 
+    {
+        Self::apply_signal(self, sender, arg)
+    }
+
+    fn add_player<'l>(&'l mut self, arg: add_player::Arg<<Self::PlayerInit as crate::player::Init>::In>) 
+        -> add_player::Result<Output<Self::Action, <Self::Reaction as crate::Reaction>::GameOutcome, add_player::Ret<Self::State, Self::Action, Self::Root>>> 
+    {
+        Self::add_player(self, arg)
+    }
+
+    fn create_save(&self) 
+        -> Result<Save<Self::State, Self::Root, Self::PlayerInit, Self::Reaction>, snapshot::CreateError> 
+    where
+        PlayerInit: Clone,
+        Reaction: Clone,
+    {
+        Self::create_save(self)
+    }
+}
+
 #[derive(Debug)]
 pub struct Server<State, Action, Root, PlayerInit, Interaction, Reaction> {
     lookup: item::lookup::Canonical<State>,
@@ -125,10 +216,9 @@ impl<State, Action, Root, PlayerInit, Interaction, Reaction> Server<State, Actio
         game_init: GameInit, 
         player_init: PlayerInit,
         reaction: Reaction,
-    ) -> Result<Self, crate::TempError> 
+    ) -> crate::TempResult<Self> 
     where 
         Action: crate::Action<Canonical<State>, Undo = Action>,
-        // State: crate::State<Canonical<State>>,
         GameInit: game::Init<State = State, Action = Action, Root = Root>,
         Reaction: crate::Reaction<State = State, Action = Action, Root = Root>,
     {
@@ -175,7 +265,6 @@ impl<State, Action, Root, PlayerInit, Interaction, Reaction> Server<State, Actio
     }
 
     pub fn load_from_save(
-        player_init: PlayerInit,
         save: Save<State, Root, PlayerInit, Reaction>,
     ) -> Result<Self, LoadError> 
     where 
@@ -226,6 +315,7 @@ impl<State, Action, Root, PlayerInit, Interaction, Reaction> Server<State, Actio
         Reaction: crate::Reaction<State = State, Action = Action, Root = Root, GameOutcome: Clone>,
     {
         let signal::Arg {
+            seq: _seq,
             signal,
         } = arg;
 
@@ -297,7 +387,7 @@ impl<State, Action, Root, PlayerInit, Interaction, Reaction> Server<State, Actio
                 }
 
                 // TODO cache snapshots and reuse them if they are recent enough
-                let snapshot = self.snapshot()
+                let snapshot = self.create_snapshot()
                     .map_err(crate::TempError::discard)?;
                 let transactions = Transactions::new(self.log.next_id());
 
@@ -513,15 +603,33 @@ impl<State, Action, Root, PlayerInit, Interaction, Reaction> Server<State, Actio
         }
     }
 
-    pub fn snapshot(&mut self) -> Result<Snapshot<State, Root>, snapshot::CreateError> 
+    fn create_snapshot(&self) -> Result<Snapshot<State, Root>, snapshot::CreateError> 
     where 
         Root: Clone,
     {
         Snapshot::new(self.root.clone(), &self.lookup)
     }
+
+    pub fn create_save(&self)
+        -> Result<Save<State, Root, PlayerInit, Reaction>, snapshot::CreateError>
+    where
+        PlayerInit: Clone,
+        Reaction: Clone,
+        Root: Clone,
+    {
+        let snapshot = self.create_snapshot()?;
+        Ok(Save {
+            snapshot,
+            next_transaction_id: self.log.next_id(),
+            reservation: self.reservation.range(),
+            player_manager: self.player_manager.clone(),
+            reaction: self.reaction.clone(),
+        })
+    }
 }
 
 #[must_use]
+#[derive(Debug)]
 pub struct ApplyInteraction<Action, GameOutcome> {
     pub transaction: transaction::Confirmed<Action>,
     pub reactions: Vec<transaction::Confirmed<Action>>,

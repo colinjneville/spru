@@ -15,16 +15,15 @@ impl spru::Interaction for Play {
     type Action = crate::Actions;
     type Root = IdT<crate::game::Root>;
     type Trigger = crate::reaction::Trigger;
-    type Error = crate::Error;
     
     fn apply<Lookup>(&self, interactor: &mut super::Interactor<Lookup>)
-         -> Result<(), spru::interaction::Error<lookup::Error, Self::Error>>
+         -> spru::interaction::Result<()>
     where 
-        Lookup: spru::item::Lookup, 
         Self::Action: spru::Action<Lookup>,
     {
         let player_id = interactor.context().player;
-        let root = interactor.get_root()?;
+        let a = interactor.get::<crate::player::Root>(todo!())?;
+        let root = interactor.get_root::<crate::game::Root>()?;
         let round_fsm = follow!(root => root.round_fsm)?;
         let players = follow!(root => root.players)?;
         let player = follow!(players => players.expect_player(player_id))?;

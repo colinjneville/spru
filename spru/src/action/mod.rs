@@ -1,7 +1,7 @@
 pub mod error;
 pub use error::Error;
 
-use crate::{action, error::AnyResult, item, record, Item};
+use crate::{action, error::AnyResult, item, Item};
 
 pub use spru_macro::{Create, Update, Destroy};
 use tagset::tagset_meta;

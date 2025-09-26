@@ -1,3 +1,5 @@
+#![deny(missing_debug_implementations)]
+
 pub mod action;
 pub use action::Action;
 pub mod client;
@@ -5,10 +7,8 @@ pub use client::Client;
 pub mod state;
 pub use state::State;
 pub mod error;
-pub use error::{AnyError, TempError, PsuedoError};
+pub use error::{AnyError, TempError, TempResult, PsuedoError};
 pub mod game;
-mod history;
-pub use history::History;
 pub mod interactor;
 pub use interactor::Interactor;
 pub mod item;
@@ -31,8 +31,6 @@ pub mod transaction;
 pub use transaction::Transaction;
 mod visibility;
 pub use visibility::Visibility;
-mod zone;
-pub use zone::Zone;
 
 pub use spru_macro::FromInfallible;
 
@@ -43,6 +41,8 @@ pub use spru_macro::State as ItemState;
 pub trait Serial: Sized + serde::Serialize + serde::de::DeserializeOwned + 'static { }
 
 impl<T: Sized + serde::Serialize + serde::de::DeserializeOwned + 'static> Serial for T { }
+
+pub(crate) type SeqId = i32;
 
 #[doc(hidden)]
 pub mod __private {

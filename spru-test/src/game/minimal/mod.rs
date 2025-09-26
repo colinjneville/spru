@@ -29,7 +29,6 @@ pub struct GameOutcome(pub spru::player::Id);
 #[tagset(PlayerData)]
 pub struct State;
 
-// #[telety::telety(crate::game::minimal)]
 #[tagset(derive(Clone))]
 #[tagset(impl crate::proxy::std::fmt::Debug)]
 #[tagset(impl spru::action::Base)]
@@ -159,6 +158,7 @@ impl spru::Interaction for Interaction {
     where 
         Actions: spru::Action<Lookup>,
     {
+        let root = interactor.get_root()?;
         interactor.enqueue_trigger(Trigger(interactor.context().player));
         Ok(())
     }

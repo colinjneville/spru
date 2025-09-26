@@ -1,4 +1,4 @@
-use std::{any, cmp, fmt, hash, marker::PhantomData};
+use std::{any, fmt, marker::PhantomData};
 
 use crate::{item::{self, lookup}, snapshot, state, Item};
 
@@ -22,7 +22,7 @@ impl<State> Canonical<State> {
 impl<State, T> item::lookup::Lookup<T> for Canonical<State> 
 where 
     State: tagset::TagSetDiscriminant<T, Repr: Into<state::Index>>,
-    T: any::Any + serde::Serialize,
+    T: any::Any + serde::Serialize + Send + Sync,
 {
     type Mut<'lr> = &'lr mut Item<T>
     where Self: 'lr;
@@ -141,32 +141,12 @@ impl<T> ItemMap<T> {
     }
 }
 
-pub(crate) trait ErasedItemMap: any::Any + fmt::Debug {
-    // TODO: upcasting stabilzing soon?
-    // https://github.com/rust-lang/rust/issues/65991
-    fn as_any(&self) -> &dyn any::Any;
-
-    fn as_any_mut(&mut self) -> &mut dyn any::Any;
-
-    fn into_any(self: Box<Self>) -> Box<dyn any::Any>;
-
+pub(crate) trait ErasedItemMap: any::Any + fmt::Debug + Send + Sync {
     fn as_serialized(&self) -> Result<Box<[Item<Box<[u8]>>]>, snapshot::CreateError>;
 }
 
 impl<T> ErasedItemMap for ItemMap<T> 
-where T: any::Any + serde::Serialize {
-    fn as_any(&self) -> &dyn any::Any {
-        self
-    }
-
-    fn as_any_mut(&mut self) -> &mut dyn any::Any {
-        self
-    }
-
-    fn into_any(self: Box<Self>) -> Box<dyn any::Any> {
-        self
-    }
-    
+where T: any::Any + serde::Serialize + Send + Sync {
     fn as_serialized(&self) -> Result<Box<[Item<Box<[u8]>>]>, snapshot::CreateError> {
         let items = self.map.values()
             .map(map_item)
@@ -203,13 +183,13 @@ impl<State> ItemsMap<State> {
     
     pub fn insert<T>(&mut self, item: Item<T>) 
     where 
-        T: any::Any + serde::Serialize,
+        T: any::Any + serde::Serialize + Send + Sync,
         State: tagset::TagSetDiscriminant<T, Repr: Into<state::Index>>,
     {
         let index = State::DISCRIMINANT.into();
         let item_map = self.raw.entry(index)
             .or_insert_with(|| Box::new(ItemMap::<T>::new()));
-        let item_map = item_map.as_any_mut().downcast_mut::<ItemMap<T>>()
+        let item_map = (&mut **item_map as &mut dyn any::Any).downcast_mut::<ItemMap<T>>()
             .expect("Type map is invalid");
         let prev = item_map.insert(item);
         assert!(prev.is_none(), "Item id was already in type map");
@@ -222,7 +202,7 @@ impl<State> ItemsMap<State> {
     {
         let index = State::DISCRIMINANT.into();
         if let Some(item_map) = self.raw.get_mut(&index) {
-            let item_map = item_map.as_any_mut().downcast_mut::<ItemMap<T>>()
+            let item_map = (&mut **item_map as &mut dyn any::Any).downcast_mut::<ItemMap<T>>()
                 .expect("Type map is invalid");
             item_map.remove(item_id.untyped())
         } else {
@@ -237,7 +217,7 @@ impl<State> ItemsMap<State> {
     {
         let index = State::DISCRIMINANT.into();
         if let Some(item_map) = self.raw.get(&index) {
-            let item_map = item_map.as_any().downcast_ref::<ItemMap<T>>()
+            let item_map = (&**item_map as &dyn any::Any).downcast_ref::<ItemMap<T>>()
                 .expect("Type map is invalid");
             item_map.get(item_id.untyped())
         } else {
@@ -252,7 +232,7 @@ impl<State> ItemsMap<State> {
     {
         let index = State::DISCRIMINANT.into();
         if let Some(item_map) = self.raw.get_mut(&index) {
-            let item_map = item_map.as_any_mut().downcast_mut::<ItemMap<T>>()
+            let item_map = (&mut **item_map as &mut dyn any::Any).downcast_mut::<ItemMap<T>>()
                 .expect("Type map is invalid");
             item_map.get_mut(item_id.untyped())
         } else {
@@ -263,7 +243,7 @@ impl<State> ItemsMap<State> {
 
 #[cfg(test)]
 mod test {
-    use crate::{transaction, Snapshot};
+    use crate::Snapshot;
     use tagset::tagset;
 
     use super::*;

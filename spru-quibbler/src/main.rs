@@ -9,7 +9,6 @@ pub mod interaction;
 pub use interaction::Interaction;
 pub mod round;
 use spru::item::IdT;
-use spru_bevy::item;
 mod play;
 pub use play::Play;
 mod player;
@@ -22,16 +21,25 @@ pub use state::State;
 
 use bevy::prelude::*;
 
+type Client = spru::Client<Actions, IdT<game::Root>, Interaction, game::Outcome>;
+type Server = spru::Server<State, Actions, IdT<game::Root>, player::Init, Interaction, Reaction>;
+
+fn f<S: spru_bevy::server::ServerSSS>() { }
+
+fn a() {
+    f::<Server>();
+}
+
 fn main() {
     bevy::app::App::new()
         .add_plugins(bevy::DefaultPlugins)
-        .add_plugins(spru_bevy::SpruPlugin)
+        .add_plugins(spru_bevy::client::Plugin::<Client>::default())
+        .add_plugins(spru_bevy::server::Plugin::<Server>::default())
+        .add_plugins(spru_bevy::local::Plugin::<Server, Client>::default())
         .add_systems(Startup, spru_startup)
         .add_systems(Startup, startup)
         .run();
 }
-
-type Server = spru_bevy::Server<State, Actions, item::IdT<game::Root>, player::Init, Interaction, Reaction>;
 
 #[derive(Debug)]
 // #[derive(thiserror::Error)]
@@ -67,32 +75,21 @@ pub(crate) use bail;
 fn spru_startup(
     world: &mut World,
 ) {
+    let (_e_server, game_id) = spru_bevy::server::command::SpawnServer::<Server, _> {
+        game_init: game::Init,
+        player_init: player::Init,
+        reaction: Reaction,
+    }.apply(world)
+        .expect("SpawnServer failed");
 
-    let mut lookup = item::BevyLookupMut::new(world);
-    let mut server = Server::new(game::Init, player::Init, Reaction)
-        .unwrap();
-
-    let spru::server::Output {
-        outbound,
-        events,
-        ret,
-    } = server.add_player(spru::server::add_player::Arg {
-        init_input: player::Input::new("player1".to_string()),
-    }).unwrap();
-
-    let spru::server::add_player::Ret {
-        client_init,
-        player_id,
-    } = ret;
-
-    world.insert_resource(server);
-
-    let lookup = item::BevyLookup::new(world);
-
-    for player in world.resource::<Server>().players() {
-        use spru_bevy::item::lookup::Lookup;
-        let player_root = lookup.lookup(player.root()).unwrap();
-        println!("{}", player_root.data.username);
+    for i in 0..4 {
+        let _player_id = spru_bevy::server::command::AddPlayer::<Server> {
+            game_id,
+            player_init_input: player::Input {
+                username: format!("Player {i}"),
+            },
+        }.apply(world)
+            .expect("AddPlayer failed");
     }
 }
 

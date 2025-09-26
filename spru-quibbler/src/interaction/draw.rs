@@ -18,15 +18,13 @@ impl spru::Interaction for Draw {
     type Action = crate::Actions;
     type Root = IdT<crate::game::Root>;
     type Trigger = crate::reaction::Trigger;
-    type Error = anyhow::Error;
 
     fn apply<'l, Lookup>(
         &self, 
         interactor: &mut super::Interactor<Lookup>, 
     ) 
-        -> Result<(), spru::interaction::Error<lookup::Error, Self::Error>> 
+        -> spru::interaction::Result<()> 
     where 
-        Lookup: item::Lookup, 
         crate::Actions: spru::Action<Lookup>,
     {
         let player_id = interactor.context().player;

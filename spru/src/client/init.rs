@@ -9,6 +9,14 @@ pub struct Arg<State, Action, Root> {
     pub(crate) local_player_id: player::Id,
 }
 
+impl<State, Action, Root> Arg<State, Action, Root> {
+    pub fn local_player_id(&self) -> player::Id {
+        self.local_player_id
+    }
+}
+
+pub type Result<T> = std::result::Result<T, self::Error>;
+
 #[derive(Debug)]
 #[derive(thiserror::Error)]
 pub enum Error {

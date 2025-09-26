@@ -13,15 +13,13 @@ impl spru::Interaction for Discard {
     type Action = crate::Actions;
     type Root = IdT<crate::game::Root>;
     type Trigger = crate::reaction::Trigger;
-    type Error = crate::Error;
     
     fn apply<Lookup>(
         &self,
         interactor: &mut spru::interaction::Interactor<Lookup, Self::Action, Self::Root, Self::Trigger>
     )
-        -> Result<(), spru::interaction::Error<lookup::Error, Self::Error>> 
+        -> spru::interaction::Result<()> 
     where 
-        Lookup: item::Lookup,
         Self::Action: spru::Action<Lookup>,
     {
         let player_id = interactor.context().player;

@@ -8,7 +8,7 @@ pub mod revert_interaction;
 pub mod signal;
 pub mod stage_interaction;
 
-use crate::{error::RecoverableError, interaction, interactor, item, log, player, server, state, Interactor, Transaction};
+use crate::{interaction, interactor, item, log, player, server, state, Interactor, Transaction};
 
 
 #[derive(Debug)]
@@ -33,7 +33,8 @@ impl<Interaction, GameOutcome> State<Interaction, GameOutcome> {
     }
 
     pub fn push_signal<S: Into<server::signal::Internal<Interaction>>>(&mut self, signal: S) {
-        self.outbound.push(server::signal::Arg { signal: signal.into() });
+        // TODO seq ids not yet implemented
+        self.outbound.push(server::signal::Arg { seq: 0, signal: signal.into() });
     }
 
     pub fn push_event<E: Into<Event<GameOutcome>>>(&mut self, event: E) {
@@ -57,6 +58,109 @@ impl<Interaction, GameOutcome> State<Interaction, GameOutcome> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct Id(usize);
+
+pub trait Bounded: Sized {
+    type Action: crate::action::Base<Undo = Self::Action>;
+    type Root: Clone;
+    type Interaction: crate::Interaction<Action = Self::Action, Root = Self::Root>;
+    type GameOutcome;
+
+    fn init<Lookup, State>(
+        lookup: &mut Lookup,
+        init: init::Arg<State, Self::Action, Self::Root>,
+    ) 
+        -> init::Result<Self>
+    where 
+        State: crate::State<Lookup, Repr: TryFrom<state::Index>>,
+        Self::Action: crate::Action<Lookup>,
+    ;
+
+    fn local_player_id(&self) -> player::Id;
+
+    fn stage_interaction<Lookup>(&mut self, lookup: &mut Lookup, arg: stage_interaction::Arg<Self::Interaction>) 
+        -> stage_interaction::Result<Output<Self::Interaction, Self::GameOutcome, stage_interaction::Ret>>
+    where
+        Self::Action: crate::Action<Lookup>,
+    ;
+
+    fn apply_interaction<Lookup>(&mut self, lookup: &mut Lookup, arg: apply_interaction::Arg)
+        -> apply_interaction::Result<Output<Self::Interaction, Self::GameOutcome, apply_interaction::Ret>>
+    where
+        Self::Action: crate::Action<Lookup>,
+    ;
+
+    fn revert_interaction<Lookup>(&mut self, lookup: &mut Lookup, arg: revert_interaction::Arg)
+        -> revert_interaction::Result<Output<Self::Interaction, Self::GameOutcome, revert_interaction::Ret>>
+    where
+        Self::Action: crate::Action<Lookup>,
+    ;
+
+    fn signal<Lookup>(&mut self, lookup: &mut Lookup, arg: signal::Arg<Self::Action, Self::GameOutcome>)
+        -> signal::Result<Output<Self::Interaction, Self::GameOutcome, signal::Ret>>
+    where
+        Self::Action: crate::Action<Lookup>,
+    ;
+}
+
+impl<Action, Root, Interaction, GameOutcome> Bounded for Client<Action, Root, Interaction, GameOutcome>
+where 
+    Action: crate::action::Base<Undo = Action>,
+    Root: Clone,
+    Interaction: crate::Interaction<Action = Action, Root = Root>,
+{
+    type Action = Action;
+    type Root = Root;
+    type Interaction = Interaction;
+    type GameOutcome = GameOutcome;
+
+    fn init<Lookup, State>(
+        lookup: &mut Lookup,
+        init: init::Arg<State, Self::Action, Self::Root>,
+    ) 
+        -> init::Result<Self>
+    where 
+        State: crate::State<Lookup, Repr: TryFrom<state::Index>>,
+        Action: crate::Action<Lookup>,
+    {
+        Self::init(lookup, init)
+    }
+
+    fn local_player_id(&self) -> player::Id {
+        Self::local_player_id(self)
+    }
+
+    fn stage_interaction<Lookup>(&mut self, lookup: &mut Lookup, arg: stage_interaction::Arg<Self::Interaction>) 
+        -> stage_interaction::Result<Output<Self::Interaction, Self::GameOutcome, stage_interaction::Ret>>
+    where
+        Action: crate::Action<Lookup>,
+    {
+        Self::stage_interaction(self, lookup, arg)
+    }
+
+    fn apply_interaction<Lookup>(&mut self, lookup: &mut Lookup, arg: apply_interaction::Arg)
+        -> apply_interaction::Result<Output<Self::Interaction, Self::GameOutcome, apply_interaction::Ret>>
+    where
+        Action: crate::Action<Lookup>,
+    {
+        Self::apply_interaction(self, lookup, arg)
+    }
+
+    fn revert_interaction<Lookup>(&mut self, lookup: &mut Lookup, arg: revert_interaction::Arg)
+        -> revert_interaction::Result<Output<Self::Interaction, Self::GameOutcome, revert_interaction::Ret>>
+    where
+        Action: crate::Action<Lookup>,
+    {
+        Self::revert_interaction(self, lookup, arg)
+    }
+
+    fn signal<Lookup>(&mut self, lookup: &mut Lookup, arg: signal::Arg<Self::Action, Self::GameOutcome>)
+        -> signal::Result<Output<Self::Interaction, Self::GameOutcome, signal::Ret>>
+    where
+        Action: crate::Action<Lookup>,
+    {
+        Self::signal(self, lookup, arg)
+    }
+}
 
 #[derive(Debug)]
 pub struct Client<Action, Root, Interaction, GameOutcome> {
@@ -204,6 +308,7 @@ impl<Action, Root, Interaction, GameOutcome> Client<Action, Root, Interaction, G
         Action: crate::Action<Lookup, Undo = Action>,
     {
         let signal::Arg {
+            seq: _seq,
             signal,
         } = arg;
 

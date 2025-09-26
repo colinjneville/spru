@@ -22,7 +22,7 @@ pub enum Trigger {
 
 impl Trigger {
     fn start_game(interactor: &mut Interactor) 
-        -> Result<(), spru::reaction::Error> 
+        -> spru::action::Result<()> 
     {
         let root = interactor.get_root()?;
         let new_root = crate::game::Root {
@@ -36,7 +36,7 @@ impl Trigger {
     }
 
     fn start_round(interactor: &mut Interactor)
-        -> Result<(), spru::reaction::Error> 
+        -> spru::action::Result<()> 
     {
         let root = interactor.get_root()?;
         let players = follow!(root => root.players)?;
@@ -44,14 +44,14 @@ impl Trigger {
         // Reset deck and shuffle
         follow!(root => root.deck)?
             .update(crate::actions::InitializeDeck)
-            .update(pile::shuffle(rand::rng().random()));
+            .update(pile::shuffle(&mut rand::rng()));
 
         // Advance round counter
         follow!(root => root.round)?
             .update(counter::add_checked(1));
 
         for (player_id, player_data) in players.iter() {
-            let hand = players.follow(player_data.hand)
+            // let hand = players.follow(player_data.hand)?;
         }
 
         todo!();
@@ -60,7 +60,7 @@ impl Trigger {
     }
 
     fn draw(interactor: &mut Interactor, from_deck: bool) 
-        -> Result<(), spru::reaction::Error> 
+        -> spru::action::Result<()> 
     {
         let player_id = interactor.context().player
             .expect("Must have a player context");
@@ -83,19 +83,19 @@ impl Trigger {
     }
 
     fn draw_discard(interactor: &mut Interactor) 
-        -> Result<(), spru::reaction::Error> 
+        -> spru::action::Result<()> 
     {
         Self::draw(interactor, false)
     }
 
     fn draw_deck(interactor: &mut Interactor) 
-        -> Result<(), spru::reaction::Error> 
+        -> spru::action::Result<()> 
     {
         Self::draw(interactor, true)
     }
 
     fn play(interactor: &mut Interactor)
-        -> Result<(), spru::reaction::Error> 
+        -> spru::action::Result<()> 
     {
         let root = interactor.get_root()?;
         let players = follow!(root => root.players)?;
@@ -117,7 +117,7 @@ impl Trigger {
     }
 
     fn end_round(interactor: &mut Interactor)
-        -> Result<(), spru::reaction::Error> 
+        -> spru::action::Result<()> 
     {
         let mut root = interactor.get_root()?;
         let mut players = follow!(root => root.players)?;
@@ -173,7 +173,7 @@ impl Trigger {
     }
 
     fn end_game(interactor: &mut Interactor)
-        -> Result<(), spru::reaction::Error> 
+        -> spru::action::Result<()> 
     {
         let root = interactor.get_root()?;
         let players = follow!(root => root.players)?;
@@ -214,15 +214,15 @@ impl spru::Reaction for Reaction {
     type GameOutcome = crate::game::Outcome;
     
     fn apply(&self, interactor: &mut self::Interactor, trigger: Self::Trigger) 
-        -> Result<(), spru::reaction::Error>
+        -> spru::action::Result<()>
     {
         match trigger {
-            Trigger::StartGame => todo!(),
-            Trigger::StartRound => todo!(),
+            Trigger::StartGame => Trigger::start_game(interactor),
+            Trigger::StartRound => Trigger::start_round(interactor),
             Trigger::DrawDiscard => Trigger::draw_discard(interactor),
             Trigger::DrawDeck => Trigger::draw_deck(interactor),
-            Trigger::EndRound => todo!(),
-            Trigger::EndGame => todo!(),
+            Trigger::EndRound => Trigger::end_round(interactor),
+            Trigger::EndGame => Trigger::end_game(interactor),
         }
     }
 }

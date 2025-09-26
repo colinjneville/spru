@@ -1,5 +1,3 @@
-use std::convert;
-
 use spru::{follow, item::IdT};
 use spru_util::{counter, fsm, pile, player_map, rotating, verbatim};
 use rust_fsm::state_machine;
@@ -30,19 +28,18 @@ impl spru::player::Init for Init {
     type Action = crate::Actions;
     type Root = IdT<crate::game::Root>;
     type In = Input;
-    type Error = crate::Error;
     
     fn initialize(
         &self, 
         interactor: &mut spru::player::init::Interactor<Self::State, Self::Action, Self::Root>, 
         input: Self::In
     ) 
-        -> Result<(), spru::player::init::Error<Self::Error>> 
+        -> spru::player::init::Result<()> 
     {
-        let score = interactor.create(counter::create(0))?;
-        let hand = interactor.create(pile::default())?;
-        let fsm = interactor.create(fsm::default())?;
-        let played = interactor.create(verbatim::default())?;
+        let score = interactor.create(counter::create(0)).id();
+        let hand = interactor.create(pile::default()).id();
+        let fsm = interactor.create(fsm::default()).id();
+        let played = interactor.create(verbatim::default()).id();
         // let root = interactor.create(verbatim::create())?;
 
         let player_id = interactor.context().player;

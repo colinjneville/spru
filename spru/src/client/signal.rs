@@ -1,8 +1,9 @@
-use crate::{action, item::lookup, record::Records, transaction};
+use crate::{action, item::lookup, record::Records, transaction, SeqId};
 
 #[derive(Debug)]
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct Arg<Action, GameOutcome> {
+    pub(crate) seq: SeqId,
     pub(crate) signal: Internal<Action, GameOutcome>,
 }
 

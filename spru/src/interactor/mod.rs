@@ -243,6 +243,22 @@ struct Inner<'l, Lookup, Action> {
     reservation: &'l item::id::Reservation,
 }
 
+impl<'l, Lookup, Action> Inner<'l, Lookup, Action> {
+    fn get<T>(&self, id: IdT<T>) 
+        -> lookup::Result<Existing<'_, Lookup, Action, T>>
+    where
+        Lookup: lookup::Lookup<T>, 
+    {
+        let item = self.lookup.lookup(id)?;
+        self.items_status.register_read(id.untyped(), item.version());
+
+        Ok(Existing {
+            inner: self,
+            item,
+        })
+    }
+}
+
 #[derive(Debug)]
 pub struct Interactor<'l, Lookup, Action, Context, Output> {
     inner: Inner<'l, Lookup, Action>,
@@ -298,13 +314,7 @@ impl<'l, Lookup, Action, Context, Output> Interactor<'l, Lookup, Action, Context
     where
         Lookup: lookup::Lookup<T>,
     {
-        let item = self.inner.lookup.lookup(id)?;
-        self.inner.items_status.register_read(id.untyped(), item.version());
-
-        Ok(Existing {
-            inner: &self.inner,
-            item,
-        })
+        self.inner.get(id)
     }
 
     pub fn get_root<Root>(&self)
@@ -433,7 +443,8 @@ pub(crate) trait PlayerContext {
     fn player_context(&self) -> Option<player::Id>;
 }
 
-pub(crate) trait GetRoot {
+#[doc(hidden)]
+pub trait GetRoot {
     type Root;
 
     fn get_root(&self) -> &Self::Root;
@@ -493,6 +504,14 @@ pub struct Existing<'i, Lookup, Action, T> {
 }
 
 impl<'i, Lookup, Action, T> Existing<'i, Lookup, Action, T> {
+    pub fn follow<U>(&self, id: IdT<U>)
+        -> lookup::Result<Existing<'_, Lookup, Action, U>>
+    where
+        Lookup: lookup::Lookup<U>, 
+    {
+        self.inner.get(id)
+    }
+
     pub fn update<Update>(&self, update: Update) 
         -> &Self
     where 

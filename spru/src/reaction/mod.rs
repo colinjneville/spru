@@ -3,7 +3,7 @@ use std::collections::VecDeque;
 use derive_where::derive_where;
 use telety::telety;
 
-use crate::{action, error::RecoverableResult, interactor, item::lookup::{canonical, Canonical}, player, record};
+use crate::{action, interactor, item::lookup::Canonical, player};
 
 #[derive(Debug)]
 #[non_exhaustive]

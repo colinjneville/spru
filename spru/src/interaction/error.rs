@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::{action, item::lookup, record, AnyError, PsuedoError};
+use crate::{action, item::lookup, AnyError, PsuedoError};
 
 
 #[derive(Debug, Default)]

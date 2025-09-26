@@ -1,10 +1,11 @@
-use crate::{interaction, transaction};
+use crate::{interaction, transaction, SeqId};
 
 
 
 #[derive(Debug)]
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct Arg<Interaction> {
+    pub(crate) seq: SeqId,
     pub(crate) signal: Internal<Interaction>,
 }
 
@@ -13,6 +14,8 @@ pub struct Arg<Interaction> {
 pub struct Ret {
 
 }
+
+pub type Result<T> = std::result::Result<T, self::Error>;
 
 #[derive(Debug)]
 #[derive(thiserror::Error)]

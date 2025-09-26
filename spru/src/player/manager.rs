@@ -1,13 +1,13 @@
 
-use crate::{action, error::RecoverableResult, interactor, item::{self}, player, Interactor};
+use crate::{error::RecoverableResult, item::{self}, player};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[derive(serde::Serialize, serde::Deserialize)]
 pub(crate) struct Details {
     reservation_range: item::id::Range,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[derive(serde::Serialize, serde::Deserialize)]
 pub(crate) struct Manager<PlayerInit> {
     init: PlayerInit,

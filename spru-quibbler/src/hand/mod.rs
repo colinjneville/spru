@@ -1,4 +1,5 @@
 use amass::amass_telety;
+use spru::error::AnyResult;
 use spru_util::verbatim;
 use tagset::tagset;
 use telety::telety;
@@ -45,11 +46,11 @@ impl AddCard {
 impl spru::action::Update for AddCard {
     type T = State;
     type Undo = RemoveCard;
-    type Error = std::convert::Infallible;
     
-    fn update(&self, value: &mut Self::T) -> Result<Option<Self::Undo>, Self::Error> {
+    #[allow(refining_impl_trait)]
+    fn update(&self, value: &mut Self::T) -> AnyResult<Self::Undo> {
         value.cards.push(self.card.clone());
-        Ok(Some(RemoveCard::new(self.card.clone())))
+        Ok(RemoveCard::new(self.card.clone()))
     }
 }
 
@@ -71,16 +72,16 @@ impl RemoveCard {
 impl spru::action::Update for RemoveCard {
     type T = State;
     type Undo = AddCard;
-    type Error = RemoveCardError;
     
-    fn update(&self, value: &mut Self::T) -> Result<Option<Self::Undo>, Self::Error> {
+    #[allow(refining_impl_trait)]
+    fn update(&self, value: &mut Self::T) -> AnyResult<Option<Self::Undo>> {
         for (i, c) in value.cards.iter().enumerate().rev() {
             if &self.card == c {
                 value.cards.remove(i);
                 return Ok(Some(AddCard::new(self.card.clone())));
             }
         }
-        return Err(RemoveCardError::CardDoesNotExist);
+        return Err(RemoveCardError::CardDoesNotExist.into());
     }
 }
 

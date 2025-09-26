@@ -1,7 +1,6 @@
 use std::{collections::HashMap, convert};
 
 use spru::item::IdT;
-use spru_bevy::{item::{self, lookup, BevyLookupMut}};
 use spru_util::{counter, fsm, pile, player_map, rotating, verbatim};
 
 use crate::{data::{card, Card}, player};
@@ -18,19 +17,18 @@ impl spru::game::Init for Init {
     type State = crate::State;
     type Action = crate::Actions;
     type Root = IdT<Root>;
-    type Error = convert::Infallible;
     
     fn initialize(self, interactor: &mut self::Interactor) 
-        -> Result<Self::Root, spru::game::init::Error<Self::Error>> 
+        -> spru::game::init::Result<Self::Root> 
     {
-        let deck = interactor.create(pile::create(card::Card::all()))?;
-        let discard = interactor.create(pile::create([]))?;
-        let round = interactor.create(counter::create(0))?;
-        let round_fsm = interactor.create(fsm::default())?;
+        let deck = interactor.create(pile::create(card::Card::all())).id();
+        let discard = interactor.create(pile::create([])).id();
+        let round = interactor.create(counter::create(0)).id();
+        let round_fsm = interactor.create(fsm::default()).id();
         
-        let players = interactor.create(player_map::create())?;
-        let current_turn = interactor.create(rotating::default())?;
-        let current_dealer = interactor.create(rotating::default())?;
+        let players = interactor.create(player_map::create()).id();
+        let current_turn = interactor.create(rotating::default()).id();
+        let current_dealer = interactor.create(rotating::default()).id();
 
         let root = Root {
             deck,
@@ -43,7 +41,7 @@ impl spru::game::Init for Init {
             has_started: false,
         };
         
-        let root = interactor.create(verbatim::create(root))?;
+        let root = interactor.create(verbatim::create(root)).id();
         Ok(root)
     }
 }

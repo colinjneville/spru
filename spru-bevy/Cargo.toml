@@ -3,7 +3,10 @@ name = "spru-bevy"
 version = "0.1.0"
 edition = "2024"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[features]
+default = ["server", "client"]
+server = []
+client = []
 
 [dependencies]
 spru = { path = "../spru/" }
@@ -11,3 +14,9 @@ spru = { path = "../spru/" }
 bevy.workspace = true
 
 serde.workspace = true
+
+thiserror.workspace = true
+
+uuid.workspace = true
+
+derive-where.workspace = true

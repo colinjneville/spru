@@ -1,9 +1,9 @@
 pub mod error;
 pub use error::Error;
 
-use std::{collections::VecDeque, fmt};
+use std::collections::VecDeque;
 
-use crate::{interactor, item::{self, lookup}, player, AnyError};
+use crate::{interactor, item::{self}, player};
 
 pub trait Init {
     type In;

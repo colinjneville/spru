@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::{action, player, record};
+use crate::{action, player};
 
 #[derive(Debug)]
 #[derive(thiserror::Error)]
@@ -38,6 +38,9 @@ impl TempError {
         Self::new()
     }
 }
+
+// TODO
+pub type TempResult<T> = std::result::Result<T, TempError>;
 
 
 #[derive(Debug, Default)]

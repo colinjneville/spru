@@ -87,6 +87,7 @@ impl<T> ops::Deref for Item<T> {
     }
 }
 
+#[derive(Debug)]
 pub struct Mut<M>(M);
 
 impl<M> Mut<M> {

@@ -7,10 +7,13 @@ pub struct Arg<PlayerInitIn> {
 }
 
 #[must_use]
+#[derive(Debug)]
 pub struct Ret<State, Action, Root> {
     pub client_init: client::init::Arg<State, Action, Root>,
     pub player_id: player::Id,
 }
+
+pub type Result<T> = std::result::Result<T, self::Error>;
 
 #[derive(Debug)]
 #[derive(thiserror::Error)]

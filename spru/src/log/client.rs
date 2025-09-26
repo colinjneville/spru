@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 
-use crate::{action, error::{RecoverableError, RecoverableResult}, interaction, item, log::{self, error::ConfirmError}, record::{self, Records}, transaction, Transaction};
+use crate::{action, error::RecoverableResult, interaction, log::error::ConfirmError, record::Records, transaction, Transaction};
 
 #[derive(Debug)]
 #[derive(serde::Serialize, serde::Deserialize)]

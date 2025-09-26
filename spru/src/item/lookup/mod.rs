@@ -3,9 +3,9 @@ pub use canonical::Canonical;
 pub mod error;
 pub use error::Error;
 
-use std::{any, fmt, ops};
+use std::ops;
 
-use crate::{item::{self, IdT}, AnyError, Item, PsuedoError};
+use crate::{item::IdT, Item};
 
 pub type Result<T> = std::result::Result<T, self::Error>;
 

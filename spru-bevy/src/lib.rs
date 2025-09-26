@@ -1,20 +1,9 @@
-pub use spru::*;
+#![deny(missing_debug_implementations)]
 
-pub mod item;
+#[cfg(feature = "client")]
+pub mod client;
+pub mod common;
+#[cfg(all(feature = "server", feature = "client"))]
+pub mod local;
+#[cfg(feature = "server")]
 pub mod server;
-// pub use server::BevyServer;
-
-pub struct SpruPlugin;
-
-impl Default for SpruPlugin {
-    fn default() -> Self {
-        Self
-    }
-}
-
-impl bevy::prelude::Plugin for SpruPlugin {
-    fn build(&self, app: &mut bevy::prelude::App) {
-        app.init_resource::<item::lookup::EntityMap>();
-    }
-}
-
