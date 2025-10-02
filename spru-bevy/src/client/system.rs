@@ -5,7 +5,6 @@ pub fn run_client<Client: crate::client::ClientSSS>(
 ) 
     -> spru::client::signal::Result<()>
 where 
-    Client::Action: for<'l> spru::Action<super::BevyLookup<'l>>,
 {
     // We need to query Clients and also have access to World.
     // First create a list of all Client entities. Then query
@@ -35,7 +34,7 @@ where
             if let Some(signal) = from_server.dequeue() {
                 let mut inner = runner.take();
                 let client_id = client_id.0;
-                let mut lookup = super::BevyLookup::new(world, &mut inner.entity_map, client_id);
+                let mut lookup = super::lookup::BevyLookup::new(world, &mut inner.entity_map, client_id);
                 let result = inner.client.signal(&mut lookup, signal);
 
                 let (_entity, mut runner, _from_server, _to_server, _client_id) = q_client.get_mut(world, entity)

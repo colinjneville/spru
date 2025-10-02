@@ -1,44 +1,59 @@
-use std::{any, collections::{hash_map, HashMap}};
+use std::{any, collections::{hash_map, HashMap}, marker::PhantomData};
 
 use bevy::prelude;
 use spru::item;
 
 use crate::client::component;
 
+#[doc(hidden)]
 #[derive(Debug)]
-pub struct BevyLookup<'l> {
+pub struct BevyLookup<'l, State> {
     world: &'l mut prelude::World,
     entity_map: &'l mut EntityMap,
     client_id: spru::player::Id,
+    _state: PhantomData<fn() -> State>,
 }
 
-impl<'l> BevyLookup<'l> {
+impl<'l, State> BevyLookup<'l, State> {
     pub(crate) fn new(world: &'l mut prelude::World, entity_map: &'l mut EntityMap, client_id: spru::player::Id) -> Self {
         Self { 
             world,
             entity_map,
             client_id,
+            _state: PhantomData,
         }
     }
 }
 
-impl<'l, T: Send + Sync + 'static> spru::item::Lookup<T> for BevyLookup<'l> {
-    type Mut<'lr> = bevy::prelude::Mut<'lr, spru::Item<T>>
-    where Self: 'lr;  
+impl<'l, State: spru::State> spru::item::Lookup for BevyLookup<'l, State> {
+    type State = State;
 
-    fn lookup(&self, id: item::IdT<T>) -> spru::item::lookup::Result<&spru::Item<T>> {
+    fn lookup<T>(&self, id: item::IdT<T>) 
+        -> spru::item::lookup::Result<&spru::Item<T>> 
+    where
+        T: spru::item::lookup::Lookupable<Self::State>,
+    {
         let id = id.untyped();
         let entity = self.entity_map.get(id)?;
         Ok(self.world.get::<component::Item<T>>(entity).ok_or(BevyError::ComponentNotFound(id, entity, any::type_name::<T>()))?.item())
     }
 
-    fn lookup_mut(&mut self, id: item::IdT<T>) -> spru::item::lookup::Result<Self::Mut<'_>> {
+    #[allow(refining_impl_trait)]
+    fn lookup_mut<T>(&mut self, id: item::IdT<T>) 
+        -> spru::item::lookup::Result<bevy::prelude::Mut<'_, spru::Item<T>>> 
+    where
+        T: spru::item::lookup::Lookupable<Self::State>,
+    {
         let id = id.untyped();
         let entity = self.entity_map.get(id)?;
         Ok(self.world.get_mut::<component::Item<T>>(entity).ok_or(BevyError::ComponentNotFound(id, entity, any::type_name::<T>()))?.map_unchanged(|sc| sc.item_mut()))
     }
 
-    fn create(&mut self, value: spru::Item<T>) -> spru::item::lookup::Result<()> {
+    fn create<T>(&mut self, value: spru::Item<T>) 
+        -> spru::item::lookup::Result<()> 
+    where
+        T: spru::item::lookup::Lookupable<Self::State>,
+    {
         self.entity_map.insert_as(value.id().untyped(), 
             || {
                 Ok(
@@ -52,7 +67,11 @@ impl<'l, T: Send + Sync + 'static> spru::item::Lookup<T> for BevyLookup<'l> {
         Ok(())
     }
 
-    fn destroy(&mut self, id: item::IdT<T>) -> spru::item::lookup::Result<spru::Item<T>> {
+    fn destroy<T>(&mut self, id: item::IdT<T>) 
+        -> spru::item::lookup::Result<spru::Item<T>> 
+    where
+        T: spru::item::lookup::Lookupable<Self::State>,
+    {
         let id = id.untyped();
         self.entity_map.remove_as(id, |entity| {
             let mut entity_mut = self.world.get_entity_mut(entity)

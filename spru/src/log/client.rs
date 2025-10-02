@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 
-use crate::{action, error::RecoverableResult, interaction, log::error::ConfirmError, record::Records, transaction, Transaction};
+use crate::{action, error::RecoverableResult, interaction, item, log::error::ConfirmError, record::Records, transaction, Transaction};
 
 #[derive(Debug)]
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -45,7 +45,8 @@ impl<Action, Interaction> Client<Action, Interaction> {
     pub(crate) fn apply_confirmed<Lookup>(&mut self, lookup: &mut Lookup, transaction: transaction::Confirmed<Action>)
         -> RecoverableResult<(), ConfirmError>
     where
-        Action: crate::Action<Lookup, Undo = Action>,
+        Lookup: item::Lookup,
+        Action: crate::Action<State = Lookup::State>,
     {
         if self.next_confirmed_id == transaction.id {
             self.next_confirmed_id = self.next_confirmed_id.next();
@@ -60,7 +61,8 @@ impl<Action, Interaction> Client<Action, Interaction> {
     fn apply_records<Lookup>(&mut self, lookup: &mut Lookup, records: &Records<Action>)
         -> RecoverableResult<(), action::Error>
     where
-        Action: crate::Action<Lookup, Undo = Action>,
+        Lookup: item::Lookup,
+        Action: crate::Action<State = Lookup::State>,
     {
         match records.apply_or_revert(lookup) {
             Ok(_) => Ok(()),
@@ -88,14 +90,12 @@ impl<Action, Interaction> Client<Action, Interaction> {
         }
     }
 
-    pub fn stage_pending<Lookup>(
+    pub fn stage_pending(
         &mut self, 
         interaction: interaction::Staged<Interaction>, 
         undo_transaction: Transaction<Action>,
     )
         -> transaction::Pending
-    where
-        Action: crate::Action<Lookup, Undo = Action>,
     {
         let id = self.next_pending_id;
         self.next_pending_id = self.next_pending_id.next();
@@ -138,7 +138,8 @@ impl<Action, Interaction> Client<Action, Interaction> {
     )
         -> Result<(), crate::TempError>
     where
-        Action: crate::Action<Lookup, Undo = Action>,
+        Lookup: item::Lookup,
+        Action: crate::Action<State = Lookup::State>,
     {
         match self.pending_undo_transactions.get(0) {
             Some(pending) => {
@@ -167,7 +168,8 @@ impl<Action, Interaction> Client<Action, Interaction> {
     pub fn revert_pending<Lookup>(&mut self, lookup: &mut Lookup, until: Option<transaction::Pending>) 
         -> Result<(), action::Error> 
     where 
-        Action: crate::Action<Lookup, Undo = Action>,
+        Lookup: item::Lookup,
+        Action: crate::Action<State = Lookup::State>,
     {
         // pop_back_if: https://github.com/rust-lang/rust/issues/135889
         while let Some(pending) = self.pending_undo_transactions.pop_back() {

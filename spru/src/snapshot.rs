@@ -1,6 +1,6 @@
 use std::{marker::PhantomData, sync::Arc};
 
-use crate::{item::{self, lookup}, state, Item};
+use crate::{item::{self, lookup}, Item};
 
 #[derive(Debug)]
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -42,7 +42,9 @@ impl<State, Root> Snapshot<State, Root> {
 
     pub(crate) fn apply<Lookup>(&self, lookup: &mut Lookup) -> Result<(), ApplyError> 
     where 
-        State: crate::State<Lookup, Repr: TryFrom<state::Index>>,
+        // State: crate::State<Lookup, Repr: TryFrom<state::Index>>,
+        State: crate::State,
+        Lookup: item::Lookup<State = State>,
     {
         for item_type in &*self.items {
             for item in &*item_type.items {

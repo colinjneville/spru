@@ -55,6 +55,12 @@ impl AnyError {
         }
     }
 
+    pub fn new_boxed(e: Box<dyn std::error::Error + Send + Sync + 'static>) -> Self {
+        Self {
+            inner: Some(e),
+        }
+    }
+
     pub fn get(&self) -> Option<&(dyn std::error::Error + Send + Sync + 'static)> {
         self.inner.as_ref()
             .map(|e| &**e)

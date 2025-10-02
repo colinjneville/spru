@@ -1,5 +1,6 @@
 use std::{collections::{HashMap, VecDeque}, fmt};
 
+use derive_where::derive_where;
 use rand::{Rng, SeedableRng};
 use spru::player;
 
@@ -8,13 +9,13 @@ use crate::{event, Messaging};
 pub trait Anyhow: std::error::Error + Send + Sync + 'static { }
 impl<E: std::error::Error + Send + Sync + 'static> Anyhow for E { }
 
-struct SyncServer<State, Action, Root, PlayerInit, PlayerInitIn, Interaction, Reaction> {
-    server: spru::Server<State, Action, Root, PlayerInit, Interaction, Reaction>,
-    add_player_requests: Vec<spru::server::add_player::Arg<PlayerInitIn>>,
+struct SyncServer<Server: spru::Server> {
+    server: Server,
+    add_player_requests: Vec<spru::server::add_player::Arg<Server>>,
 }
 
-impl<State, Action, Root, PlayerInit, PlayerInitIn, Interaction, Reaction> SyncServer<State, Action, Root, PlayerInit, PlayerInitIn, Interaction, Reaction> {
-    fn new(server: spru::Server<State, Action, Root, PlayerInit, Interaction, Reaction>) -> Self {
+impl<Server: spru::Server> SyncServer<Server> {
+    fn new(server: Server) -> Self {
         Self {
             server,
             add_player_requests: vec![],
@@ -22,28 +23,28 @@ impl<State, Action, Root, PlayerInit, PlayerInitIn, Interaction, Reaction> SyncS
     }
 }
 
-enum SyncClientState<State, Action, Root, Interaction, GameOutcome, Lookup> {
-    Pending(spru::client::init::Arg<State, Action, Root>),
-    Initialized(SyncClientInitialized<Action, Root, Interaction, GameOutcome, Lookup>),
+enum SyncClientState<Client: spru::Client, Lookup> {
+    Pending(spru::client::init::Arg<Client::Common>),
+    Initialized(SyncClientInitialized<Client, Lookup>),
     // TODO: SyncClient should be broken into SyncClientState and a new SyncClientData
     Invalid,
 }
 
-struct SyncClientInitialized<Action, Root, Interaction, GameOutcome, Lookup> {
-    client: spru::Client<Action, Root, Interaction, GameOutcome>,
-    outgoing_queue: VecDeque<spru::server::signal::Arg<Interaction>>,
+struct SyncClientInitialized<Client: spru::Client, Lookup> {
+    client: Client,
+    outgoing_queue: VecDeque<spru::server::signal::Arg<Client::Common>>,
     lookup: Lookup,
-    game_outcome: Option<GameOutcome>,
+    game_outcome: Option<Client::GameOutcome>,
 }
 
-struct SyncClient<State, Action, Root, Interaction, GameOutcome, Lookup> {
-    incoming_queue: VecDeque<spru::client::signal::Arg<Action, GameOutcome>>,
-    user_incoming_queue: VecDeque<ClientArg<Interaction>>,
-    state: SyncClientState<State, Action, Root, Interaction, GameOutcome, Lookup>,
+struct SyncClient<Client: spru::Client, Lookup> {
+    incoming_queue: VecDeque<spru::client::signal::Arg<Client::Common>>,
+    user_incoming_queue: VecDeque<ClientArg<Client>>,
+    state: SyncClientState<Client, Lookup>,
 }
 
-impl<State, Action, Root, Interaction, GameOutcome, Lookup> SyncClient<State, Action, Root, Interaction, GameOutcome, Lookup> {
-    pub fn new(init: spru::client::init::Arg<State, Action, Root>) -> Self {
+impl<Client: spru::Client, Lookup> SyncClient<Client, Lookup> {
+    pub fn new(init: spru::client::init::Arg<Client::Common>) -> Self {
         Self {
             incoming_queue: VecDeque::new(),
             user_incoming_queue: VecDeque::new(),
@@ -56,43 +57,48 @@ impl<State, Action, Root, Interaction, GameOutcome, Lookup> SyncClient<State, Ac
 /// One update is made from all possible pending updates at random, to exercise the order variance
 /// found in actual async and networked games. Order is still maintained where it is guaranteed
 /// (messages from the server to the same client, etc.).
-pub struct SyncRunner<State, Action, Root, PlayerInit, PlayerInitIn, Interaction, Reaction, GameOutcome, Lookup = spru_util::lookup::Standalone> {
-    server: SyncServer<State, Action, Root, PlayerInit, PlayerInitIn, Interaction, Reaction>,
-    clients: HashMap<spru::player::Id, SyncClient<State, Action, Root, Interaction, GameOutcome, Lookup>>,
-    game_outcome: Option<GameOutcome>,
+pub struct SyncRunner<Server: spru::Server, Client: spru::Client, Lookup> {
+    server: SyncServer<Server>,
+    clients: HashMap<spru::player::Id, SyncClient<Client, Lookup>>,
+    game_outcome: Option<Client::GameOutcome>,
     random: rand::rngs::StdRng,
 
     is_dirty: bool,
 }
 
-impl<State, Action, Root, PlayerInit, Interaction, Reaction, GameOutcome, Lookup> 
-    SyncRunner<State, Action, Root, PlayerInit, PlayerInit::In, Interaction, Reaction, GameOutcome, Lookup> 
+impl<Server, Client, Lookup> 
+    SyncRunner<Server, Client, Lookup> 
 where
-    Lookup: Default,
-    State: 
-        spru::State<spru::item::lookup::Canonical<State>> +
-        spru::State<Lookup> +
-        tagset::TagSet<Repr: TryFrom<u32>>,
-    Action: 
-        Clone + 
-        spru::action::Base<Undo = Action> +
-        spru::Action<spru::item::lookup::Canonical<State>> +
-        spru::Action<Lookup>,
-    Root: Clone,
-    PlayerInit: spru::player::Init<State = State, Action = Action, Root = Root>,
-    Interaction: spru::Interaction<Action = Action, Root = Root> + Send,
-    Reaction: spru::Reaction<State = State, Action = Action, Root = Root, Trigger = Interaction::Trigger, GameOutcome = GameOutcome>,
-    GameOutcome: fmt::Debug + PartialEq + Clone,
+    Server: spru::Server,
+    Client: spru::Client<
+        Common = Server::Common, 
+        GameOutcome: fmt::Debug + PartialEq + Clone,
+    >,
+    Lookup: spru::item::Lookup<State = Client::State> + Default,
+    // State: 
+    //     spru::State<spru::item::lookup::Canonical<State>> +
+    //     spru::State<Lookup> +
+    //     tagset::TagSet<Repr: TryFrom<u32>>,
+    // Action: 
+    //     Clone + 
+    //     spru::action::Base<Undo = Action> +
+    //     spru::Action<spru::item::lookup::Canonical<State>> +
+    //     spru::Action<Lookup>,
+    // Root: Clone,
+    // PlayerInit: spru::player::Init<State = State, Action = Action, Root = Root>,
+    // Interaction: spru::Interaction<Action = Action, Root = Root> + Send,
+    // Reaction: spru::Reaction<State = State, Action = Action, Root = Root, Trigger = Interaction::Trigger, GameOutcome = GameOutcome>,
+    // GameOutcome: fmt::Debug + PartialEq + Clone,
 {
     pub fn new<GameInit>(
         game_init: GameInit, 
-        player_init: PlayerInit,
-        reaction: Reaction,
+        player_init: Server::PlayerInit,
+        reaction: Server::Reaction,
     ) -> anyhow::Result<Self>
     where 
-        GameInit: spru::game::Init<State = State, Action = Action, Root = Root>,
+        GameInit: spru::game::Init<State = Server::State, Action = Server::Action, Root = Server::Root>,
     {
-        let spru_server = spru::Server::new(game_init, player_init, reaction)?;
+        let spru_server = Server::new(game_init, player_init, reaction)?;
         let server = SyncServer::new(spru_server);
         let random = rand::rngs::StdRng::from_os_rng();
         Ok(Self {
@@ -104,7 +110,7 @@ where
         })
     }
 
-    pub fn add_player(&mut self, player: spru::server::add_player::Arg<PlayerInit::In>) -> anyhow::Result<()> {
+    pub fn add_player(&mut self, player: spru::server::add_player::Arg<Server>) -> anyhow::Result<()> {
         self.is_dirty = true;
 
         self.server.add_player_requests.push(player);
@@ -117,7 +123,7 @@ where
 
     pub fn client_command<Arg>(&mut self, player_id: player::Id, arg: Arg) -> Result<(), ()> 
     where
-        Arg: Into<ClientArg<Interaction>>,
+        Arg: Into<ClientArg<Client>>,
     {
         if let Some(client) = self.clients.get_mut(&player_id) {
             client.user_incoming_queue.push_back(arg.into());
@@ -127,7 +133,7 @@ where
         }
     }
 
-    pub fn run_one(&mut self) -> anyhow::Result<Run<GameOutcome>> {
+    pub fn run_one(&mut self) -> anyhow::Result<Run<Server, Client>> {
         let mut events = Messaging::new();
 
         let mut picker = Picker::new(&mut self.random);
@@ -182,7 +188,7 @@ where
         }
     }
 
-    fn run_add_player(&mut self, state: &mut Messaging<GameOutcome>, index: usize) -> anyhow::Result<()> {
+    fn run_add_player(&mut self, state: &mut Messaging<Server, Client>, index: usize) -> anyhow::Result<()> {
         let player = self.server.add_player_requests.swap_remove(index);
         let spru::server::Output {
             outbound,
@@ -204,7 +210,7 @@ where
         Ok(())
     }
 
-    fn run_outgoing(&mut self, state: &mut Messaging<GameOutcome>, client_id: spru::player::Id) -> anyhow::Result<()> {
+    fn run_outgoing(&mut self, state: &mut Messaging<Server, Client>, client_id: spru::player::Id) -> anyhow::Result<()> {
         println!("run_outgoing {client_id}");
 
         let client = self.clients.get_mut(&client_id).unwrap();
@@ -226,7 +232,7 @@ where
         Ok(())
     }
 
-    fn run_incoming(&mut self, messaging: &mut Messaging<GameOutcome>, client_id: player::Id) -> anyhow::Result<()> {
+    fn run_incoming(&mut self, messaging: &mut Messaging<Server, Client>, client_id: player::Id) -> anyhow::Result<()> {
         println!("run_incoming {client_id}");
 
         let mut client = self.clients.remove(&client_id).unwrap();
@@ -241,7 +247,7 @@ where
         Ok(())
     }
 
-    fn run_user_command(&mut self, messaging: &mut Messaging<GameOutcome>, client_id: spru::player::Id) -> anyhow::Result<()> {
+    fn run_user_command(&mut self, messaging: &mut Messaging<Server, Client>, client_id: spru::player::Id) -> anyhow::Result<()> {
         println!("run_user_interaction {client_id}");
 
         let client = self.clients.get_mut(&client_id).unwrap();
@@ -308,8 +314,8 @@ where
         Ok(())
     }
 
-    fn run_initialized_client(&mut self, messaging: &mut Messaging<GameOutcome>, client_id: spru::player::Id, client: &mut SyncClient<State, Action, Root, Interaction, GameOutcome, Lookup>, mut initialized: SyncClientInitialized<Action, Root, Interaction, GameOutcome, Lookup>)
-        -> anyhow::Result<SyncClientInitialized<Action, Root, Interaction, GameOutcome, Lookup>>
+    fn run_initialized_client(&mut self, messaging: &mut Messaging<Server, Client>, client_id: spru::player::Id, client: &mut SyncClient<Client, Lookup>, mut initialized: SyncClientInitialized<Client, Lookup>)
+        -> anyhow::Result<SyncClientInitialized<Client, Lookup>>
     {
         let directive = client.incoming_queue.pop_front().unwrap();
         let spru::client::Output {
@@ -328,12 +334,12 @@ where
         Ok(initialized)
     }
 
-    fn run_pending_client(&mut self, _messaging: &mut Messaging<GameOutcome>, init: spru::client::init::Arg<State, Action, Root>) 
-        -> anyhow::Result<SyncClientInitialized<Action, Root, Interaction, GameOutcome, Lookup>> 
+    fn run_pending_client(&mut self, _messaging: &mut Messaging<Server, Client>, init: spru::client::init::Arg<Server::Common>) 
+        -> anyhow::Result<SyncClientInitialized<Client, Lookup>> 
     {
         let mut lookup = Lookup::default();
 
-        let client = spru::Client::init(&mut lookup, init)?;
+        let client = Client::init(&mut lookup, init)?;
 
         let client = SyncClientInitialized {
             client,
@@ -345,14 +351,14 @@ where
         Ok(client)
     }
 
-    fn queue_server_outbound(&mut self, outbound: impl IntoIterator<Item = (spru::player::Id, spru::client::signal::Arg<Action, GameOutcome>)>) {
+    fn queue_server_outbound(&mut self, outbound: impl IntoIterator<Item = (spru::player::Id, spru::client::signal::Arg<Server::Common>)>) {
         for (id, signal) in outbound {
             let client = self.clients.get_mut(&id).unwrap();
             client.incoming_queue.push_back(signal);
         }
     }
 
-    fn queue_client_outbound(client: &mut SyncClientInitialized<Action, Root, Interaction, GameOutcome, Lookup>, outbound: impl IntoIterator<Item = spru::server::signal::Arg<Interaction>>) {
+    fn queue_client_outbound(client: &mut SyncClientInitialized<Client, Lookup>, outbound: impl IntoIterator<Item = spru::server::signal::Arg<Server::Common>>) {
         for signal in outbound {
             client.outgoing_queue.push_back(signal);
         }
@@ -393,32 +399,32 @@ impl<'r, T> Picker<'r, T> {
     }
 }
 
-#[derive(Debug)]
-pub enum Run<GameOutcome> {
+#[derive_where(Debug; Messaging<Server, Client>)]
+pub enum Run<Server: spru::Server, Client: spru::Client> {
     Idle,
-    Ran(Messaging<GameOutcome>),
+    Ran(Messaging<Server, Client>),
 }
 
-#[derive(Debug)]
-enum ClientArg<Interaction> {
-    StageInteraction(spru::client::stage_interaction::Arg<Interaction>),
+#[derive_where(Debug; spru::client::stage_interaction::Arg<Client>)]
+enum ClientArg<Client: spru::Client> {
+    StageInteraction(spru::client::stage_interaction::Arg<Client>),
     ApplyInteraction(spru::client::apply_interaction::Arg),
     RevertInteraction(spru::client::revert_interaction::Arg),
 }
 
-impl<Interaction> From<spru::client::stage_interaction::Arg<Interaction>> for ClientArg<Interaction> {
-    fn from(value: spru::client::stage_interaction::Arg<Interaction>) -> Self {
+impl<Client: spru::Client> From<spru::client::stage_interaction::Arg<Client>> for ClientArg<Client> {
+    fn from(value: spru::client::stage_interaction::Arg<Client>) -> Self {
         Self::StageInteraction(value)
     }
 }
 
-impl<Interaction> From<spru::client::apply_interaction::Arg> for ClientArg<Interaction> {
+impl<Client: spru::Client> From<spru::client::apply_interaction::Arg> for ClientArg<Client> {
     fn from(value: spru::client::apply_interaction::Arg) -> Self {
         Self::ApplyInteraction(value)
     }
 }
 
-impl<Interaction> From<spru::client::revert_interaction::Arg> for ClientArg<Interaction> {
+impl<Client: spru::Client> From<spru::client::revert_interaction::Arg> for ClientArg<Client> {
     fn from(value: spru::client::revert_interaction::Arg) -> Self {
         Self::RevertInteraction(value)
     }

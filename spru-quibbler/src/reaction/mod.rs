@@ -75,8 +75,8 @@ impl Trigger {
 
         follow!(
             root => root.players,
-            players => players.expect_player(player_id),
-            player => player.hand)?
+            players => players.expect_player(player_id).hand
+        )?
             .update(pile::push_top(card.clone()));
 
         Ok(())
@@ -155,9 +155,7 @@ impl Trigger {
         // Award 10 bonus points to winners of longest word/most words
         for winner in [max_len_winner, max_words_winner] {
             if let Some(winner) = winner {
-                follow!(
-                    players => players.expect_player(winner),
-                    winner => winner.score)?
+                follow!(players => players.expect_player(winner).score)?
                     .update(counter::add_checked(10));
             }
         }

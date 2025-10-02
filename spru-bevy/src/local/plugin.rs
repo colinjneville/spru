@@ -17,6 +17,7 @@ where
         Root = Server::Root,
         Interaction = Server::Interaction,
         GameOutcome = <Server::Reaction as spru::Reaction>::GameOutcome,
+        Common = Server::Common,
     >,
 {
     fn build(&self, app: &mut bevy::app::App) {

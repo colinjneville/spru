@@ -1,29 +1,29 @@
 use derive_where::derive_where;
 
-#[derive(Debug)]
+#[derive_where(Debug; Event<Server, Client>)]
 #[derive_where(Default)]
-pub struct Messaging<GameOutcome> {
-    events: Vec<Event<GameOutcome>>
+pub struct Messaging<Server: spru::Server, Client: spru::Client> {
+    events: Vec<Event<Server, Client>>
 }
 
-impl<GameOutcome> Messaging<GameOutcome> {
+impl<Server: spru::Server, Client: spru::Client> Messaging<Server, Client> {
     pub fn new() -> Self {
         Self::default()
     }
     
-    pub fn record_event<E: Into<Event<GameOutcome>>>(&mut self, event: E) {
+    pub fn record_event<E: Into<Event<Server, Client>>>(&mut self, event: E) {
         self.events.push(event.into());
     }
 
-    pub fn record_events<E: Into<Event<GameOutcome>>>(&mut self, events: impl IntoIterator<Item = E>) {
+    pub fn record_events<E: Into<Event<Server, Client>>>(&mut self, events: impl IntoIterator<Item = E>) {
         for event in events {
             self.record_event(event);
         }
     }
 }
 
-impl<GameOutcome> IntoIterator for Messaging<GameOutcome> {
-    type Item = Event<GameOutcome>;
+impl<Server: spru::Server, Client: spru::Client> IntoIterator for Messaging<Server, Client> {
+    type Item = Event<Server, Client>;
 
     type IntoIter = std::vec::IntoIter<Self::Item>;
 
@@ -32,23 +32,23 @@ impl<GameOutcome> IntoIterator for Messaging<GameOutcome> {
     }
 }
 
-#[derive(Debug)]
+#[derive_where(Debug; ServerEvent<Server>, ClientEvent<Client>)]
 #[derive(derive_more::From)]
-pub enum Event<GameOutcome> {
+pub enum Event<Server: spru::Server, Client: spru::Client> {
     PlayerConfirmed(PlayerConfirmed),
     InteractionStaged(InteractionStaged),
-    ServerEvent(ServerEvent<GameOutcome>),
-    ClientEvent(ClientEvent<GameOutcome>),
+    ServerEvent(ServerEvent<Server>),
+    ClientEvent(ClientEvent<Client>),
 }
 
-impl<GameOutcome> From<spru::server::Event<GameOutcome>> for Event<GameOutcome> {
-    fn from(event: spru::server::Event<GameOutcome>) -> Self {
+impl<Server: spru::Server, Client: spru::Client> From<spru::server::Event<Server>> for Event<Server, Client> {
+    fn from(event: spru::server::Event<Server>) -> Self {
         Self::ServerEvent(ServerEvent { event })
     }
 }
 
-impl<GameOutcome> From<(spru::player::Id, spru::client::Event<GameOutcome>)> for Event<GameOutcome> {
-    fn from((player_id, event): (spru::player::Id, spru::client::Event<GameOutcome>)) -> Self {
+impl<Server: spru::Server, Client: spru::Client> From<(spru::player::Id, spru::client::Event<Client>)> for Event<Server, Client> {
+    fn from((player_id, event): (spru::player::Id, spru::client::Event<Client>)) -> Self {
         Self::ClientEvent(ClientEvent { player_id, event })
     }
 }
@@ -64,13 +64,13 @@ pub struct InteractionStaged {
     pub pending_transaction_id: spru::transaction::Pending,
 }
 
-#[derive(Debug)]
-pub struct ServerEvent<GameOutcome> {
-    pub event: spru::server::Event<GameOutcome>,
+#[derive_where(Debug; spru::server::Event<Server>)]
+pub struct ServerEvent<Server: spru::Server> {
+    pub event: spru::server::Event<Server>,
 }
 
-#[derive(Debug)]
-pub struct ClientEvent<GameOutcome> {
+#[derive_where(Debug; spru::client::Event<Client>)]
+pub struct ClientEvent<Client: spru::Client> {
     pub player_id: spru::player::Id,
-    pub event: spru::client::Event<GameOutcome>,
+    pub event: spru::client::Event<Client>,
 }

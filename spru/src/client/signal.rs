@@ -1,10 +1,11 @@
+use derive_where::derive_where;
+
 use crate::{action, item::lookup, record::Records, transaction, SeqId};
 
-#[derive(Debug)]
-#[derive(serde::Serialize, serde::Deserialize)]
-pub struct Arg<Action, GameOutcome> {
+#[derive_where(Debug, Serialize, Deserialize; Internal<Common>)]
+pub struct Arg<Common: crate::Common> {
     pub(crate) seq: SeqId,
-    pub(crate) signal: Internal<Action, GameOutcome>,
+    pub(crate) signal: Internal<Common>,
 }
 
 #[derive(Debug)]
@@ -51,30 +52,26 @@ impl From<action::Error> for Error {
 
 pub type Result<T> = std::result::Result<T, self::Error>;
 
-#[derive(Debug)]
 #[derive(derive_more::From)]
-#[derive(serde::Serialize, serde::Deserialize)]
-pub(crate) enum Internal<Action, GameOutcome> {
-    InteractionResult(InteractionResult<Action>),
-    ConfirmedTransaction(ConfirmedTransaction<Action>),
-    EndGame(EndGame<GameOutcome>),
+#[derive_where(Debug, Serialize, Deserialize; InteractionResult<Common>, ConfirmedTransaction<Common>, EndGame<Common>)]
+pub(crate) enum Internal<Common: crate::Common> {
+    InteractionResult(InteractionResult<Common>),
+    ConfirmedTransaction(ConfirmedTransaction<Common>),
+    EndGame(EndGame<Common>),
 }
 
-#[derive(Debug)]
-#[derive(serde::Serialize, serde::Deserialize)]
-pub(crate) struct InteractionResult<Action> {
+#[derive_where(Debug, Serialize, Deserialize; Records<Common::Action>)]
+pub(crate) struct InteractionResult<Common: crate::Common> {
     pub pending_transaction_id: transaction::Pending,
-    pub confirmed_transaction_id: Option<(transaction::Id, Records<Action>)>,
+    pub confirmed_transaction_id: Option<(transaction::Id, Records<Common::Action>)>,
 }
 
-#[derive(Debug)]
-#[derive(serde::Serialize, serde::Deserialize)]
-pub(crate) struct ConfirmedTransaction<Action> {
-    pub confirmed_transaction: transaction::Confirmed<Action>,
+#[derive_where(Debug, Serialize, Deserialize; transaction::Confirmed<Common::Action>)]
+pub(crate) struct ConfirmedTransaction<Common: crate::Common> {
+    pub confirmed_transaction: transaction::Confirmed<Common::Action>,
 }
 
-#[derive(Debug)]
-#[derive(serde::Serialize, serde::Deserialize)]
-pub(crate) struct EndGame<GameOutcome> {
-    pub game_outcome: GameOutcome,
+#[derive_where(Debug, Serialize, Deserialize; Common::GameOutcome)]
+pub(crate) struct EndGame<Common: crate::Common> {
+    pub game_outcome: Common::GameOutcome,
 }

@@ -1,16 +1,13 @@
 use bevy::prelude;
+use derive_where::derive_where;
 
-#[derive(Debug)]
-pub struct SpawnClient<Client: super::ClientSSS, State> {
-    pub init: spru::client::init::Arg<State, Client::Action, Client::Root>,
+#[derive_where(Debug; spru::client::init::Arg<Client::Common>)]
+pub struct SpawnClient<Client: super::ClientSSS> {
+    pub init: spru::client::init::Arg<Client::Common>,
     pub game_id: crate::common::component::GameId,
 }
 
-impl<Client, State> prelude::Command<prelude::Result<prelude::Entity>> for SpawnClient<Client, State> 
-where 
-    Client: super::ClientSSS,
-    State: for<'l> spru::State<super::BevyLookup<'l>, Repr: TryFrom<spru::state::Index>> + 'static,
-{
+impl<Client: super::ClientSSS> prelude::Command<prelude::Result<prelude::Entity>> for SpawnClient<Client> {
     fn apply(self, world: &mut bevy::ecs::world::World) -> prelude::Result<prelude::Entity> {
         let runner = super::component::Runner::<Client>::new(world, self.init)?;
         let player_id = runner.inner().client.local_player_id();

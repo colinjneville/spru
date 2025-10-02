@@ -18,11 +18,13 @@ tagset = "0.1.1"
 
 halfbrown = { version = "0.3.0", features = ["serde"] }
 thiserror = "2.0.12"
-anyhow = "1.0.89"
+anyhow = "1.0.100"
 
 derive_more = "1.0.0"
 derive-where = { version = "1.5.0", features = ["serde"] }
 num-traits = "0.2.17"
+
+implied-bounds = "0.1.0"
 
 rand = { version = "0.9.1", features = [  ] }
 rand_chacha = "0.9.0"
@@ -78,6 +80,7 @@ features = [
 [patch.crates-io]
 telety = { path = "../telety-ws/telety" } 
 telety-macro = { path = "../telety-ws/telety-macro" } 
+telety-impl = { path = "../telety-ws/telety-impl" } 
 amass = { path = "../amass/amass" } 
 #tagset = { git = "https://github.com/colinjneville/tagset.git" }
 tagset = { path = "../tagit/tagset" }

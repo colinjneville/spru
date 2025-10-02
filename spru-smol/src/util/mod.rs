@@ -147,8 +147,17 @@ mod test {
     #[tagset(impl tagset::proxy::serde::Serialize)]
     #[tagset(impl<'de> tagset::serde::DeserializeFromDiscriminant<'de>)]
     #[tagset(impl<'de> tagset::proxy::serde::Deserialize<'de>)]
-    #[tagset(impl spru::action::Base)]
-    #[tagset(impl<Lookup: spru::item::Lookup> spru::Action<Lookup>)]
+    #[tagset(impl spru::State)]
+    #[tagset(i32)]
+    #[tagset(i64)]
+    struct State;
+
+    #[tagset(impl tagset::proxy::serde::Serialize)]
+    #[tagset(impl<'de> tagset::serde::DeserializeFromDiscriminant<'de>)]
+    #[tagset(impl<'de> tagset::proxy::serde::Deserialize<'de>)]
+    #[tagset(impl spru::Action {
+        type State = State;
+    })]
     #[tagset(include(spru_util::verbatim::Actions<i32>))]
     #[tagset(include(spru_util::verbatim::Actions<i64>))]
     struct Actions;

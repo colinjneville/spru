@@ -10,6 +10,7 @@ pub struct Discard {
 }
 
 impl spru::Interaction for Discard {
+    type State = crate::State;
     type Action = crate::Actions;
     type Root = IdT<crate::game::Root>;
     type Trigger = crate::reaction::Trigger;
@@ -20,24 +21,25 @@ impl spru::Interaction for Discard {
     )
         -> spru::interaction::Result<()> 
     where 
-        Self::Action: spru::Action<Lookup>,
+        Lookup: spru::item::Lookup<State = Self::State>,
     {
         let player_id = interactor.context().player;
         let mut root = interactor.get_root()?;
 
-        let mut player_root = follow!(
+        let mut players = follow!(
             root => root.players,
-            players => players.get(player_id).unwrap()
         )?;
 
-        follow!(player_root => player_root.fsm)?
+        let player_root = players.expect_player(player_id);
+
+        interactor.get(player_root.fsm)?
             .update(fsm::transition(crate::player::machine::Input::Discard));
 
-        let hand = follow!(player_root => player_root.hand)?;
+        let hand = interactor.get(player_root.hand)?;
             
         let hand_index = hand.iter()
             .position(|i| i == &self.discard)
-            .ok_or(anyhow::anyhow!("Card is not in hand"))?;
+            .ok_or(crate::anyhow!("Card is not in hand"))?;
         hand
             .update(pile::remove(hand_index));
         follow!(root => root.discard)?

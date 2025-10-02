@@ -1,12 +1,11 @@
+use derive_where::derive_where;
+
 use crate::{interaction, transaction, SeqId};
 
-
-
-#[derive(Debug)]
-#[derive(serde::Serialize, serde::Deserialize)]
-pub struct Arg<Interaction> {
+#[derive_where(Debug, Serialize, Deserialize; Internal<Common>)]
+pub struct Arg<Common: crate::Common> {
     pub(crate) seq: SeqId,
-    pub(crate) signal: Internal<Interaction>,
+    pub(crate) signal: Internal<Common>,
 }
 
 #[derive(Debug)]
@@ -24,17 +23,15 @@ pub enum Error {
     Temp(#[from] crate::TempError),
 }
 
-#[derive(Debug)]
 #[derive(derive_more::From)]
-#[derive(serde::Serialize, serde::Deserialize)]
-pub(crate) enum Internal<Interaction> {
-    ApplyInteraction(ApplyInteraction<Interaction>),
+#[derive_where(Debug, Serialize, Deserialize; ApplyInteraction<Common>)]
+pub(crate) enum Internal<Common: crate::Common> {
+    ApplyInteraction(ApplyInteraction<Common>),
 }
 
-#[derive(Debug)]
-#[derive(serde::Serialize, serde::Deserialize)]
-pub(crate) struct ApplyInteraction<Interaction> {
-    pub interaction: interaction::Staged<Interaction>,
+#[derive_where(Debug, Serialize, Deserialize; interaction::Staged<Common::Interaction>)]
+pub(crate) struct ApplyInteraction<Common: crate::Common> {
+    pub interaction: interaction::Staged<Common::Interaction>,
     pub pending_transaction_id: transaction::Pending,
 }
 

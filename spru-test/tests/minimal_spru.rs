@@ -1,28 +1,22 @@
 use std::collections::HashMap;
 
-use spru::item::IdT;
 use spru_test::*;
 
 use rand::seq::{IndexedRandom as _, };
 
 #[test]
 fn minimal_spru() {
-    use spru_test::game::minimal::*;
+    use spru_test::game::minimal;
 
     let mut rng = rand::rng();
 
     let mut runner = SyncRunner::<
-        State, 
-        Actions, 
-        IdT<GameRoot>, 
-        PlayerInit, 
-        _, 
-        Interaction, 
-        Reaction, 
-        GameOutcome,
-    >::new(GameInit(LobbyInfo), PlayerInit, Reaction).unwrap();
+        minimal::Server,
+        minimal::Client,
+        spru_util::lookup::Standalone<minimal::State>,
+    >::new(minimal::GameInit(minimal::LobbyInfo), minimal::PlayerInit, minimal::Reaction).unwrap();
 
-    for color in PLAYER_COLORS {
+    for color in minimal::PLAYER_COLORS {
         runner.add_player(spru::server::add_player::Arg {
             init_input: color,
         }).unwrap();
@@ -44,11 +38,11 @@ fn minimal_spru() {
                             println!("joined: {}", player_id);
                             player_ids.push(player_id);
                             // Wait for all players to join
-                            if player_ids.len() == PLAYER_COLORS.len() {
+                            if player_ids.len() == minimal::PLAYER_COLORS.len() {
                                 winner = player_ids.choose(&mut rng).copied();
                                 println!("winner: {}", winner.unwrap());
                                 
-                                let interaction = Interaction;
+                                let interaction = minimal::Interaction;
                                 runner.client_command(winner.unwrap(), spru::client::stage_interaction::Arg {
                                     interaction,
                                 }).unwrap();
@@ -77,7 +71,7 @@ fn minimal_spru() {
         }
     }
 
-    assert_eq!(game_outcomes.len(), PLAYER_COLORS.len() + 1);
+    assert_eq!(game_outcomes.len(), minimal::PLAYER_COLORS.len() + 1);
     for game_outcome in game_outcomes.into_values() {
         assert_eq!(winner, Some(game_outcome.0));
     }

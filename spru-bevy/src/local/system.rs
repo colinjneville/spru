@@ -16,10 +16,7 @@ pub fn propagate_local_queues<Server, Client>(
 where 
     Server: crate::server::ServerSSS,
     Client: crate::client::ClientSSS<
-        Action = Server::Action,
-        Root = Server::Root,
-        Interaction = Server::Interaction,
-        GameOutcome = <Server::Reaction as spru::Reaction>::GameOutcome,
+        Common = Server::Common,
     >,
 {
     for (server_id, mut from_client, mut to_client) in q_server {
@@ -45,12 +42,8 @@ pub fn create_local_clients<Server: crate::server::ServerSSS, Client: crate::cli
 )
 where 
     Server: crate::server::ServerSSS,
-    Server::State: for<'l> spru::State<crate::client::BevyLookup<'l>, Repr: TryFrom<spru::state::Index>> + 'static,
     Client: crate::client::ClientSSS<
-        Action = Server::Action,
-        Root = Server::Root,
-        Interaction = Server::Interaction,
-        GameOutcome = <Server::Reaction as spru::Reaction>::GameOutcome,
+        Common = Server::Common,
     >,
 {
     for (&game_id, mut pending_clients) in q_server {
@@ -60,7 +53,7 @@ where
                 player_id: _player_id,
             } = ret;
 
-            commands.queue(crate::client::command::SpawnClient::<Client, Server::State> {
+            commands.queue(crate::client::command::SpawnClient::<Client> {
                 init: client_init,
                 game_id,
             });

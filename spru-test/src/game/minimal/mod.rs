@@ -24,15 +24,16 @@ pub struct Trigger(spru::player::Id);
 pub struct GameOutcome(pub spru::player::Id);
 
 #[tagset(impl crate::proxy::std::fmt::Debug)]
-#[tagset(impl<Lookup> spru::State<Lookup>)]
+#[tagset(impl spru::State)]
 #[tagset(GameRoot)]
 #[tagset(PlayerData)]
 pub struct State;
 
 #[tagset(derive(Clone))]
 #[tagset(impl crate::proxy::std::fmt::Debug)]
-#[tagset(impl spru::action::Base)]
-#[tagset(impl<Lookup> spru::Action<Lookup>)]
+#[tagset(impl spru::Action {
+    type State = State;
+})]
 #[tagset(impl tagset::proxy::serde::Serialize)]
 #[tagset(impl<'de> tagset::serde::DeserializeFromDiscriminant<'de>)]
 #[tagset(impl<'de> tagset::proxy::serde::Deserialize<'de>)]
@@ -145,10 +146,11 @@ impl spru::game::Init for GameInit {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct Interaction;
 impl spru::Interaction for Interaction {
+    type State = State;
     type Action = Actions;
     type Root = IdT<GameRoot>;
     type Trigger = Trigger;
@@ -156,10 +158,27 @@ impl spru::Interaction for Interaction {
     fn apply<Lookup>(&self, interactor: &mut spru::interaction::Interactor<Lookup, Actions, IdT<GameRoot>, Trigger>) 
         -> spru::interaction::Result<()>
     where 
-        Actions: spru::Action<Lookup>,
+        Lookup: spru::item::Lookup<State = Self::State>,
     {
         let root = interactor.get_root()?;
         interactor.enqueue_trigger(Trigger(interactor.context().player));
         Ok(())
     }
 }
+
+pub type Server = spru::server::Impl<
+    State,
+    Actions,
+    IdT<GameRoot>,
+    Interaction,
+    Reaction,
+    PlayerInit,
+>;
+
+pub type Client = spru::client::Impl<
+    State,
+    Actions,
+    IdT<GameRoot>,
+    Interaction,
+    GameOutcome,
+>;

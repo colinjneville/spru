@@ -6,7 +6,7 @@ use crate::{data, game, hand, player, round};
 #[tagset(impl tagset::proxy::serde::Serialize)]
 #[tagset(impl<'de> tagset::serde::DeserializeFromDiscriminant<'de>)]
 #[tagset(impl<'de> tagset::proxy::serde::Deserialize<'de>)]
-#[tagset(impl<Lookup> spru::State<Lookup>)]
+#[tagset(impl spru::State)]
 #[tagset(game::Root)]
 #[tagset(player_map::State<player::Root>)]
 #[tagset(fsm::State<player::machine::Impl>)]

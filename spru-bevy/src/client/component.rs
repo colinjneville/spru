@@ -11,7 +11,7 @@ use derive_where::derive_where;
 #[derive(prelude::Component)]
 pub struct ClientId(pub spru::player::Id);
 
-#[derive(Debug)]
+#[derive_where(Debug; RunnerInner<Client>)]
 #[derive(prelude::Component)]
 #[require(FromServer<Client>, ToServer<Client>)]
 pub struct Runner<Client: super::ClientSSS> {
@@ -19,13 +19,11 @@ pub struct Runner<Client: super::ClientSSS> {
 }
 
 impl<Client: super::ClientSSS> Runner<Client> {
-    pub(crate) fn new<State>(world: &mut bevy::prelude::World, init: spru::client::init::Arg<State, Client::Action, Client::Root>) 
+    pub(crate) fn new(world: &mut bevy::prelude::World, init: spru::client::init::Arg<Client::Common>) 
         -> spru::client::init::Result<Self> 
-    where
-        State: for<'l> spru::State<super::BevyLookup<'l>, Repr: TryFrom<spru::state::Index>>,
     {
         let mut entity_map = super::lookup::EntityMap::default();
-        let mut lookup = super::BevyLookup::new(world, &mut entity_map, init.local_player_id());
+        let mut lookup = super::lookup::BevyLookup::new(world, &mut entity_map, init.local_player_id());
         let client = Client::init(&mut lookup, init)?;
             
         Ok(Self {
@@ -57,39 +55,39 @@ pub(crate) struct RunnerInner<Client: super::ClientSSS> {
     pub(crate) entity_map: super::lookup::EntityMap,
 }
 
-#[derive(Debug)]
+#[derive_where(Debug; spru::client::signal::Arg<Client::Common>)]
 #[derive_where(Default)]
 #[derive(prelude::Component)]
 pub struct FromServer<Client: super::ClientSSS> {
-    queue: VecDeque<spru::client::signal::Arg<Client::Action, Client::GameOutcome>>,
+    queue: VecDeque<spru::client::signal::Arg<Client::Common>>,
 }
 
 impl<Client: super::ClientSSS> FromServer<Client> {
-    pub(crate) fn enqueue(&mut self, signal: spru::client::signal::Arg<Client::Action, Client::GameOutcome>) {
+    pub(crate) fn enqueue(&mut self, signal: spru::client::signal::Arg<Client::Common>) {
         self.queue
             .push_back(signal);
     }
 
-    pub fn dequeue(&mut self) -> Option<spru::client::signal::Arg<Client::Action, Client::GameOutcome>> {
+    pub fn dequeue(&mut self) -> Option<spru::client::signal::Arg<Client::Common>> {
         self.queue
             .pop_front()
     }
 }
 
-#[derive(Debug)]
+#[derive_where(Debug; spru::server::signal::Arg<Client::Common>)]
 #[derive_where(Default)]
 #[derive(prelude::Component)]
 pub struct ToServer<Client: super::ClientSSS> {
-    queue: VecDeque<spru::server::signal::Arg<Client::Interaction>>,
+    queue: VecDeque<spru::server::signal::Arg<Client::Common>>,
 }
 
 impl<Client: super::ClientSSS> ToServer<Client> {
-    pub fn enqueue(&mut self, signal: spru::server::signal::Arg<Client::Interaction>) {
+    pub fn enqueue(&mut self, signal: spru::server::signal::Arg<Client::Common>) {
         self.queue
             .push_back(signal);
     }
 
-    pub(crate) fn dequeue(&mut self) -> Option<spru::server::signal::Arg<Client::Interaction>> {
+    pub(crate) fn dequeue(&mut self) -> Option<spru::server::signal::Arg<Client::Common>> {
         self.queue
             .pop_front()
     }

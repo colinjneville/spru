@@ -41,7 +41,7 @@ pub fn add_player<Server: super::ServerSSS>(
         &mut super::component::Runner<Server>,
     )>,
 )
-    -> spru::server::add_player::Result<spru::client::init::Arg<Server::State, Server::Action, Server::Root>>
+    -> spru::server::add_player::Result<spru::client::init::Arg<Server::Common>>
 {
     // for (&server_game_id, runner) in q_server {
     //     if game_id == server_game_id 

@@ -17,7 +17,7 @@ impl Error {
         }
     }
 
-    pub(crate) fn set_context<Interaction: crate::Interaction>(&mut self, interaction: &Interaction) {
+    pub(crate) fn set_context<Interaction>(&mut self, interaction: &Interaction) {
         self.context = Some(Context::new(interaction))
     }
 
@@ -79,7 +79,7 @@ pub(crate) struct Context {
 }
 
 impl Context {
-    pub(crate) fn new<Interaction: crate::Interaction>(_interaction: &Interaction) -> Self {
+    pub(crate) fn new<Interaction>(_interaction: &Interaction) -> Self {
         Self {
             interaction_name: std::any::type_name::<Interaction>(),
         }

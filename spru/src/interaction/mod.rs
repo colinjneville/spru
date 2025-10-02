@@ -70,14 +70,15 @@ impl<'r, Root> Context<'r, Root> {
 #[telety(crate::interaction, alias_traits = "always")]
 #[tagset_meta]
 pub trait Interaction {
-    type Action;
+    type State: crate::State;
+    type Action: crate::Action<State = Self::State>;
     type Root;
     type Trigger;
 
     fn apply<'l, 'r, Lookup>(&self, interactor: &mut Interactor<'l, 'r, Lookup, Self::Action, Self::Root, Self::Trigger>)
          -> self::Result<()>
     where 
-        Self::Action: crate::Action<Lookup>,
+        Lookup: item::Lookup<State = Self::State>,
     ;
 }
 

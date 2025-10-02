@@ -1,8 +1,10 @@
+use derive_where::derive_where;
+
 use crate::transaction;
 
-#[derive(Debug)]
-pub struct Arg<Interaction> {
-    pub interaction: Interaction,
+#[derive_where(Debug; Client::Interaction)]
+pub struct Arg<Client: super::Client> {
+    pub interaction: Client::Interaction,
 }
 
 #[derive(Debug)]

@@ -1,15 +1,17 @@
+use derive_where::derive_where;
+
 use crate::{item, player, transaction::Transactions, Snapshot};
 
 #[derive(Debug)]
-#[derive(serde::Serialize, serde::Deserialize)]
-pub struct Arg<State, Action, Root> {
-    pub(crate) snapshot: Snapshot<State, Root>,
-    pub(crate) transactions: Transactions<Action>,
+#[derive_where(Serialize, Deserialize; <Common as crate::Common>::Root, <Common as crate::Common>::Action)]
+pub struct Arg<Common: crate::Common> {
+    pub(crate) snapshot: Snapshot<Common::State, Common::Root>,
+    pub(crate) transactions: Transactions<Common::Action>,
     pub(crate) reservation: item::id::Reservation,
     pub(crate) local_player_id: player::Id,
 }
 
-impl<State, Action, Root> Arg<State, Action, Root> {
+impl<Common: crate::Common> Arg<Common> {
     pub fn local_player_id(&self) -> player::Id {
         self.local_player_id
     }

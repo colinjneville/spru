@@ -21,14 +21,8 @@ pub use state::State;
 
 use bevy::prelude::*;
 
-type Client = spru::Client<Actions, IdT<game::Root>, Interaction, game::Outcome>;
-type Server = spru::Server<State, Actions, IdT<game::Root>, player::Init, Interaction, Reaction>;
-
-fn f<S: spru_bevy::server::ServerSSS>() { }
-
-fn a() {
-    f::<Server>();
-}
+type Client = spru::client::Impl<State, Actions, IdT<game::Root>, Interaction, game::Outcome>;
+type Server = spru::server::Impl<State, Actions, IdT<game::Root>, Interaction, Reaction, player::Init>;
 
 fn main() {
     bevy::app::App::new()
@@ -42,15 +36,7 @@ fn main() {
 }
 
 #[derive(Debug)]
-// #[derive(thiserror::Error)]
-// #[error("{0}")]
-pub struct Error(anyhow::Error);
-
-impl<T: Into<anyhow::Error>> From<T> for Error {
-    fn from(value: T) -> Self {
-        Self(value.into())
-    }
-}
+pub struct Error(pub anyhow::Error);
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -58,15 +44,34 @@ impl fmt::Display for Error {
     }
 }
 
-macro_rules! bail {
+impl std::error::Error for Error {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        self.0.source()
+    }
+}
+
+macro_rules! anyhow {
     ($msg:literal $(,)?) => {
-        return anyhow::anyhow!($msg).into();
+        $crate::Error(anyhow::anyhow!($msg))
     };
     ($err:expr $(,)?) => {
-        return anyhow::anyhow!($err).into();
+        $crate::Error(anyhow::anyhow!($err))
     };
     ($fmt:expr, $($arg:tt)*) => {
-        return anyhow::anyhow!($fmt, $($arg)*).into();
+        $crate::Error(anyhow::anyhow!($fmt, $($arg)*))
+    }
+}
+pub(crate) use anyhow;
+
+macro_rules! bail {
+    ($msg:literal $(,)?) => {
+        return Err($crate::anyhow!($msg).into());
+    };
+    ($err:expr $(,)?) => {
+        return Err($crate::::anyhow!($err).into());
+    };
+    ($fmt:expr, $($arg:tt)*) => {
+        return Err($crate::::anyhow!($fmt, $($arg)*).into());
     }
 }
 pub(crate) use bail;

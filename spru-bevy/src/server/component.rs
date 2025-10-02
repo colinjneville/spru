@@ -53,20 +53,20 @@ impl<Server: super::ServerSSS> Runner<Server> {
     }
 }
 
-#[derive(Debug)]
+#[derive_where(Debug; spru::server::signal::Arg<Server::Common>)]
 #[derive_where(Default)]
 #[derive(prelude::Component)]
 pub struct FromClient<Server: super::ServerSSS> {
-    queues: Vec<(spru::player::Id, VecDeque<spru::server::signal::Arg<Server::Interaction>>)>,
+    queues: Vec<(spru::player::Id, VecDeque<spru::server::signal::Arg<Server::Common>>)>,
 }
 
 impl<Server: super::ServerSSS> FromClient<Server> {
-    pub fn enqueue(&mut self, client_id: spru::player::Id, signal: spru::server::signal::Arg<Server::Interaction>) {
+    pub fn enqueue(&mut self, client_id: spru::player::Id, signal: spru::server::signal::Arg<Server::Common>) {
         get_queue_mut(client_id, &mut self.queues)
             .push_back(signal);
     }
 
-    pub(crate) fn dequeue_any(&mut self) -> Option<(spru::player::Id, spru::server::signal::Arg<Server::Interaction>)> {
+    pub(crate) fn dequeue_any(&mut self) -> Option<(spru::player::Id, spru::server::signal::Arg<Server::Common>)> {
         for (client_id, queue) in &mut self.queues {
             if let Some(signal) = queue.pop_front() {
                 return Some((*client_id, signal));
@@ -76,25 +76,25 @@ impl<Server: super::ServerSSS> FromClient<Server> {
     }
 }
 
-#[derive_where(Debug; spru::client::signal::Arg<Server::Action, <Server::Reaction as spru::Reaction>::GameOutcome>)]
+#[derive_where(Debug; spru::client::signal::Arg<Server::Common>)]
 #[derive_where(Default)]
 #[derive(prelude::Component)]
 pub struct ToClient<Server: super::ServerSSS> {
-    queues: Vec<(spru::player::Id, VecDeque<spru::client::signal::Arg<Server::Action, <Server::Reaction as spru::Reaction>::GameOutcome>>)>,
+    queues: Vec<(spru::player::Id, VecDeque<spru::client::signal::Arg<Server::Common>>)>,
 }
 
 impl<Server: super::ServerSSS> ToClient<Server> {
-    pub(crate) fn enqueue(&mut self, client_id: spru::player::Id, signal: spru::client::signal::Arg<Server::Action, <Server::Reaction as spru::Reaction>::GameOutcome>) {
+    pub(crate) fn enqueue(&mut self, client_id: spru::player::Id, signal: spru::client::signal::Arg<Server::Common>) {
         get_queue_mut(client_id, &mut self.queues)
             .push_back(signal);
     }
 
-    pub fn dequeue(&mut self, client_id: spru::player::Id) -> Option<spru::client::signal::Arg<Server::Action, <Server::Reaction as spru::Reaction>::GameOutcome>> {
+    pub fn dequeue(&mut self, client_id: spru::player::Id) -> Option<spru::client::signal::Arg<Server::Common>> {
         get_queue_mut(client_id, &mut self.queues)
             .pop_front()
     }
 
-    pub fn dequeue_any(&mut self) -> Option<(spru::player::Id, spru::client::signal::Arg<Server::Action, <Server::Reaction as spru::Reaction>::GameOutcome>)> {
+    pub fn dequeue_any(&mut self) -> Option<(spru::player::Id, spru::client::signal::Arg<Server::Common>)> {
         for (client_id, queue) in &mut self.queues {
             if let Some(signal) = queue.pop_front() {
                 return Some((*client_id, signal));
@@ -124,18 +124,18 @@ fn get_queue_mut<T>(player_id: spru::player::Id, queues: &mut Vec<(spru::player:
     &mut queues[index].1
 }
 
-#[derive(Debug)]
+#[derive_where(Debug; spru::server::add_player::Ret<Server>)]
 #[derive(prelude::Component)]
 pub struct PendingClients<Server: super::ServerSSS> {
-    queue: VecDeque<spru::server::add_player::Ret<Server::State, Server::Action, Server::Root>>,
+    queue: VecDeque<spru::server::add_player::Ret<Server>>,
 }
 
 impl<Server: super::ServerSSS> PendingClients<Server> {
-    pub(crate) fn enqueue(&mut self, ret: spru::server::add_player::Ret<Server::State, Server::Action, Server::Root>) {
+    pub(crate) fn enqueue(&mut self, ret: spru::server::add_player::Ret<Server>) {
         self.queue.push_back(ret);
     }
 
-    pub fn dequeue(&mut self) -> Option<spru::server::add_player::Ret<Server::State, Server::Action, Server::Root>> {
+    pub fn dequeue(&mut self) -> Option<spru::server::add_player::Ret<Server>> {
         self.queue.pop_front()
     }
 }

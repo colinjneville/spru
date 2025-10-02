@@ -1,23 +1,28 @@
-use std::{any, collections::HashMap};
+use std::{any, collections::HashMap, marker::PhantomData};
 
+use derive_where::derive_where;
 use spru::{error::AnyResult, item::{self, IdT}, Item};
 
-#[derive(Debug, Default)]
-pub struct Standalone {
+#[derive_where(Debug, Default; )]
+pub struct Standalone<State> {
     map: HashMap<any::TypeId, Box<dyn any::Any>>,
+    _state: PhantomData<fn() -> State>,
 }
 
-impl Standalone {
+impl<State> Standalone<State> {
     pub fn new() -> Self {
         Self::default()
     }
 }
 
-impl<T: 'static> spru::item::Lookup<T> for Standalone {
-    type Mut<'lr> = &'lr mut spru::Item<T>
-    where Self: 'lr;
+impl<State: spru::State> spru::item::Lookup for Standalone<State> {
+    type State = State;
 
-    fn lookup(&self, id: IdT<T>) -> spru::item::lookup::Result<&Item<T>> {
+    fn lookup<T>(&self, id: IdT<T>) 
+        -> spru::item::lookup::Result<&Item<T>> 
+    where
+        T: item::lookup::Lookupable<Self::State>,
+    {
         let type_id = any::TypeId::of::<T>();
         let item = if let Some(inner_map) = self.map.get(&type_id) {
             let inner_map = inner_map.downcast_ref::<HashMap<item::IdT<T>, Item<T>>>()
@@ -31,7 +36,12 @@ impl<T: 'static> spru::item::Lookup<T> for Standalone {
             .map_err(Into::into)
     }
 
-    fn lookup_mut(&mut self, id: IdT<T>) -> spru::item::lookup::Result<Self::Mut<'_>> {
+    #[allow(refining_impl_trait)]
+    fn lookup_mut<T>(&mut self, id: IdT<T>) 
+        -> spru::item::lookup::Result<&mut spru::Item<T>> 
+    where
+        T: item::lookup::Lookupable<Self::State>,    
+    {
         let type_id = any::TypeId::of::<T>();
         let item = if let Some(inner_map) = self.map.get_mut(&type_id) {
             let inner_map = inner_map.downcast_mut::<InnerMap<T>>()
@@ -45,7 +55,11 @@ impl<T: 'static> spru::item::Lookup<T> for Standalone {
             .map_err(Into::into)
     }
 
-    fn create(&mut self, value: spru::Item<T>) -> spru::item::lookup::Result<()> {
+    fn create<T>(&mut self, value: spru::Item<T>) 
+        -> spru::item::lookup::Result<()> 
+    where
+        T: item::lookup::Lookupable<Self::State>,       
+    {
         let id = value.id();
         let type_id = any::TypeId::of::<T>();
         let inner_map = self.map.entry(type_id)
@@ -61,7 +75,11 @@ impl<T: 'static> spru::item::Lookup<T> for Standalone {
         }
     }
 
-    fn destroy(&mut self, id: IdT<T>) -> spru::item::lookup::Result<spru::Item<T>> {
+    fn destroy<T>(&mut self, id: IdT<T>) 
+        -> spru::item::lookup::Result<spru::Item<T>> 
+    where
+        T: item::lookup::Lookupable<Self::State>,       
+    {
         let type_id = any::TypeId::of::<T>();
         let item = if let Some(inner_map) = self.map.get_mut(&type_id) {
             let inner_map = inner_map.downcast_mut::<InnerMap<T>>()
@@ -93,29 +111,33 @@ mod test {
 
     use super::*;
 
+    #[tagset::tagset(impl spru::State)]
+    #[tagset(String)]
+    struct State;
+
     #[test]
     fn standalone() {
         use spru::item::lookup::Lookup as _;
-        let mut lookup = Standalone::new();
+        let mut lookup = Standalone::<State>::new();
 
         let id0 = spru::item::IdT::test_new(0);
         let id1 = spru::item::IdT::test_new(1);
         let id2 = spru::item::IdT::test_new(2);
 
-        lookup.create(spru::Item::test_new(id0.clone(), "zero"))
+        lookup.create(spru::Item::test_new(id0.clone(), "zero".to_string()))
             .unwrap();
 
-        lookup.create(spru::Item::test_new(id1.clone(), "one"))
+        lookup.create(spru::Item::test_new(id1.clone(), "one".to_string()))
             .unwrap();
 
-        lookup.create(spru::Item::test_new(id2.clone(), "two"))
+        lookup.create(spru::Item::test_new(id2.clone(), "two".to_string()))
             .unwrap();
 
         let s0 = lookup.lookup_mut(id0)
             .unwrap()
             .test_get_mut();
 
-        *s0 = "ZERO";
+        *s0 = "ZERO".to_string();
 
         let s0 = lookup.lookup(id0)
             .unwrap()

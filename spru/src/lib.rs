@@ -4,6 +4,8 @@ pub mod action;
 pub use action::Action;
 pub mod client;
 pub use client::Client;
+mod common;
+pub use common::Common;
 pub mod state;
 pub use state::State;
 pub mod error;

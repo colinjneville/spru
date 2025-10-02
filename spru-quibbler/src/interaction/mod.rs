@@ -18,7 +18,9 @@ pub enum Error {
     InvalidState
 }
 
+#[tagset(derive(Debug, Clone))]
 #[tagset(impl spru::Interaction {
+    type State = crate::State;
     type Action = crate::Actions; 
     type Root = IdT<crate::game::Root>;
     type Trigger = crate::reaction::Trigger;
@@ -32,18 +34,3 @@ pub enum Error {
 pub struct Interaction;
 
 pub struct Output;
-
-// impl spru::interaction::Base for Interaction {
-//     type Error = Error;
-// }
-
-// // TEMP
-// impl spru::Interaction<Impl> for Interaction {
-//     fn to_records(&self, interactor: &mut spru::interaction::Interactor<Impl>, player_id: spru::player::Id) -> Result<(), spru::error::LookupInteractionError<Impl, Self::Error>> {
-//         match self {
-//             Interaction::Draw(draw) => draw.to_records(interactor, player_id),
-//             Interaction::Play(play) => play.to_records(interactor, player_id),
-//             Interaction::Pass(pass) => pass.to_records(interactor, player_id),
-//         }
-//     }
-// }

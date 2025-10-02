@@ -65,21 +65,37 @@ impl<'i> quote::ToTokens for ActionImpl<'i> {
         let (lookup_impl_generics, _lookup_type_generics, lookup_where_clause) = lookup_generics.split_for_impl();
 
         quote::quote! {
-            impl #impl_generics ::spru::action::Base for #ident #type_generics
-            #where_clause {
+            impl #impl_generics spru::action::SubAction for #ident #type_generics 
+                #where_clause
+            {
                 type Undo = <Self as #trait_path>::Undo;
-            }
+                type T = <Self as #trait_path>::T;
 
-            impl #lookup_impl_generics ::spru::Action<#lookup_ident> for #ident #type_generics
-            #lookup_where_clause {
-                fn apply(&self, context: ::spru::action::Context<'_, #lookup_ident>) 
+                fn apply<Lookup>(&self, context: ::spru::action::Context<'_, Lookup>)
                     -> ::spru::action::Result<Option<Self::Undo>>
                 where 
-                    Self: Sized,
+                    Lookup: ::spru::item::Lookup,
+                    Self::T: spru::item::lookup::Lookupable<Lookup::State>,
                 {
                     context.#func_ident(self)
                 }
             }
+
+            // impl #impl_generics ::spru::action::Base for #ident #type_generics
+            // #where_clause {
+            //     type Undo = <Self as #trait_path>::Undo;
+            // }
+
+            // impl #lookup_impl_generics ::spru::Action<#lookup_ident> for #ident #type_generics
+            // #lookup_where_clause {
+            //     fn apply(&self, context: ::spru::action::Context<'_, #lookup_ident>) 
+            //         -> ::spru::action::Result<Option<Self::Undo>>
+            //     where 
+            //         Self: Sized,
+            //     {
+            //         context.#func_ident(self)
+            //     }
+            // }
         }.to_tokens(tokens);
     }
 }

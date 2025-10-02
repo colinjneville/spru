@@ -6,38 +6,44 @@ use crate::{action, error::AnyResult, item, Item};
 pub use spru_macro::{Create, Update, Destroy};
 use tagset::tagset_meta;
 
-#[telety::telety(crate::action)]
-#[tagset_meta]
-pub trait Base {
-    #[meta(default(Self))]
+/// Implemented automatically by the Create/Update/Destroy macros
+#[doc(hidden)]
+pub trait SubAction {
     type Undo;
+    type T;
+
+    fn apply<Lookup>(&self, context: Context<'_, Lookup>)
+        -> action::Result<Option<Self::Undo>>
+    where 
+        Lookup: item::Lookup,
+        Self::T: item::lookup::Lookupable<Lookup::State>,
+    ;
+
+    fn apply_map<Lookup, Action>(&self, context: Context<'_, Lookup>)
+        -> action::Result<Option<Action>>
+    where 
+        Lookup: item::Lookup,
+        Self::T: item::lookup::Lookupable<Lookup::State>,
+        Self::Undo: Into<Action>,
+    {
+        self.apply(context)
+            .map(|o| o.map(Into::into))
+    }
 }
 
 #[telety::telety(crate::action, alias_traits = "always")]
 #[tagset_meta]
 #[meta(bounds(
     for<VAR> VAR: 
-        crate::Action<
-            Lookup,
-            Undo: Into<Self::Undo>,
-        >,
+        crate::action::SubAction<Undo: Into<Self>>,
 ))]
-pub trait Action<Lookup>: Base {
-    #[meta(default {
-        match_by_value!(self, v => spru::Action::apply_map(v, context))
-    })]
-    fn apply(&self, context: Context<'_, Lookup>) -> action::Result<Option<Self::Undo>>
-    where 
-        Self: Sized;
+pub trait Action: Sized {
+    type State: crate::State;
 
-    fn apply_map<U>(&self, context: Context<'_, Lookup>) -> action::Result<Option<U>>
-    where 
-        Self: Sized,
-        Self::Undo: Into<U>,
-    {
-        self.apply(context)
-            .map(|u| u.map(Into::into))
-    }
+    #[meta(default {
+        match_by_value!(self, v => spru::action::SubAction::apply_map(v, context))
+    })]
+    fn apply<Lookup: item::Lookup<State = Self::State>>(&self, context: Context<'_, Lookup>) -> action::Result<Option<Self>>;
 }
 
 pub trait Create {
@@ -86,11 +92,10 @@ impl<'l, Lookup> Context<'l, Lookup> {
     }
 
     #[doc(hidden)]
-    pub fn create<C, O>(self, c: &C) -> action::Result<Option<O>> 
+    pub fn create<C>(self, c: &C) -> action::Result<Option<C::Undo>> 
     where 
-        Lookup: item::lookup::Lookup<C::T>,
-        C: Create,
-        C::Undo: Into<O>,
+        Lookup: item::Lookup,
+        C: Create<T: item::lookup::Lookupable<Lookup::State>>,
     {
         let Self { 
             lookup, 
@@ -98,7 +103,7 @@ impl<'l, Lookup> Context<'l, Lookup> {
             version, 
         } = self;
 
-        if let Ok(stateful) = lookup.lookup(item::IdT::new(id)) {
+        if let Ok(stateful) = lookup.lookup(item::IdT::<C::T>::new(id)) {
             Err(action::Error::from(item::id::Error::AlreadyExists { id: id.clone(), version: stateful.version() }))
         } else {
             let (value, undo) = c.create()?;
@@ -106,16 +111,15 @@ impl<'l, Lookup> Context<'l, Lookup> {
             let stateful = Item::new(item::IdT::new(id.clone()), version.after, value);
             lookup.create(stateful)?;
 
-            Ok(Some(undo.into()))
+            Ok(Some(undo))
         }
     }
 
     #[doc(hidden)]
-    pub fn update<U, O>(self, u: &U) -> action::Result<Option<O>> 
+    pub fn update<U>(self, u: &U) -> action::Result<Option<U::Undo>> 
     where 
-        Lookup: item::lookup::Lookup<U::T>,
-        U: Update,
-        U::Undo: Into<O>,
+        Lookup: item::lookup::Lookup,
+        U: Update<T: item::lookup::Lookupable<Lookup::State>>,
     {
         let Self {
             lookup, 
@@ -123,12 +127,11 @@ impl<'l, Lookup> Context<'l, Lookup> {
             version,
         } = self;
 
-        let mut value = lookup.lookup_mut(item::IdT::new(id))?;
+        let mut value = lookup.lookup_mut(item::IdT::<U::T>::new(id))?;
         if version.before == (*value).version() {
             (*value).set_version(version.after);
             u.update(value.get_mut())
                 .map(Into::into)
-                .map(|o| o.map(Into::into))
                 .map_err(Into::into)
         } else {
             Err(action::Error::from(item::version::Error { expected: version.before, actual: (*value).version() }))
@@ -136,11 +139,10 @@ impl<'l, Lookup> Context<'l, Lookup> {
     }
 
     #[doc(hidden)]
-    pub fn destroy<D, O>(self, d: &D) -> action::Result<Option<O>> 
+    pub fn destroy<D>(self, d: &D) -> action::Result<Option<D::Undo>> 
     where 
-        Lookup: item::lookup::Lookup<D::T>,
-        D: Destroy,
-        D::Undo: Into<O>,
+        Lookup: item::lookup::Lookup,
+        D: Destroy<T: item::lookup::Lookupable<Lookup::State>>,
     {
         let Self {
             lookup, 
@@ -148,11 +150,11 @@ impl<'l, Lookup> Context<'l, Lookup> {
             version,
         } = self;
 
-        let item = lookup.lookup(item::IdT::new(id))?;
+        let item = lookup.lookup(item::IdT::<D::T>::new(id))?;
         if version.before == item.version() {
-            let item = lookup.destroy(item::IdT::new(id))?;
+            let item = lookup.destroy(item::IdT::<D::T>::new(id))?;
             let undo = d.destroy(item.into_value())?;
-            Ok(Some(undo.into()))
+            Ok(Some(undo))
         } else {
             Err(action::Error::from(item::version::Error { expected: version.before, actual: item.version() }))
         }

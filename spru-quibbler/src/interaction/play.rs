@@ -12,6 +12,7 @@ pub struct Play {
 }
 
 impl spru::Interaction for Play {
+    type State = crate::State;
     type Action = crate::Actions;
     type Root = IdT<crate::game::Root>;
     type Trigger = crate::reaction::Trigger;
@@ -19,21 +20,21 @@ impl spru::Interaction for Play {
     fn apply<Lookup>(&self, interactor: &mut super::Interactor<Lookup>)
          -> spru::interaction::Result<()>
     where 
-        Self::Action: spru::Action<Lookup>,
+        Lookup: spru::item::Lookup<State = Self::State>,
     {
         let player_id = interactor.context().player;
-        let a = interactor.get::<crate::player::Root>(todo!())?;
+        
         let root = interactor.get_root::<crate::game::Root>()?;
         let round_fsm = follow!(root => root.round_fsm)?;
         let players = follow!(root => root.players)?;
-        let player = follow!(players => players.expect_player(player_id))?;
-        let player_fsm = follow!(player => player.fsm)?;
+        let player = players.expect_player(player_id);
+        let player_fsm = interactor.get(player.fsm)?;
 
         if let Some(play) = &self.play {
             round_fsm.update(fsm::transition(round::machine::Input::Play));
             player_fsm.update(fsm::transition(player::machine::Input::Play));
 
-            let hand = follow!(player => player.hand)?;
+            let hand = interactor.get(player.hand)?;
             let mut remaining_cards = HashMap::<&data::Card, u8>::new();
             
             for card in hand.iter() {
@@ -65,22 +66,14 @@ impl spru::Interaction for Play {
             }
 
             // Add letter score with no bonuses
-            follow!(player => player.score)?
-                .update(counter::add_checked(play.base_score()));
-
-            let mut round_complete = true;
-            for (player_id, player_root) in players.iter() {
-                if !follow!(player_root => player_root.played)?.is_played() {
-                        round_complete = false;
-                        break;
-                }
-            }
+            interactor.get(player.score)?
+                .update(counter::add_checked(play.base_score() as i32));
             
             'check_round_complete: {
-                let max_len = 0;
-                let max_len_winner = None;
-                let max_words = 0;
-                let max_words_winner = None;
+                let mut max_len = 0;
+                let mut max_len_winner = None;
+                let mut max_words = 0;
+                let mut max_words_winner = None;
                 for (player_id, player_root) in players.iter() {
                     let played = root.follow(player_root.played)?;
                     
@@ -90,7 +83,7 @@ impl spru::Interaction for Play {
 
                     let this_max_len = played.max_word_len();
                     if this_max_len > max_len {
-                        this_max_len = max_len;
+                        max_len = this_max_len;
                         max_len_winner = Some(player_id);
                     } else if this_max_len == max_len {
                         max_len_winner = None;
@@ -98,7 +91,7 @@ impl spru::Interaction for Play {
 
                     let this_max_words = played.word_count();
                     if this_max_words > max_words {
-                        this_max_words = max_words;
+                        max_words = this_max_words;
                         max_words_winner = Some(player_id);
                     } else if this_max_words == max_words {
                         max_words_winner = None;
@@ -108,9 +101,7 @@ impl spru::Interaction for Play {
                 // Award 10 bonus points to winners of longest word/most words
                 for winner in [max_len_winner, max_words_winner] {
                     if let Some(winner) = winner {
-                        follow!(
-                            players => players.expect_player(winner),
-                            winner => winner.score)?
+                        follow!(players => players.expect_player(winner).score)?
                             .update(counter::add_checked(10));
                     }
                 }

@@ -17,10 +17,10 @@ macro_rules! follow {
             };
 
             $(
-                let mut $get = get;
+                let $get = get;
                 let next_id = $next_id;
 
-                let mut get = match $get.follow(next_id) {
+                let get = match $get.follow(next_id) {
                     Ok(get) => get,
                     Err(e) => break 'result Err(e),
                 };
@@ -92,7 +92,8 @@ impl<Action> ItemStatus<Action> {
     fn flush<Lookup>(&mut self, id: item::Id, lookup: &mut Lookup) 
         -> action::Result<()>
     where 
-        Action: crate::Action<Lookup, Undo = Action>,
+        Action: crate::Action<State = Lookup::State>,
+        Lookup: item::Lookup,
     {
         while let Some(pending_do) = self.pending_do.get_mut().pop_back() {
             let context = action::Context::new(lookup, id, self.version_change);
@@ -113,7 +114,8 @@ impl<Action> ItemStatus<Action> {
     fn revert<Lookup>(self, id: item::Id, lookup: &mut Lookup)
         -> action::Result<()>
     where 
-        Action: crate::Action<Lookup>,
+        Action: crate::Action<State = Lookup::State>,
+        Lookup: item::Lookup,
     {
         for undo in self.flushed_undo.into_iter().rev() {
             let context = action::Context::new(lookup, id, self.version_change);
@@ -183,7 +185,8 @@ impl<Action> ItemsStatus<Action> {
     fn flush<Lookup>(&mut self, lookup: &mut Lookup)
         -> action::Result<()>
     where 
-        Action: crate::Action<Lookup, Undo = Action>,
+        Action: crate::Action<State = Lookup::State>,
+        Lookup: item::Lookup,
     {
         for (&id, item) in self.items.get_mut() {
             item.flush(id, lookup)?;
@@ -204,7 +207,8 @@ impl<Action> ItemsStatus<Action> {
     fn revert<Lookup>(self, lookup: &mut Lookup)
         -> action::Result<()>
     where 
-        Action: crate::Action<Lookup, Undo = Action>,
+        Action: crate::Action<State = Lookup::State>,
+        Lookup: item::Lookup,
     {
         for (id, item) in self.items.into_inner() {
             item.revert(id, lookup)?;
@@ -247,7 +251,8 @@ impl<'l, Lookup, Action> Inner<'l, Lookup, Action> {
     fn get<T>(&self, id: IdT<T>) 
         -> lookup::Result<Existing<'_, Lookup, Action, T>>
     where
-        Lookup: lookup::Lookup<T>, 
+        Lookup: item::Lookup,
+        T: item::lookup::Lookupable<Lookup::State>
     {
         let item = self.lookup.lookup(id)?;
         self.items_status.register_read(id.untyped(), item.version());
@@ -312,7 +317,8 @@ impl<'l, Lookup, Action, Context, Output> Interactor<'l, Lookup, Action, Context
     pub fn get<T>(&self, id: IdT<T>)
         -> lookup::Result<Existing<'_, Lookup, Action, T>>
     where
-        Lookup: lookup::Lookup<T>,
+        Lookup: item::Lookup,
+        T: item::lookup::Lookupable<Lookup::State>
     {
         self.inner.get(id)
     }
@@ -320,7 +326,8 @@ impl<'l, Lookup, Action, Context, Output> Interactor<'l, Lookup, Action, Context
     pub fn get_root<Root>(&self)
         -> lookup::Result<Existing<'_, Lookup, Action, Root>>
     where
-        Lookup: lookup::Lookup<Root>,
+        Lookup: item::Lookup,
+        Root: item::lookup::Lookupable<Lookup::State>,
         Context: GetRoot<Root=IdT<Root>>,
     {
         let root_id = *self.context.get_root();
@@ -344,7 +351,8 @@ impl<'l, Lookup, Action, Context, Output> Interactor<'l, Lookup, Action, Context
     pub fn flush(&mut self)
         -> action::Result<()>
     where 
-        Action: crate::Action<Lookup, Undo = Action>,
+        Action: crate::Action<State = Lookup::State>,
+        Lookup: item::Lookup,
     {
         self.inner.items_status.flush(self.inner.lookup)
     }
@@ -352,7 +360,8 @@ impl<'l, Lookup, Action, Context, Output> Interactor<'l, Lookup, Action, Context
     pub(crate) fn revert<E>(self, err: E)
         -> RecoverableError<E>
     where 
-        Action: crate::Action<Lookup, Undo = Action>,
+        Action: crate::Action<State = Lookup::State>,
+        Lookup: item::Lookup,
     {
         let mut recoverable_error = RecoverableError::new(err);
         if let Err(recovery_err) = self.inner.items_status.revert(self.inner.lookup) {
@@ -365,8 +374,9 @@ impl<'l, Lookup, Action, Context, Output> Interactor<'l, Lookup, Action, Context
     pub(crate) fn complete<E>(mut self, error: Option<E>) 
         -> RecoverableResult<interactor::Complete<Action, Context, Output>, E> 
     where 
-        Action: crate::Action<Lookup, Undo = Action>,
+        Action: crate::Action<State = Lookup::State>,
         action::Error: Into<E>,
+        Lookup: item::Lookup,
     {
         let result = match error {
             None => self.flush()
@@ -479,7 +489,9 @@ impl<'i, Lookup, Action, T> Pending<'i, Lookup, Action, T> {
         -> action::Result<Update::Return>
     where
         Lookup:
-            item::Lookup<Update::T>,
+            item::Lookup,
+        T:
+            item::lookup::Lookupable<Lookup::State>,
         Update:
             Into<Action> +
             action::UpdateReturn<T = T>,
@@ -505,9 +517,10 @@ pub struct Existing<'i, Lookup, Action, T> {
 
 impl<'i, Lookup, Action, T> Existing<'i, Lookup, Action, T> {
     pub fn follow<U>(&self, id: IdT<U>)
-        -> lookup::Result<Existing<'_, Lookup, Action, U>>
+        -> lookup::Result<Existing<'i, Lookup, Action, U>>
     where
-        Lookup: lookup::Lookup<U>, 
+        Lookup: item::Lookup,
+        U: item::lookup::Lookupable<Lookup::State>
     {
         self.inner.get(id)
     }

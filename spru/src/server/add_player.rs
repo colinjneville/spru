@@ -1,15 +1,16 @@
+use derive_where::derive_where;
+
 use crate::{client, player};
 
-#[derive(Debug)]
-#[derive(serde::Serialize, serde::Deserialize)]
-pub struct Arg<PlayerInitIn> {
-    pub init_input: PlayerInitIn,
+#[derive_where(Debug, Serialize, Deserialize; <Server::PlayerInit as crate::player::Init>::In)]
+pub struct Arg<Server: super::Server> {
+    pub init_input: <Server::PlayerInit as crate::player::Init>::In,
 }
 
 #[must_use]
-#[derive(Debug)]
-pub struct Ret<State, Action, Root> {
-    pub client_init: client::init::Arg<State, Action, Root>,
+#[derive_where(Debug; client::init::Arg<Server::Common>)]
+pub struct Ret<Server: super::Server> {
+    pub client_init: client::init::Arg<Server::Common>,
     pub player_id: player::Id,
 }
 

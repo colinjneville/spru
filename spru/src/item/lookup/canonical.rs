@@ -19,30 +19,50 @@ impl<State> Canonical<State> {
     }
 }
 
-impl<State, T> item::lookup::Lookup<T> for Canonical<State> 
-where 
-    State: tagset::TagSetDiscriminant<T, Repr: Into<state::Index>>,
-    T: any::Any + serde::Serialize + Send + Sync,
-{
-    type Mut<'lr> = &'lr mut Item<T>
-    where Self: 'lr;
+impl<State: crate::State> item::lookup::Lookup for Canonical<State> {
+    type State = State;
 
-    fn lookup(&self, id: item::IdT<T>) -> Result<&Item<T>, lookup::Error> {
+    fn lookup<T>(&self, id: item::IdT<T>) 
+        -> Result<&Item<T>, lookup::Error> 
+    where
+        T: super::Lookupable<Self::State>,
+        // State: tagset::TagSetDiscriminant<T>,
+        // T: any::Any + serde::Serialize + Send + Sync,
+    {
         self.items_map.get(id)
             .ok_or(lookup::Error::default())
     }
 
-    fn lookup_mut(&mut self, id: item::IdT<T>) -> Result<Self::Mut<'_>, lookup::Error> {
+    #[allow(refining_impl_trait)]
+    fn lookup_mut<T>(&mut self, id: item::IdT<T>) 
+        -> Result<&mut Item<T>, lookup::Error> 
+    where
+        T: super::Lookupable<Self::State>,
+        // State: tagset::TagSetDiscriminant<T>,
+        // T: any::Any + serde::Serialize + Send + Sync,
+    {
         self.items_map.get_mut(id)
             .ok_or(lookup::Error::default())
     }
 
-    fn create(&mut self, value: Item<T>) -> Result<(), lookup::Error> {
+    fn create<T>(&mut self, value: Item<T>) 
+        -> Result<(), lookup::Error> 
+    where
+        T: super::Lookupable<Self::State>,
+        // State: tagset::TagSetDiscriminant<T>,
+        // T: any::Any + serde::Serialize + Send + Sync,
+    {
         self.items_map.insert(value);
         Ok(())
     }
 
-    fn destroy(&mut self, id: item::IdT<T>) -> Result<Item<T>, lookup::Error> {
+    fn destroy<T>(&mut self, id: item::IdT<T>) 
+        -> Result<Item<T>, lookup::Error> 
+    where
+        T: super::Lookupable<Self::State>,
+        // State: tagset::TagSetDiscriminant<T>,
+        // T: any::Any + serde::Serialize + Send + Sync,
+    {
         self.items_map.remove(id)
             .ok_or(lookup::Error::default())
     }
@@ -256,7 +276,7 @@ mod test {
     #[derive(serde::Serialize, serde::Deserialize)]
     struct S1(i64);
 
-    #[tagset(impl<Lookup> crate::State<Lookup>)]
+    #[tagset(impl crate::State)]
     #[tagset(index(5u32))]
     #[tagset(S0)]
     #[tagset(reserved(..7))]

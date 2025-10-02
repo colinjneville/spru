@@ -43,7 +43,8 @@ impl<PlayerInit> Manager<PlayerInit> {
         input: PlayerInit::In,
     ) -> RecoverableResult<player::init::Complete<'r, Action, Root>, player::init::Error>
     where 
-        Action: crate::Action<item::lookup::Canonical<State>, Undo = Action>,
+        State: crate::State,
+        Action: crate::Action<State = State>,
         // State: crate::State<item::lookup::Canonical<State>>,
         PlayerInit: player::Init<State = State, Action = Action, Root = Root>, 
     {

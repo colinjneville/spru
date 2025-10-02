@@ -7,8 +7,9 @@ pub use plugin::Plugin;
 pub mod system;
 
 pub trait ClientSSS: 
-    spru::client::Bounded<
-        Action: for<'l> spru::Action<BevyLookup<'l>> + Send + Sync + 'static,
+    spru::client::Client<
+        State: Send + Sync + 'static,
+        Action: spru::Action<State = Self::State> + Send + Sync + 'static,
         GameOutcome: Send + Sync + 'static,
         Interaction: Send + Sync + 'static,
         Root: Send + Sync + 'static,
@@ -18,8 +19,9 @@ pub trait ClientSSS:
 }
 
 impl<Client:
-    spru::client::Bounded<
-        Action: for<'l> spru::Action<BevyLookup<'l>> + Send + Sync + 'static,
+    spru::client::Client<
+        State: Send + Sync + 'static,
+        Action: spru::Action<State = Self::State> + Send + Sync + 'static,
         GameOutcome: Send + Sync + 'static,
         Interaction: Send + Sync + 'static,
         Root: Send + Sync + 'static,

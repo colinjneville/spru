@@ -65,7 +65,8 @@ impl<'r, Action> Record<'r, Action> {
 
     fn apply_internal<Lookup>(&self, lookup: &mut Lookup) -> action::Result<Option<Action>> 
     where 
-        Action: crate::Action<Lookup, Undo = Action>,  
+        Lookup: item::Lookup,
+        Action: crate::Action<State = Lookup::State>,  
     {
         let undo = self.action().apply(action::Context::new(lookup, self.item_id().clone(), self.version_change()))?;
         Ok(undo)
@@ -133,7 +134,8 @@ impl<Action> Records<Action> {
     pub fn apply<'l, Lookup>(&self, lookup: &'l mut Lookup) 
         -> action::Result<Self> 
     where 
-        Action: crate::Action<Lookup, Undo = Action>, 
+        Lookup: item::Lookup,
+        Action: crate::Action<State = Lookup::State>, 
     {
         self.apply_internal(lookup)
             .map_err(|(_, e)| e)
@@ -142,7 +144,8 @@ impl<Action> Records<Action> {
     pub fn apply_or_revert<'l, Lookup>(&self, lookup: &'l mut Lookup) 
         -> RecoverableResult<Self, action::Error> 
     where 
-        Action: crate::Action<Lookup, Undo = Action>, 
+        Lookup: item::Lookup,
+        Action: crate::Action<State = Lookup::State>, 
     {
         match self.apply_internal(lookup) {
             Ok(undo) => Ok(undo),
@@ -159,7 +162,8 @@ impl<Action> Records<Action> {
     fn apply_internal<'l, Lookup>(&self, lookup: &'l mut Lookup) 
         -> std::result::Result<Self, (Self, action::Error)> 
     where 
-        Action: crate::Action<Lookup, Undo = Action> 
+        Lookup: item::Lookup,
+        Action: crate::Action<State = Lookup::State>,
     {
         let mut undo = Self::default();
 
