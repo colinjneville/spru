@@ -17,9 +17,7 @@ fn minimal_spru() {
     >::new(minimal::GameInit(minimal::LobbyInfo), minimal::PlayerInit, minimal::Reaction).unwrap();
 
     for color in minimal::PLAYER_COLORS {
-        runner.add_player(spru::server::add_player::Arg {
-            init_input: color,
-        }).unwrap();
+        runner.add_player(color).unwrap();
     }
     
     let mut player_ids = vec![];
@@ -43,15 +41,12 @@ fn minimal_spru() {
                                 println!("winner: {}", winner.unwrap());
                                 
                                 let interaction = minimal::Interaction;
-                                runner.client_command(winner.unwrap(), spru::client::stage_interaction::Arg {
-                                    interaction,
-                                }).unwrap();
+                                runner.stage_interaction(winner.unwrap(), interaction).unwrap();
                             }
                         }
                         Event::InteractionStaged(event::InteractionStaged { player_id, pending_transaction_id }) => {
-                            runner.client_command(player_id, spru::client::apply_interaction::Arg {
-                                pending_transaction_id,
-                            }).unwrap();
+                            runner.apply_interactions(player_id, Some(pending_transaction_id))
+                                .unwrap();
                         }
                         Event::ServerEvent(event::ServerEvent { event }) => match event {
                                 spru::server::Event::GameComplete(game_complete) => {

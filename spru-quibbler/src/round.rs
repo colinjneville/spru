@@ -6,11 +6,13 @@ state_machine! {
     pub machine(OptionalPlay)
 
     OptionalPlay => {
-        Play => MandatoryPlay,
+        // The first play must use all cards in valid words
+        FullPlay => MandatoryPlay,
         Pass => OptionalPlay,
     },
     MandatoryPlay => {
-        Play => MandatoryPlay,
+        PartialPlay => MandatoryPlay,
+        FullPlay => MandatoryPlay,
         Score => OptionalPlay,
     },
 }

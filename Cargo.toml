@@ -4,7 +4,6 @@ members = [
     "spru",
 	"spru-bevy",
 	"spru-macro", 
-	"spru-message",
 	"spru-quibbler", 
 	"spru-smol", 
 	"spru-test",
@@ -31,10 +30,15 @@ rand_chacha = "0.9.0"
 
 rust-fsm = "0.8.0"
 
-uuid = { version = "1.18.1", features = [ "v4" ] }
+
+
+spaghetto = { version = "0.0.3", features = ["serde"] }
+
+uuid = { version = "1.18.1", features = [ "v4", "serde" ] }
 
 # logging
-tracing = "0.1.40"
+tracing = "0.1.41"
+tracing-core = "0.1.34"
 
 # async
 atomicell = "0.2.0"
@@ -61,6 +65,8 @@ syn = "2.0.38"
 rmp-serde = "=1.3.0"
 erased-serde = "0.4.5"
 deku = "0.18.1"
+ron = "0.11.0"
+serde_bytes = "0.11.19"
 
 [workspace.dependencies.serde]
 version = "1.0.189"
@@ -71,18 +77,18 @@ features = [
 ]
 
 [workspace.dependencies.bevy]
-version = "0.16.1"
+version = "0.17.2"
 default-features = false
 features = [
-    
+    "bevy_log",
 ]
 
 [patch.crates-io]
-telety = { path = "../telety-ws/telety" } 
-telety-macro = { path = "../telety-ws/telety-macro" } 
-telety-impl = { path = "../telety-ws/telety-impl" } 
-amass = { path = "../amass/amass" } 
+telety = { path = "D:/Projects/telety-ws/telety" } 
+telety-macro = { path = "D:/Projects/telety-ws/telety-macro" } 
+telety-impl = { path = "D:/Projects/telety-ws/telety-impl" } 
+amass = { path = "D:/Projects/amass/amass" } 
 #tagset = { git = "https://github.com/colinjneville/tagset.git" }
-tagset = { path = "../tagit/tagset" }
+tagset = { path = "D:/Projects/tagit/tagset" }
 #tagset-macro = { git = "https://github.com/colinjneville/tagset.git" }
-tagset-macro = { path = "../tagit/tagset-macro" }
+tagset-macro = { path = "D:/Projects/tagit/tagset-macro" }

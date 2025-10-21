@@ -17,8 +17,9 @@ impl Error {
         }
     }
 
-    pub(crate) fn set_context<Interaction>(&mut self, interaction: &Interaction) {
-        self.context = Some(Context::new(interaction))
+    pub(crate) fn with_context<Interaction>(mut self, interaction: &Interaction) -> Self {
+        self.context = Some(Context::new(interaction));
+        self
     }
 
     pub fn kind(&self) -> &Kind {

@@ -1,3 +1,7 @@
+pub mod error;
+mod snapshot;
+pub(crate) use snapshot::Snapshot;
+
 use std::marker::PhantomData;
 
 use derive_where::derive_where;
@@ -22,3 +26,5 @@ impl<State, Action, Root, GameOutcome, Interaction> Common for Impl<State, Actio
     type GameOutcome = GameOutcome;
     type Interaction = Interaction;
 }
+
+pub(crate) type SeqId = i32;

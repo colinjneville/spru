@@ -160,7 +160,7 @@ impl spru::Interaction for Interaction {
     where 
         Lookup: spru::item::Lookup<State = Self::State>,
     {
-        let root = interactor.get_root()?;
+        let _root = interactor.get_root()?;
         interactor.enqueue_trigger(Trigger(interactor.context().player));
         Ok(())
     }
@@ -182,3 +182,5 @@ pub type Client = spru::client::Impl<
     Interaction,
     GameOutcome,
 >;
+
+pub type Common = <Server as spru::Server>::Common;

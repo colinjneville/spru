@@ -1,14 +1,86 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, mem};
 
 use spru::{follow, item::IdT};
-use spru_util::{counter, fsm, player_map};
+use spru_util::{counter, fsm, pile, rotating, verbatim};
+use tracing::instrument;
 
-use crate::{data::{self, Card}, interaction, player, round};
+use crate::{data, player, reaction::Trigger, round};
 
 #[derive(Debug, Clone)]
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct Play {
     play: Option<crate::Play>,
+}
+
+impl Play {
+    pub fn pass() -> Self {
+        Self {
+            play: None,
+        }
+    }
+
+    pub fn parsed(hand: &pile::State<data::Card>, s: &[u8]) -> Result<Self, u8> {
+        let mut remaining_cards = HashMap::new();
+        for card in hand {
+            *remaining_cards.entry(card)
+                .or_insert(0)
+                += 1;
+        }
+
+        let mut words = vec![];
+        let mut current_word = vec![];
+
+        let mut iter = s.into_iter().copied().peekable();
+        while let Some(first) = iter.next() {
+            if first == b' ' {
+                if !current_word.is_empty() {
+                    words.push(mem::take(&mut current_word));
+                }
+            } else {
+                let second = iter.peek().copied();
+                let (first_card, second_card) = data::Card::get_matching(first, second);
+                if let Some(second_card) = second_card {
+                    if let Some(card_count) = remaining_cards.get_mut(&second_card) {
+                        if *card_count > 0 {
+                            *card_count -= 1;
+                            current_word.push(second_card.clone());
+                            // Skip next letter, as we used a double letter card
+                            iter.next();
+
+                            continue;
+                        }
+                    }
+                }
+
+                if let Some(card_count) = remaining_cards.get_mut(&first_card) {
+                    if *card_count > 0 {
+                        *card_count -= 1;
+                        current_word.push(first_card.clone());
+
+                        continue;
+                    }
+                }
+
+                // No cards for this letter(s)
+                return Err(first);
+            }
+        }
+
+        if !current_word.is_empty() {
+            words.push(mem::take(&mut current_word));
+        }
+
+        let mut unused = vec![];
+        for (card, count) in remaining_cards {
+            for _ in 0..count {
+                unused.push(card.clone());
+            }
+        }
+
+        Ok(Self {
+            play: Some(crate::Play::new(words, unused)),
+        })
+    }
 }
 
 impl spru::Interaction for Play {
@@ -17,6 +89,7 @@ impl spru::Interaction for Play {
     type Root = IdT<crate::game::Root>;
     type Trigger = crate::reaction::Trigger;
     
+    #[instrument(skip_all, ret, err)]
     fn apply<Lookup>(&self, interactor: &mut super::Interactor<Lookup>)
          -> spru::interaction::Result<()>
     where 
@@ -31,7 +104,13 @@ impl spru::Interaction for Play {
         let player_fsm = interactor.get(player.fsm)?;
 
         if let Some(play) = &self.play {
-            round_fsm.update(fsm::transition(round::machine::Input::Play));
+            let play_kind = if play.is_full() {
+                round::machine::Input::FullPlay
+            } else {
+                round::machine::Input::PartialPlay
+            };
+
+            round_fsm.update(fsm::transition(play_kind));
             player_fsm.update(fsm::transition(player::machine::Input::Play));
 
             let hand = interactor.get(player.hand)?;
@@ -60,6 +139,7 @@ impl spru::Interaction for Play {
                     word_str.push_str(card.face().letters);
                 }
 
+                word_str.make_ascii_lowercase();
                 if !wordnik_list::word_exists(&*word_str) {
                     crate::bail!("Word is not valid");
                 }
@@ -68,49 +148,22 @@ impl spru::Interaction for Play {
             // Add letter score with no bonuses
             interactor.get(player.score)?
                 .update(counter::add_checked(play.base_score() as i32));
-            
-            'check_round_complete: {
-                let mut max_len = 0;
-                let mut max_len_winner = None;
-                let mut max_words = 0;
-                let mut max_words_winner = None;
-                for (player_id, player_root) in players.iter() {
-                    let played = root.follow(player_root.played)?;
-                    
-                    if !played.is_played() {
-                        break 'check_round_complete;
-                    }
 
-                    let this_max_len = played.max_word_len();
-                    if this_max_len > max_len {
-                        max_len = this_max_len;
-                        max_len_winner = Some(player_id);
-                    } else if this_max_len == max_len {
-                        max_len_winner = None;
-                    };
+            tracing::info!(name: "hand_score", play = %play, score = play.base_score());
 
-                    let this_max_words = played.word_count();
-                    if this_max_words > max_words {
-                        max_words = this_max_words;
-                        max_words_winner = Some(player_id);
-                    } else if this_max_words == max_words {
-                        max_words_winner = None;
-                    };
-                }
+            interactor.get(player.played)?
+                .update(verbatim::update(play.clone()));
 
-                // Award 10 bonus points to winners of longest word/most words
-                for winner in [max_len_winner, max_words_winner] {
-                    if let Some(winner) = winner {
-                        follow!(players => players.expect_player(winner).score)?
-                            .update(counter::add_checked(10));
-                    }
-                }
-            };
-            
+            interactor.enqueue_trigger(Trigger::Play);
         } else {
             round_fsm.update(fsm::transition(round::machine::Input::Pass));
             player_fsm.update(fsm::transition(player::machine::Input::Pass));
         }
+
+        // Pass to next player
+        interactor.get(root.current_turn)?
+            .update(rotating::rotate(false));
+
 
         Ok(())
     }

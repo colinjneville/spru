@@ -11,7 +11,7 @@ impl<E: std::error::Error + Send + Sync + 'static> Anyhow for E { }
 
 struct SyncServer<Server: spru::Server> {
     server: Server,
-    add_player_requests: Vec<spru::server::add_player::Arg<Server>>,
+    add_player_requests: Vec<<Server::PlayerInit as spru::player::Init>::In>,
 }
 
 impl<Server: spru::Server> SyncServer<Server> {
@@ -32,14 +32,14 @@ enum SyncClientState<Client: spru::Client, Lookup> {
 
 struct SyncClientInitialized<Client: spru::Client, Lookup> {
     client: Client,
-    outgoing_queue: VecDeque<spru::server::signal::Arg<Client::Common>>,
+    outgoing_queue: VecDeque<spru::server::signal::Signal<Client::Common>>,
     lookup: Lookup,
     game_outcome: Option<Client::GameOutcome>,
 }
 
 struct SyncClient<Client: spru::Client, Lookup> {
-    incoming_queue: VecDeque<spru::client::signal::Arg<Client::Common>>,
-    user_incoming_queue: VecDeque<ClientArg<Client>>,
+    incoming_queue: VecDeque<spru::client::signal::Signal<Client::Common>>,
+    user_incoming_queue: VecDeque<ClientCommand<Client>>,
     state: SyncClientState<Client, Lookup>,
 }
 
@@ -98,7 +98,7 @@ where
     where 
         GameInit: spru::game::Init<State = Server::State, Action = Server::Action, Root = Server::Root>,
     {
-        let spru_server = Server::new(game_init, player_init, reaction)?;
+        let spru_server = Server::init(game_init, player_init, reaction)?;
         let server = SyncServer::new(spru_server);
         let random = rand::rngs::StdRng::from_os_rng();
         Ok(Self {
@@ -110,7 +110,7 @@ where
         })
     }
 
-    pub fn add_player(&mut self, player: spru::server::add_player::Arg<Server>) -> anyhow::Result<()> {
+    pub fn add_player(&mut self, player: <Server::PlayerInit as spru::player::Init>::In) -> anyhow::Result<()> {
         self.is_dirty = true;
 
         self.server.add_player_requests.push(player);
@@ -121,12 +121,29 @@ where
         self.clients.keys().copied()
     }
 
-    pub fn client_command<Arg>(&mut self, player_id: player::Id, arg: Arg) -> Result<(), ()> 
-    where
-        Arg: Into<ClientArg<Client>>,
+    pub fn stage_interaction(&mut self, player_id: player::Id, interaction: Client::Interaction)
+        -> Result<(), ()>
+    {
+        self.client_command(player_id, ClientCommand::StageInteraction(interaction))
+    }
+
+    pub fn apply_interactions(&mut self, player_id: player::Id, pending: Option<spru::transaction::Pending>)
+        -> Result<(), ()>
+    {
+        self.client_command(player_id, ClientCommand::ApplyInteractions(pending))
+    }
+
+    pub fn revert_interactions(&mut self, player_id: player::Id, pending: Option<spru::transaction::Pending>)
+        -> Result<(), ()>
+    {
+        self.client_command(player_id, ClientCommand::RevertInteractions(pending))
+    }
+
+    fn client_command(&mut self, player_id: player::Id, command: ClientCommand<Client>) 
+        -> Result<(), ()> 
     {
         if let Some(client) = self.clients.get_mut(&player_id) {
-            client.user_incoming_queue.push_back(arg.into());
+            client.user_incoming_queue.push_back(command);
             Ok(())
         } else {
             Err(())
@@ -195,9 +212,10 @@ where
             events,
             ret: spru::server::add_player::Ret {
                 client_init,
-                player_id,
             },
         } = self.server.server.add_player(player)?;
+
+        let player_id = client_init.local_player_id();
 
         state.record_event(event::PlayerConfirmed {
             player_id,
@@ -256,7 +274,7 @@ where
         let command = client.user_incoming_queue.pop_front().unwrap();
         
         let outbound = match command {
-            ClientArg::StageInteraction(arg) => {
+            ClientCommand::StageInteraction(arg) => {
                 let spru::client::Output {
                     outbound,
                     events,
@@ -277,14 +295,14 @@ where
 
                 outbound
             }
-            ClientArg::ApplyInteraction(arg) => {
+            ClientCommand::ApplyInteractions(arg) => {
                 let spru::client::Output {
                     outbound,
                     events,
-                    ret: spru::client::apply_interaction::Ret {
+                    ret: spru::client::apply_interactions::Ret {
 
                     },
-                } = initialized.client.apply_interaction(&mut initialized.lookup, arg)?;
+                } = initialized.client.apply_interactions(&mut initialized.lookup, arg)?;
 
                 let events = events.into_iter()
                     .map(|e| (client_id, e));
@@ -292,14 +310,14 @@ where
 
                 outbound
             }
-            ClientArg::RevertInteraction(arg) => {
+            ClientCommand::RevertInteractions(arg) => {
                 let spru::client::Output {
                     outbound,
                     events,
-                    ret: spru::client::revert_interaction::Ret {
+                    ret: spru::client::revert_interactions::Ret {
                         
                     },
-                } = initialized.client.revert_interaction(&mut initialized.lookup, arg)?;
+                } = initialized.client.revert_interactions(&mut initialized.lookup, arg)?;
 
                 let events = events.into_iter()
                     .map(|e| (client_id, e));
@@ -351,14 +369,14 @@ where
         Ok(client)
     }
 
-    fn queue_server_outbound(&mut self, outbound: impl IntoIterator<Item = (spru::player::Id, spru::client::signal::Arg<Server::Common>)>) {
+    fn queue_server_outbound(&mut self, outbound: impl IntoIterator<Item = (spru::player::Id, spru::client::signal::Signal<Server::Common>)>) {
         for (id, signal) in outbound {
             let client = self.clients.get_mut(&id).unwrap();
             client.incoming_queue.push_back(signal);
         }
     }
 
-    fn queue_client_outbound(client: &mut SyncClientInitialized<Client, Lookup>, outbound: impl IntoIterator<Item = spru::server::signal::Arg<Server::Common>>) {
+    fn queue_client_outbound(client: &mut SyncClientInitialized<Client, Lookup>, outbound: impl IntoIterator<Item = spru::server::signal::Signal<Server::Common>>) {
         for signal in outbound {
             client.outgoing_queue.push_back(signal);
         }
@@ -405,28 +423,9 @@ pub enum Run<Server: spru::Server, Client: spru::Client> {
     Ran(Messaging<Server, Client>),
 }
 
-#[derive_where(Debug; spru::client::stage_interaction::Arg<Client>)]
-enum ClientArg<Client: spru::Client> {
-    StageInteraction(spru::client::stage_interaction::Arg<Client>),
-    ApplyInteraction(spru::client::apply_interaction::Arg),
-    RevertInteraction(spru::client::revert_interaction::Arg),
+#[derive_where(Debug; Client::Interaction)]
+enum ClientCommand<Client: spru::Client> {
+    StageInteraction(Client::Interaction),
+    ApplyInteractions(Option<spru::transaction::Pending>),
+    RevertInteractions(Option<spru::transaction::Pending>),
 }
-
-impl<Client: spru::Client> From<spru::client::stage_interaction::Arg<Client>> for ClientArg<Client> {
-    fn from(value: spru::client::stage_interaction::Arg<Client>) -> Self {
-        Self::StageInteraction(value)
-    }
-}
-
-impl<Client: spru::Client> From<spru::client::apply_interaction::Arg> for ClientArg<Client> {
-    fn from(value: spru::client::apply_interaction::Arg) -> Self {
-        Self::ApplyInteraction(value)
-    }
-}
-
-impl<Client: spru::Client> From<spru::client::revert_interaction::Arg> for ClientArg<Client> {
-    fn from(value: spru::client::revert_interaction::Arg) -> Self {
-        Self::RevertInteraction(value)
-    }
-}
-

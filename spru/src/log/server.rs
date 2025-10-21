@@ -1,4 +1,4 @@
-use std::{sync::{atomic::{self, AtomicUsize}, Arc, Mutex}};
+use std::sync::{atomic::{self, AtomicU32}, Arc, Mutex};
 
 use crate::{action, error::RecoverableResult, item, log::error::UndoError, transaction::{self, Transactions}, Transaction};
 
@@ -90,7 +90,7 @@ impl<Action> Server<Action> {
 struct UndoPinBoard {
     // All pins sorted in descending order
     sorted_pins: Mutex<Vec<transaction::Id>>,
-    min_pin: AtomicUsize,
+    min_pin: AtomicU32,
 }
 
 impl UndoPinBoard {

@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::{item::{self, lookup}, AnyError, PsuedoError};
+use crate::{item::lookup, AnyError, PsuedoError};
 
 
 #[derive(Debug)]
@@ -17,7 +17,7 @@ impl Error {
         }
     }
 
-    pub(crate) fn with_context<Action>(mut self, action: &Action) -> Self {
+    pub(crate) fn with_context<Action: ?Sized>(mut self, action: &Action) -> Self {
         self.context = Some(Context::new(action));
         self
     }
@@ -29,21 +29,9 @@ impl From<lookup::Error> for Error {
     }
 }
 
-impl From<item::id::Error> for Error {
-    fn from(value: item::id::Error) -> Self {
-        Self::new(Kind::Item(value))
-    }
-}
-
-impl From<item::version::Error> for Error {
-    fn from(value: item::version::Error) -> Self {
-        Self::new(Kind::Version(value))
-    }
-}
-
-impl From<AnyError> for Error {
-    fn from(value: AnyError) -> Self {
-        Self::new(Kind::Action(value))
+impl<E: Into<AnyError>> From<E> for Error {
+    fn from(value: E) -> Self {
+        Self::new(Kind::Action(value.into()))
     }
 }
 
@@ -69,8 +57,6 @@ impl PsuedoError for Error {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match &self.kind {
             Kind::Lookup(e) => std::error::Error::source(e.as_error()),
-            Kind::Item(e) => std::error::Error::source(e),
-            Kind::Version(e) => std::error::Error::source(e),
             Kind::Action(e) => std::error::Error::source(e.as_error()),
         }
     }
@@ -82,7 +68,7 @@ pub(crate) struct Context {
 }
 
 impl Context {
-    pub(crate) fn new<Action>(_action: &Action) -> Self {
+    pub(crate) fn new<Action: ?Sized>(_action: &Action) -> Self {
         Self {
             action_name: std::any::type_name::<Action>(),
         }
@@ -103,9 +89,9 @@ impl fmt::Display for Context {
 
 #[derive(Debug)]
 pub enum Kind {
+    /// An error occurred during [crate::Item] []
     Lookup(lookup::Error),
-    Item(item::id::Error),
-    Version(item::version::Error),
+    /// An
     Action(AnyError),
 }
 
@@ -113,8 +99,6 @@ impl fmt::Display for Kind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Kind::Lookup(e) => fmt::Display::fmt(e, f),
-            Kind::Item(e) => fmt::Display::fmt(e, f),
-            Kind::Version(e) => fmt::Display::fmt(e, f),
             Kind::Action(e) => fmt::Display::fmt(e, f),
         }
     }

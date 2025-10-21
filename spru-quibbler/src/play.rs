@@ -1,3 +1,5 @@
+use std::fmt;
+
 use crate::data;
 
 
@@ -9,8 +11,19 @@ pub struct Play {
 }
 
 impl Play {
+    pub(crate) fn new(words: Vec<Vec<data::Card>>, unused: Vec<data::Card>) -> Self {
+        Self {
+            words,
+            unused,
+        }
+    }
+    
     pub fn is_played(&self) -> bool {
         !(self.words.is_empty() && self.unused.is_empty())
+    }
+
+    pub fn is_full(&self) -> bool {
+        self.unused.is_empty()
     }
 
     pub fn base_score(&self) -> u32 {
@@ -21,7 +34,7 @@ impl Play {
         }
 
         for card in &self.unused {
-            score.saturating_sub(card.face().points());
+            score = score.saturating_sub(card.face().points());
         }
 
         score
@@ -41,5 +54,26 @@ impl Play {
             .map(Vec::len)
             .max()
             .unwrap_or_default()
+    }
+}
+
+impl fmt::Display for Play {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for word in &self.words {
+            for card in word {
+                write!(f, "{card}")?;
+            }
+            write!(f, " ")?;
+        }
+
+        if !self.unused.is_empty() {
+            write!(f, "(")?;
+            for card in &self.unused {
+                write!(f, "{card}")?;
+            }
+            write!(f, ")")?;
+        }
+
+        Ok(())
     }
 }

@@ -1,3 +1,5 @@
+pub mod error;
+
 use std::marker::PhantomData;
 
 use derive_where::derive_where;
@@ -36,10 +38,22 @@ impl<T> State<T> {
     pub fn len(&self) -> usize {
         self.items.len()
     }
+
+    pub fn expect<U>(&self, expected_value: &U) -> Result<&T, error::Expected> 
+    where 
+        T: PartialEq<U>,
+    {
+        if let Some(current) = self.current() {
+            if current == expected_value {
+                return Ok(current);
+            }
+        }
+        Err(error::Expected)
+    }
 }
 
 pub fn create<T>(items: Vec<T>, position: usize) -> Create<T> {
-    assert!(position < items.len());
+    assert!(items.is_empty() || position < items.len());
 
     verbatim::create(
         State {
@@ -175,7 +189,7 @@ where
         } = *self;
 
         if position >= value.items.len() {
-            Err(Error::InvalidPosition(position).into())
+            Err(Error::InvalidPosition(position, value.items.len()).into())
         } else if position != value.position {
             std::mem::swap(&mut value.position, &mut position);
 
@@ -222,13 +236,16 @@ where
             if set_to_inserted {
                 // This is the undo of a Remove of the current item
                 value.position = position;
-            } else if position >= value.position {
+            } else if value.position >= position && value.items.len() > 1 {
+                // If this is inserted before the current selection (and we had an existing selection
+                // because we weren't empty), bump the index to maintain the same selected item
                 value.position += 1;
             }
 
+
             Ok(Remove { position, _p: PhantomData })
         } else {
-            Err(Error::InvalidPosition(position).into())
+            Err(Error::InvalidPosition(position, value.items.len()).into())
         }
     }
 }
@@ -266,7 +283,7 @@ where
             }
             Ok(Insert { position, item, set_to_inserted })
         } else {
-            Err(Error::InvalidPosition(position).into())
+            Err(Error::InvalidPosition(position, value.items.len()).into())
         }
     }
 }
@@ -276,6 +293,6 @@ where
 #[derive(thiserror::Error)]
 #[non_exhaustive]
 pub enum Error {
-    #[error("Invalid position {0}")]
-    InvalidPosition(usize),
+    #[error("Invalid position {0}, len() is {1}")]
+    InvalidPosition(usize, usize),
 }

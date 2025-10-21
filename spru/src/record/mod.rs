@@ -77,7 +77,12 @@ impl<'r, Action> Record<'r, Action> {
     }
 
     pub(crate) fn version_change(&self) -> item::version::Change {
-        self.packed.version_change
+        // Only change the version number on the first action
+        if self.index == 0 {
+            self.packed.version_change
+        } else {
+            self.packed.version_change.into_noop()
+        }
     }
 
     pub(crate) fn action(&self) -> &Action {

@@ -1,12 +1,13 @@
 use std::{marker::PhantomData, sync::Arc};
 
-use crate::{item::{self, lookup}, Item};
+use crate::{common, item};
+
 
 #[derive(Debug)]
 #[derive(serde::Serialize, serde::Deserialize)]
 struct SnapshotType {
     index: u32,
-    items: Box<[Item<Box<[u8]>>]>,
+    items: Box<[item::Erased]>,
 }
 
 #[derive(Debug)]
@@ -20,7 +21,7 @@ pub struct Snapshot<State, Root> {
 
 
 impl<State, Root> Snapshot<State, Root> {
-    pub(crate) fn new(root: Root, lookup: &item::lookup::Canonical<State>) -> Result<Self, CreateError> {
+    pub(crate) fn new(root: Root, lookup: &item::lookup::Canonical<State>) -> Result<Self, common::error::Save> {
         let mut snapshot_items_map = vec![];
         for (key, item_map) in lookup.items_map().iter() {
             snapshot_items_map.push(SnapshotType {
@@ -40,9 +41,8 @@ impl<State, Root> Snapshot<State, Root> {
         &self.root
     }
 
-    pub(crate) fn apply<Lookup>(&self, lookup: &mut Lookup) -> Result<(), ApplyError> 
+    pub(crate) fn apply<Lookup>(&self, lookup: &mut Lookup) -> Result<(), common::error::Load> 
     where 
-        // State: crate::State<Lookup, Repr: TryFrom<state::Index>>,
         State: crate::State,
         Lookup: item::Lookup<State = State>,
     {
@@ -57,29 +57,5 @@ impl<State, Root> Snapshot<State, Root> {
             }
         }
         Ok(())
-    }
-}
-
-// TODO not sure where this should go
-#[derive(Debug)]
-#[derive(thiserror::Error)]
-pub enum CreateError {
-    #[error(transparent)]
-    Serialization(#[from] rmp_serde::encode::Error),
-}
-
-#[doc(hidden)]
-#[derive(Debug)]
-#[derive(thiserror::Error)]
-pub enum ApplyError {
-    #[error(transparent)]
-    Deserialization(#[from] rmp_serde::decode::Error),
-    #[error("{0}")]
-    Lookup(lookup::Error),
-}
-
-impl From<lookup::Error> for ApplyError {
-    fn from(value: lookup::Error) -> Self {
-        Self::Lookup(value)
     }
 }

@@ -7,6 +7,8 @@ pub use version::Version;
 
 use std::ops;
 
+use crate::common;
+
 pub type Index = u32;
 
 #[derive(Debug)]
@@ -84,6 +86,52 @@ impl<T> ops::Deref for Item<T> {
 
     fn deref(&self) -> &Self::Target {
         &self.state
+    }
+}
+
+#[doc(hidden)]
+#[derive(Debug)]
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct Erased {
+    id: Id,
+    version: Version,
+    #[serde(with = "serde_bytes")]
+    state: Box<[u8]>,
+}
+
+impl Erased {
+    pub(crate) fn new<T>(item: &Item<T>) 
+        -> Result<Self, common::error::Save> 
+    where 
+        T: serde::Serialize,
+    {
+        let Item {
+            id,
+            version,
+            ref state,
+        } = *item;
+        let id = id.untyped();
+
+        Ok(Self {
+            id,
+            version,
+            state: rmp_serde::to_vec(state)?.into_boxed_slice()
+        })
+    }
+
+    #[doc(hidden)]
+    pub fn cast<Lookup, T>(&self, lookup: &mut Lookup) 
+        -> Result<(), common::error::Load> 
+    where 
+        Lookup: self::Lookup,
+        T: lookup::Lookupable<Lookup::State> + serde::de::DeserializeOwned,
+    {
+        let id = IdT::new(self.id);
+        let value = rmp_serde::from_slice::<T>(&*self.state)?;
+        let item = Item::new(id, self.version, value);
+        lookup.create(item)?;
+        
+        Ok(())
     }
 }
 

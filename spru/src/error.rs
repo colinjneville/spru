@@ -23,19 +23,33 @@ impl SyncError {
 // TODO actual errors
 #[derive(Debug)]
 #[derive(thiserror::Error)]
-#[error("Error!:\n{0}")]
 // r#Backtrace avoids thiserror's special Backtrace handling which requires nightly
-pub struct TempError(std::backtrace::r#Backtrace);
+pub struct TempError(Option<std::backtrace::r#Backtrace>);
 
 impl TempError {
     #[track_caller]
     pub fn new() -> Self {
-        Self(std::backtrace::Backtrace::force_capture())
+        Self(None)
     }
 
     #[track_caller]
     pub fn discard<T>(_t: T) -> Self {
         Self::new()
+    }
+
+    #[track_caller]
+    pub fn with_backtrace() -> Self {
+        Self(Some(std::backtrace::Backtrace::force_capture()))
+    }
+}
+
+impl fmt::Display for TempError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Error!")?;
+        if let Some(backtrace) = &self.0 {
+            write!(f, "\n{backtrace}")?;
+        }
+        Ok(())
     }
 }
 

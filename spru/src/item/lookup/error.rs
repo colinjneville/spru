@@ -16,11 +16,12 @@ impl Error {
         }
     }
 
-    pub(crate) fn set_context<T>(&mut self, id: IdT<T>) {
+    pub(crate) fn with_context<T>(mut self, id: IdT<T>) -> Self {
         self.context = Some(Context {
             id: id.untyped(),
             type_name: any::type_name::<T>(),
         });
+        self
     }
 }
 

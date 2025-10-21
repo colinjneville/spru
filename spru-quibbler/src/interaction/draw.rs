@@ -1,13 +1,9 @@
-use spru::{follow, item};
+use spru::follow;
 use spru::item::IdT;
-use spru_util::fsm;
+use spru_util::{fsm, pile};
+use tracing::instrument;
 
-#[derive(Debug, Clone)]
-#[derive(serde::Serialize, serde::Deserialize)]
-pub enum DrawLocation {
-    Deck,
-    Discard,
-}
+use crate::reaction;
 
 #[derive(Debug, Clone)]
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -22,6 +18,7 @@ impl spru::Interaction for Draw {
     type Root = IdT<crate::game::Root>;
     type Trigger = crate::reaction::Trigger;
 
+    #[instrument(skip_all, ret, err)]
     fn apply<'l, Lookup>(
         &self, 
         interactor: &mut super::Interactor<Lookup>, 
@@ -32,18 +29,32 @@ impl spru::Interaction for Draw {
     {
         let player_id = interactor.context().player;
         let root = interactor.get_root()?;
-        let fsm = follow!(
-            root => root.players,
-            players => players
-                .get(player_id)
-                .ok_or(anyhow::anyhow!("Invalid player id"))
-                .map_err(anyhow::Error::into_boxed_dyn_error)
-                .map_err(spru::error::AnyError::new_boxed)
-                .map_err(spru::action::Error::from)?
-                .fsm
-        )?;
+        // This should be the only place we *need* to check if it is our turn, as the fsm
+        // should always be on ToDraw when it is not our turn
+        interactor.get(root.current_turn)?.expect(&player_id)?;
         
+        let players = follow!(root => root.players)?;
+        let player = players.get(player_id)?;
+
+        let fsm = interactor.get(player.fsm)?;
+
         fsm.update(fsm::transition(crate::player::machine::Input::Draw));
+
+        match self {
+            Draw::Deck => {
+                interactor.enqueue_trigger(reaction::Trigger::DrawFromDeck);
+            }
+            Draw::Discard => {
+                let discard = follow!(root => root.discard)?;
+                    
+                let card = discard.top()
+                    .expect("Discard cannot be empty");
+                discard.update(pile::pop_top());
+
+                interactor.get(player.hand)?
+                    .update(pile::push_top(card.clone()));
+            }
+        }
         
         Ok(())
     }

@@ -4,7 +4,7 @@ pub use error::Error;
 use std::marker::PhantomData;
 
 use derive_where::derive_where;
-use spru::{error::AnyResult, item::IdT, player};
+use spru::{error::AnyResult, player};
 use tagset::tagset;
 use telety::telety;
 
@@ -16,11 +16,18 @@ pub struct State<PlayerState> {
 }
 
 impl<PlayerState> State<PlayerState> {
-    pub fn get(&self, id: player::Id) -> Option<&PlayerState> {
-        self.map.get(id.into_usize())
+    pub fn count(&self) -> usize {
+        self.map.iter()
+            .flatten()
+            .count()
+    }
+
+    pub fn get(&self, id: player::Id) -> Result<&PlayerState, Error> {
+        self.map.get(id.into_u32() as usize)
             .map(Option::as_ref)
             .flatten()
             .map(|(_, state)| state)
+            .ok_or(Error::PlayerDoesNotExist(id))
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (player::Id, &PlayerState)> {
@@ -30,7 +37,7 @@ impl<PlayerState> State<PlayerState> {
     }
 
     pub fn expect_player(&self, id: player::Id) -> &PlayerState {
-        self.get(id).expect("Player with id does not exist")
+        self.get(id).unwrap()
     }
 }
 
@@ -61,7 +68,7 @@ impl<PlayerState: Clone> spru::action::Update for AddPlayer<PlayerState> {
 
     #[allow(refining_impl_trait)]
     fn update(&self, value: &mut Self::T) -> AnyResult<Self::Undo> {
-        let index = self.id.into_usize();
+        let index = self.id.into_u32() as usize;
         while value.map.len() <= index {
             value.map.push(None);
         }
@@ -96,7 +103,7 @@ impl<PlayerState> spru::action::Update for RemovePlayer<PlayerState> {
 
     #[allow(refining_impl_trait)]
     fn update(&self, value: &mut Self::T) -> AnyResult<Self::Undo> {
-        let index = self.id.into_usize();
+        let index = self.id.into_u32() as usize;
         if let Some(player_state) = value.map.get_mut(index) {
             if let Some((_, player_state)) = player_state.take() {
                 return Ok(add_player(self.id, player_state))

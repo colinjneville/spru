@@ -1,4 +1,4 @@
-use std::{collections::HashMap, convert};
+use std::collections::HashMap;
 
 use spru::item::IdT;
 use spru_util::{counter, fsm, pile, player_map, rotating, verbatim};

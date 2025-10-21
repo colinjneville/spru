@@ -1,11 +1,13 @@
-use std::{any, fmt, hash::Hash, marker::PhantomData, ops, sync::atomic::{self, AtomicUsize}};
+use std::{any, fmt, hash::Hash, marker::PhantomData, ops, sync::atomic::{self, AtomicU32}};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[derive(serde::Serialize, serde::Deserialize)]
 #[derive(deku::DekuRead, deku::DekuWrite)]
-pub struct Id(usize);
+pub struct Id(u32);
 
 impl Id {
+    pub(crate) const INVALID: Self = Self(u32::MAX);
+
     pub(crate) fn new() -> Self {
         Self(0)
     }
@@ -22,6 +24,12 @@ impl Id {
 impl fmt::Display for Id {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "i{}", self.0)
+    }
+}
+
+impl<T> From<IdT<T>> for Id {
+    fn from(value: IdT<T>) -> Self {
+        value.untyped()
     }
 }
 
@@ -51,7 +59,7 @@ impl<T> IdT<T> {
 #[cfg(feature = "test-util")]
 #[doc(hidden)]
 impl<T> IdT<T> {
-    pub fn test_new(id: usize) -> Self {
+    pub fn test_new(id: u32) -> Self {
         Self::new(Id(id))
     }
 
@@ -105,11 +113,11 @@ impl<T> Hash for IdT<T> {
 #[derive(Debug, Clone)]
 #[derive(serde::Serialize, serde::Deserialize)]
 pub(crate) struct Range {
-    range: std::ops::Range<usize>,
+    range: std::ops::Range<u32>,
 }
 
 impl Range {
-    pub fn new(range: std::ops::Range<usize>) -> Self {
+    pub fn new(range: std::ops::Range<u32>) -> Self {
         Self {
             range,
         }
@@ -121,7 +129,7 @@ impl Range {
 
     pub(crate) fn reservation(&self) -> Reservation {
         Reservation {
-            next_id: AtomicUsize::new(self.range.start),
+            next_id: AtomicU32::new(self.range.start),
             end_of_id_reservation: self.range.end,
         }
     }
@@ -131,16 +139,16 @@ impl Range {
 #[derive(Debug)]
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct Reservation {
-    next_id: AtomicUsize,
+    next_id: AtomicU32,
     /// Exclusive bound
-    end_of_id_reservation: usize,
+    end_of_id_reservation: u32,
 }
 
 impl Reservation {
     pub(crate) fn all() -> Self {
         Self {
-            next_id: AtomicUsize::new(0),
-            end_of_id_reservation: usize::MAX,
+            next_id: AtomicU32::new(0),
+            end_of_id_reservation: u32::MAX,
         }
     }
 
@@ -161,7 +169,7 @@ impl Reservation {
         }
     }
 
-    pub(crate) fn split(&mut self, new_reservation_count: usize) -> Result<(Self, Range), ()> {
+    pub(crate) fn split(&mut self, new_reservation_count: u32) -> Result<(Self, Range), ()> {
         if self.end_of_id_reservation >= new_reservation_count {
             let end_of_id_reservation = self.end_of_id_reservation;
             self.end_of_id_reservation -= new_reservation_count;
@@ -172,7 +180,7 @@ impl Reservation {
             if next_id < end_of_id_reservation {
                 let range = Range::new(next_id..end_of_id_reservation);
                 let reservation = Self {
-                    next_id: AtomicUsize::new(next_id),
+                    next_id: AtomicU32::new(next_id),
                     end_of_id_reservation,
                 };
                 Ok((reservation, range))

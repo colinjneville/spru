@@ -1,10 +1,10 @@
 use derive_where::derive_where;
 
-use crate::{action, item::lookup, record::Records, transaction, SeqId};
+use crate::{action, item::lookup, record::Records, transaction, common};
 
 #[derive_where(Debug, Serialize, Deserialize; Internal<Common>)]
-pub struct Arg<Common: crate::Common> {
-    pub(crate) seq: SeqId,
+pub struct Signal<Common: crate::Common> {
+    pub(crate) seq: common::SeqId,
     pub(crate) signal: Internal<Common>,
 }
 

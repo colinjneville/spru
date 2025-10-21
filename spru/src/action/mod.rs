@@ -28,6 +28,9 @@ pub trait SubAction {
     {
         self.apply(context)
             .map(|o| o.map(Into::into))
+            .map_err(|e| {
+                e.with_context(self)
+            })
     }
 }
 
@@ -59,13 +62,6 @@ pub trait Update {
 
     fn update(&self, value: &mut Self::T) 
         -> AnyResult<impl Into<Option<Self::Undo>>>;
-}
-
-pub trait UpdateReturn: Update {
-    type Return;
-
-    fn return_value(&self, value: &Self::T) 
-        -> AnyResult<Self::Return>;
 }
 
 pub trait Destroy {
@@ -127,14 +123,23 @@ impl<'l, Lookup> Context<'l, Lookup> {
             version,
         } = self;
 
-        let mut value = lookup.lookup_mut(item::IdT::<U::T>::new(id))?;
+        let id = item::IdT::<U::T>::new(id);
+        let mut value = lookup.lookup_mut(id)
+            .map_err(|e| e.with_context(id))?;
         if version.before == (*value).version() {
-            (*value).set_version(version.after);
-            u.update(value.get_mut())
-                .map(Into::into)
-                .map_err(Into::into)
+            let undo = u.update(value.get_mut())
+                .map(Into::into)?;
+
+            // Only update the version on the first non-noop update. If this Item
+            // is not modified at all during the transaction we can't bump the version number. 
+            if undo.is_some() {
+                (*value).set_version(version.after);
+            }
+
+            Ok(undo)
         } else {
-            Err(action::Error::from(item::version::Error { expected: version.before, actual: (*value).version() }))
+            unsafe { std::arch::asm!("int3"); }
+            Err(action::Error::from(item::version::Error { item: id.untyped(), expected: version.before, actual: (*value).version() }))
         }
     }
 
@@ -150,13 +155,16 @@ impl<'l, Lookup> Context<'l, Lookup> {
             version,
         } = self;
 
-        let item = lookup.lookup(item::IdT::<D::T>::new(id))?;
+        let id = item::IdT::<D::T>::new(id);
+        let item = lookup.lookup(id)
+            .map_err(|e| e.with_context(id))?;
         if version.before == item.version() {
-            let item = lookup.destroy(item::IdT::<D::T>::new(id))?;
+            let item = lookup.destroy(id)?;
             let undo = d.destroy(item.into_value())?;
             Ok(Some(undo))
         } else {
-            Err(action::Error::from(item::version::Error { expected: version.before, actual: item.version() }))
+            unsafe { std::arch::asm!("int3"); }
+            Err(action::Error::from(item::version::Error { item: id.untyped(), expected: version.before, actual: item.version() }))
         }
     }
 }

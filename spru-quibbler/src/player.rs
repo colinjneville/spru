@@ -2,8 +2,6 @@ use spru::{follow, item::IdT};
 use spru_util::{counter, fsm, pile, player_map, rotating, verbatim};
 use rust_fsm::state_machine;
 
-type Interactor<'l, 'r> = spru::player::init::Interactor<'l, 'r, crate::State, crate::Actions, IdT<crate::game::Root>>;
-
 #[derive(Debug, Clone)]
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct Input {
@@ -19,7 +17,7 @@ impl Input {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct Init;
 
@@ -40,12 +38,13 @@ impl spru::player::Init for Init {
         let hand = interactor.create(pile::default()).id();
         let fsm = interactor.create(fsm::default()).id();
         let played = interactor.create(verbatim::default()).id();
-        // let root = interactor.create(verbatim::create())?;
 
         let player_id = interactor.context().player;
-        let mut root = interactor.get_root()?;
+        let root = interactor.get_root()?;
         let current_turn = follow!(root => root.current_turn)?;
-        current_turn.update(rotating::insert(current_turn.position().unwrap(), player_id));
+        current_turn.update(rotating::insert(current_turn.len(), player_id));
+        let current_dealer = follow!(root => root.current_dealer)?;
+        current_dealer.update(rotating::insert(current_dealer.len(), player_id));
 
         follow!(root => root.players)?
             .update(player_map::add_player(player_id, Root {

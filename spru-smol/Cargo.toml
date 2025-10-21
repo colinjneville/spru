@@ -6,7 +6,6 @@ edition = "2024"
 [dependencies]
 
 spru = { path = "../spru" }
-spru-message = { path = "../spru-message" }
 
 thiserror.workspace = true
 

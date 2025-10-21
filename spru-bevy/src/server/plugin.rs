@@ -15,7 +15,7 @@ impl<Server: crate::server::ServerSSS> prelude::Plugin for Plugin<Server> {
         } = self;
 
         app.add_systems(prelude::FixedUpdate, (
-            super::system::run_server::<Server>.map(crate::common::adapt::map_err),
+            super::system::run_server::<Server>.pipe::<_, _, prelude::Result, _>(crate::common::adapt::map_err),
         ));
     }
 }

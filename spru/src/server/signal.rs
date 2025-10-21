@@ -1,10 +1,10 @@
 use derive_where::derive_where;
 
-use crate::{interaction, transaction, SeqId};
+use crate::{interaction, transaction, common};
 
 #[derive_where(Debug, Serialize, Deserialize; Internal<Common>)]
-pub struct Arg<Common: crate::Common> {
-    pub(crate) seq: SeqId,
+pub struct Signal<Common: crate::Common> {
+    pub(crate) seq: common::SeqId,
     pub(crate) signal: Internal<Common>,
 }
 
@@ -14,13 +14,13 @@ pub struct Ret {
 
 }
 
-pub type Result<T> = std::result::Result<T, self::Error>;
+pub type Result<Server> = std::result::Result<super::Output<Server, Ret>, self::Error>;
 
 #[derive(Debug)]
 #[derive(thiserror::Error)]
 pub enum Error {
-    #[error(transparent)]
-    Temp(#[from] crate::TempError),
+    #[error(" An unrecoverable error occurred: {0}")]
+    Fatal(crate::action::Error),
 }
 
 #[derive(derive_more::From)]
@@ -32,6 +32,5 @@ pub(crate) enum Internal<Common: crate::Common> {
 #[derive_where(Debug, Serialize, Deserialize; interaction::Staged<Common::Interaction>)]
 pub(crate) struct ApplyInteraction<Common: crate::Common> {
     pub interaction: interaction::Staged<Common::Interaction>,
-    pub pending_transaction_id: transaction::Pending,
 }
 

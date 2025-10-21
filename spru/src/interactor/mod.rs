@@ -1,4 +1,4 @@
-use std::{cell::RefCell, collections::{HashMap, VecDeque}, ops};
+use std::{cell::RefCell, collections::{HashMap, VecDeque}, mem, ops};
 
 use crate::{action, error::{RecoverableError, RecoverableResult}, interactor, item::{self, lookup, IdT}, player, record::{self, Records}, Item};
 
@@ -89,14 +89,49 @@ impl<Action> ItemStatus<Action> {
             .push_back(action);
     }
 
+    fn version_change(&self) -> item::version::Change {
+        // We only need to bump the version number for the first (non-noop) change, 
+        // but we need to keep track of the first change to publish expected versions
+        if self.flushed_do.is_empty() {
+            self.version_change
+        } else {
+            self.version_change.into_noop()
+        }
+    }
+
+    fn update_immediate<'l, Lookup, Update>(&mut self, id: item::Id, lookup: &'l mut Lookup, update: Update)
+        -> action::Result<&'l Update::T>
+    where
+        Lookup:
+            item::Lookup,
+        Action: 
+            crate::Action<State = Lookup::State>,
+        Update:
+            Into<Action> +
+            action::Update<T: item::lookup::Lookupable<Lookup::State>, Undo: Into<Action>>,
+    {
+        self.flush(id, lookup)?;
+
+        let context = action::Context::new(lookup, id, self.version_change());
+        let undo = context.update(&update)?;
+        if let Some(undo) = undo {
+            self.flushed_do.push(update.into());
+            self.flushed_undo.push(undo.into());
+        }
+
+        let item = lookup.lookup::<Update::T>(id.force_type())
+            .expect("Item must still exist");
+        Ok(item.get())
+    }
+
     fn flush<Lookup>(&mut self, id: item::Id, lookup: &mut Lookup) 
         -> action::Result<()>
     where 
         Action: crate::Action<State = Lookup::State>,
         Lookup: item::Lookup,
     {
-        while let Some(pending_do) = self.pending_do.get_mut().pop_back() {
-            let context = action::Context::new(lookup, id, self.version_change);
+        for pending_do in mem::take(self.pending_do.get_mut()) {
+            let context = action::Context::new(lookup, id, self.version_change());
             let undo = pending_do.apply(context)?;
             if let Some(undo) = undo {
                 self.flushed_do.push(pending_do);
@@ -117,9 +152,13 @@ impl<Action> ItemStatus<Action> {
         Action: crate::Action<State = Lookup::State>,
         Lookup: item::Lookup,
     {
+        // Only undo the version with the first change if there are multiple
+        let mut version_change = self.version_change.undo();
         for undo in self.flushed_undo.into_iter().rev() {
-            let context = action::Context::new(lookup, id, self.version_change);
+            let context = action::Context::new(lookup, id, version_change);
             let _redo = undo.apply(context)?;
+
+            version_change = version_change.into_noop();
         }
 
         Ok(())
@@ -180,6 +219,23 @@ impl<Action> ItemsStatus<Action> {
             .get_mut(&id)
             .expect("id must be added as read first")
             .enqueue(action);
+    }
+
+    fn update_immediate<'l, Lookup, Update>(&mut self, id: item::Id, lookup: &'l mut Lookup, update: Update)
+        -> action::Result<&'l Update::T>
+    where
+        Lookup:
+            item::Lookup,
+        Action: 
+            crate::Action<State = Lookup::State>,
+        Update:
+            Into<Action> +
+            action::Update<T: item::lookup::Lookupable<Lookup::State>, Undo: Into<Action>>,
+    {
+        self.items.borrow_mut()
+            .get_mut(&id)
+            .expect("id must be added as read first")
+            .update_immediate(id, lookup, update)
     }
 
     fn flush<Lookup>(&mut self, lookup: &mut Lookup)
@@ -254,7 +310,8 @@ impl<'l, Lookup, Action> Inner<'l, Lookup, Action> {
         Lookup: item::Lookup,
         T: item::lookup::Lookupable<Lookup::State>
     {
-        let item = self.lookup.lookup(id)?;
+        let item = self.lookup.lookup(id)
+            .map_err(|e| e.with_context(id))?;
         self.items_status.register_read(id.untyped(), item.version());
 
         Ok(Existing {
@@ -332,6 +389,26 @@ impl<'l, Lookup, Action, Context, Output> Interactor<'l, Lookup, Action, Context
     {
         let root_id = *self.context.get_root();
         self.get(root_id)
+    }
+
+    pub fn update_immediate<Update>(&mut self, update: WithUpdate<Update::T, Update>)
+        -> action::Result<&Update::T>
+    where
+        Lookup:
+            item::Lookup,
+        Action: 
+            crate::Action<State = Lookup::State>,
+        Update:
+            Into<Action> +
+            action::Update<T: item::lookup::Lookupable<Lookup::State>, Undo: Into<Action>>,
+    {
+        let WithUpdate {
+            id,
+            update,
+        } = update;
+
+        self.flush()?;
+        self.inner.items_status.update_immediate(id.untyped(), self.inner.lookup, update)
     }
 
     pub fn enqueue_trigger(&self, trigger: Output::Trigger)
@@ -423,10 +500,6 @@ pub(crate) struct Complete<Action, Context, Output> {
     pub(crate) output: Output,
 }
 
-impl<Action, Context, Output> Complete<Action, Context, Output> {
-    
-}
-
 #[doc(hidden)]
 pub trait EnqueueTrigger {
     type Trigger;
@@ -481,32 +554,6 @@ impl<'i, Lookup, Action, T> Pending<'i, Lookup, Action, T> {
         self.inner.items_status.enqueue(self.item_id.untyped(), update.into());
         self
     }
-
-    /// Update the item and return a value provided by the UpdateReturn Action.
-    /// If the item has been modified by this [Interactor], it must be flushed
-    /// before calling this function
-    pub fn update_value<Update>(&self, update: Update)
-        -> action::Result<Update::Return>
-    where
-        Lookup:
-            item::Lookup,
-        T:
-            item::lookup::Lookupable<Lookup::State>,
-        Update:
-            Into<Action> +
-            action::UpdateReturn<T = T>,
-    {
-        if self.inner.items_status.is_item_flushed(self.item_id.untyped()) {
-            let item = self.inner.lookup.lookup(self.item_id)?;
-            let value = update.return_value(item)?;
-            self.update(update);
-
-            Ok(value)
-        } else {
-            // TODO Is there any point for this to be an error?
-            panic!("Updated items must be flushed before calling update_value")
-        }
-    }
 }
 
 #[derive(Debug)]
@@ -516,6 +563,10 @@ pub struct Existing<'i, Lookup, Action, T> {
 }
 
 impl<'i, Lookup, Action, T> Existing<'i, Lookup, Action, T> {
+    pub fn id(&self) -> IdT<T> {
+        self.item.id()
+    }
+
     pub fn follow<U>(&self, id: IdT<U>)
         -> lookup::Result<Existing<'i, Lookup, Action, U>>
     where
@@ -536,7 +587,17 @@ impl<'i, Lookup, Action, T> Existing<'i, Lookup, Action, T> {
         self
     }
 
-    pub fn destroy<Destroy>(&self, destroy: Destroy) 
+    
+    pub fn update_immediate<Update>(self, update: Update)
+        -> WithUpdate<T, Update>
+    {
+        WithUpdate {
+            id: self.id(),
+            update,
+        }
+    }
+
+    pub fn destroy<Destroy>(self, destroy: Destroy) 
     where 
         Destroy:
             Into<Action> + 
@@ -553,3 +614,11 @@ impl<'i, Lookup, Action, T> ops::Deref for Existing<'i, Lookup, Action, T> {
         self.item.get()
     }
 }
+
+#[must_use]
+#[derive(Debug)]
+pub struct WithUpdate<T, Update> {
+    id: IdT<T>,
+    update: Update,
+}
+

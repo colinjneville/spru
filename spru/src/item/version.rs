@@ -9,6 +9,7 @@ pub struct Version(u32);
 
 impl Version {
     pub(crate) const ZERO: Self = Self(0);
+    pub(crate) const INVALID: Self = Self(u32::MAX);
 
     pub(crate) fn next(&self) -> Self {
         Self(self.0 + 1)
@@ -39,8 +40,9 @@ impl fmt::Display for Version {
 
 #[derive(Debug)]
 #[derive(thiserror::Error)]
-#[error("Expected {expected}, found {actual}")]
+#[error("Item {item} expected {expected}, found {actual}")]
 pub struct Error {
+    pub item: item::Id,
     pub expected: Version,
     pub actual: Version,
 }
@@ -76,8 +78,14 @@ impl Change {
         Self::new(before, before.next())
     }
 
-    pub fn undo(&self) -> Self {
+    pub fn undo(self) -> Self {
         Self::new(self.after, self.before)
+    }
+
+    // Once a version change has been applied to an item, future modifications which are part of the
+    // same transaction can leave the version as-is
+    pub fn into_noop(self) -> Self {
+        Self::noop(self.after)
     }
 }
 
@@ -98,6 +106,40 @@ impl Expected {
         let mut expected: Vec<_> = versions.collect();
         expected.sort_by_key(|(id, _)| *id);
         Self { expected }
+    }
+
+    /// Find the first difference between two `Expected`, if any
+    pub(crate) fn diff(&self, actual: &Self) -> Result<(), item::version::Error> {
+        // item::version::Error wasn't made for potentially intra-item
+        let mut actual_iter = actual.expected.iter().copied();
+        for (expected_id, expected_version) in self.expected.iter().copied() {
+            let (actual_id, mut actual_version) = actual_iter.next()
+                .unwrap_or((item::Id::INVALID, item::Version::INVALID));
+
+            if actual_id != expected_id {
+                actual_version = item::Version::INVALID;
+            }
+
+            if actual_version != expected_version {
+                unsafe { std::arch::asm!("int3"); }
+                return Err(item::version::Error {
+                    item: expected_id,
+                    expected: expected_version,
+                    actual: actual_version,
+                });
+            }
+        }
+
+        if let Some((actual_id, actual_version)) = actual_iter.next() {
+            unsafe { std::arch::asm!("int3"); }
+            Err(item::version::Error {
+                item: actual_id,
+                expected: item::Version::INVALID,
+                actual: actual_version,
+            })
+        } else {
+            Ok(())
+        }
     }
 }
 

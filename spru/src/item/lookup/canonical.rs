@@ -1,6 +1,6 @@
 use std::{any, fmt, marker::PhantomData};
 
-use crate::{item::{self, lookup}, snapshot, state, Item};
+use crate::{common, item::{self, lookup}, state, Item};
 
 #[derive(Debug)]
 pub struct Canonical<State> {
@@ -162,12 +162,12 @@ impl<T> ItemMap<T> {
 }
 
 pub(crate) trait ErasedItemMap: any::Any + fmt::Debug + Send + Sync {
-    fn as_serialized(&self) -> Result<Box<[Item<Box<[u8]>>]>, snapshot::CreateError>;
+    fn as_serialized(&self) -> Result<Box<[item::Erased]>, common::error::Save>;
 }
 
 impl<T> ErasedItemMap for ItemMap<T> 
 where T: any::Any + serde::Serialize + Send + Sync {
-    fn as_serialized(&self) -> Result<Box<[Item<Box<[u8]>>]>, snapshot::CreateError> {
+    fn as_serialized(&self) -> Result<Box<[item::Erased]>, common::error::Save> {
         let items = self.map.values()
             .map(map_item)
             .collect::<Result<Vec<_>, _>>()?;
@@ -175,11 +175,15 @@ where T: any::Any + serde::Serialize + Send + Sync {
     }
 }
 
-fn map_item<T>(item: &Item<T>) -> Result<Item<Box<[u8]>>, snapshot::CreateError> 
+fn map_item<T>(item: &Item<T>) -> Result<item::Erased, common::error::Save> 
 where T: serde::Serialize {
-    let id = item::IdT::new(item.id().untyped());
+    let id = item.id().untyped();
     let version = item.version();
-    let item = Item::new(id, version, rmp_serde::to_vec(&item.get())?.into_boxed_slice());
+    let item = item::Erased {
+        id, 
+        version, 
+        state: rmp_serde::to_vec(&item.get())?.into_boxed_slice()
+    };
     Ok(item)
 }
 
@@ -263,7 +267,7 @@ impl<State> ItemsMap<State> {
 
 #[cfg(test)]
 mod test {
-    use crate::Snapshot;
+    use crate::common;
     use tagset::tagset;
 
     use super::*;
@@ -302,7 +306,7 @@ mod test {
         canonical.create(Item::new_untyped_id(id, item::Version::ZERO, S1(4i64))).expect("create failed");
         
         
-        let checkpoint = Snapshot::new(item::Id::new().force_type::<()>(), &canonical).expect("checkpoint failed");
+        let checkpoint = common::Snapshot::new(item::Id::new().force_type::<()>(), &canonical).expect("checkpoint failed");
 
         let mut canonical2 = Canonical::<MyCatalog>::new();
         checkpoint.apply(&mut canonical2).expect("checkpoint apply failed");

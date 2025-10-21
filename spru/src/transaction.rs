@@ -26,15 +26,15 @@ impl<Action> Transactions<Action> {
     pub(crate) fn into_iter(self) -> impl DoubleEndedIterator<Item = transaction::Confirmed<Action>> {
         self.transactions.into_iter()
             .enumerate()
-            .map(move |(i, tx)| transaction::Confirmed::new(transaction::Id::new(self.start_id.get() + i), tx))
+            .map(move |(i, tx)| transaction::Confirmed::new(transaction::Id::new(self.start_id.get() + i as u32), tx))
     }
 
     pub(crate) fn drain(&mut self) -> impl DoubleEndedIterator<Item = transaction::Confirmed<Action>> + '_ {
         let old_start_id = self.start_id.get();
-        self.start_id = transaction::Id::new(old_start_id + self.transactions.len());
+        self.start_id = transaction::Id::new(old_start_id + self.transactions.len() as u32);
         self.transactions.drain(..)
             .enumerate()
-            .map(move |(i, tx)| transaction::Confirmed::new(transaction::Id::new(old_start_id + i), tx))
+            .map(move |(i, tx)| transaction::Confirmed::new(transaction::Id::new(old_start_id + i as u32), tx))
     }
 
     pub fn start_id(&self) -> transaction::Id {
@@ -42,7 +42,7 @@ impl<Action> Transactions<Action> {
     }
 
     pub fn next_id(&self) -> transaction::Id {
-        transaction::Id::new(self.start_id.0 + self.transactions.len())
+        transaction::Id::new(self.start_id.0 + self.transactions.len() as u32)
     }
 
     pub(crate) fn get(&self, id: transaction::Id) -> Option<&Transaction<Action>> {
@@ -126,25 +126,30 @@ impl<Action> Transaction<Action> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[derive(serde::Serialize, serde::Deserialize)]
-pub struct Id(usize);
+pub struct Id(u32);
 
 impl Id {
-    pub(crate) fn new(index: usize) -> Self {
+    pub(crate) fn new(index: u32) -> Self {
         Self(index)
     }
 
     pub const ZERO: Self = Self(0);
 
-    pub(crate) fn get(&self) -> usize {
+    pub(crate) fn get(&self) -> u32 {
         self.0
     }
 
     pub(crate) fn index_of(&self, start_id: &Self) -> Option<usize> {
         self.0.checked_sub(start_id.0)
+            .map(|i| i as usize)
     }
 
     pub(crate) fn next(&self) -> Self {
         Self::new(self.get() + 1)
+    }
+
+    pub(crate) fn into_u32(&self) -> u32 {
+        self.0
     }
 }
 

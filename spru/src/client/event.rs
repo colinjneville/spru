@@ -11,20 +11,3 @@ pub enum Event<Client: super::Client> {
 pub struct GameComplete<Client: super::Client> {
     pub game_outcome: Client::GameOutcome,
 }
-
-// #[allow(unused_variables)]
-// pub trait Reader<GameOutcome> {
-//     fn read_all(&mut self, events: Vec<Event<GameOutcome>>) {
-//         for event in events {
-//             self.read(event);
-//         }
-//     }
-
-//     fn read(&mut self, event: Event<GameOutcome>) {
-//         match event {
-//             Event::GameComplete(event) => self.game_complete(event),
-//         }
-//     }
-
-//     fn game_complete(&mut self, event: GameComplete<GameOutcome>) { }
-// }

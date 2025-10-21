@@ -17,8 +17,15 @@ impl Error {
         }
     }
 
-    pub(crate) fn set_context<GameInit: game::Init>(&mut self, game_init: &GameInit) {
-        self.context = Some(Context::new(game_init));
+    /// GameInit is taken by value, so it won't be available once we have the error
+    pub(crate) fn prepare_context<GameInit: game::Init>(game_init: &GameInit)
+        -> impl FnOnce(Self) -> Self + 'static
+    {
+        let context = Some(Context::new(game_init));
+        |mut e| {
+            e.context = context;
+            e
+        }
     }
 
     pub fn kind(&self) -> &Kind {

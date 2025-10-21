@@ -1,11 +1,11 @@
-use std::fmt;
+use std::{cmp, fmt, ops};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[derive(serde::Serialize, serde::Deserialize)]
-pub struct Id(pub(crate) usize);
+pub struct Id(pub(crate) u32);
 
 impl Id {
-    pub fn into_usize(self) -> usize {
+    pub fn into_u32(self) -> u32 {
         self.0
     }
 
@@ -14,15 +14,17 @@ impl Id {
     pub(crate) const fn next(&self) -> Self {
         Self(self.0 + 1)
     }
+}
 
-    pub(crate) fn get(&self) -> usize {
-        self.0
+impl cmp::PartialEq<u32> for Id {
+    fn eq(&self, other: &u32) -> bool {
+        &self.0 == other
     }
 }
 
 #[cfg(feature = "test-util")]
 impl Id {
-    pub fn test_new(id: usize) -> Self {
+    pub fn test_new(id: u32) -> Self {
         Self(id)
     }
 }

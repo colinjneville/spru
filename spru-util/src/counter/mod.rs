@@ -131,18 +131,6 @@ where
     }
 }
 
-impl<T> spru::action::UpdateReturn for Add<T>
-where 
-    T: CounterType + Ord + AddSigned<Signed: spru::Serial> + spru::Serial,
-{
-    type Return = T;
-
-    fn return_value(&self, value: &Self::T) -> AnyResult<Self::Return> {
-        let sum = self.sum(value)?;
-        Ok(sum)
-    }
-}
-
 pub type Destroy<T> = verbatim::Destroy<State<T>>;
 
 #[derive(Debug, Clone)]

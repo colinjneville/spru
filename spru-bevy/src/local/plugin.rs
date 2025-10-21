@@ -13,6 +13,7 @@ impl<Server, Client> prelude::Plugin for Plugin<Server, Client>
 where
     Server: crate::server::ServerSSS,
     Client: crate::client::ClientSSS<
+        State = Server::State,
         Action = Server::Action,
         Root = Server::Root,
         Interaction = Server::Interaction,

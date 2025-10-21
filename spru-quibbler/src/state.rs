@@ -16,4 +16,5 @@ use crate::{data, game, hand, player, round};
 #[tagset(counter::State<u32>)]
 #[tagset(rotating::State<spru::player::Id>)]
 #[tagset(crate::Play)]
+#[tagset(derive(Debug))]
 pub struct State;

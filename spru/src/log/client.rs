@@ -1,5 +1,7 @@
 use std::collections::VecDeque;
 
+use tracing::instrument;
+
 use crate::{action, error::RecoverableResult, interaction, item, log::error::ConfirmError, record::Records, transaction, Transaction};
 
 #[derive(Debug)]
@@ -42,6 +44,8 @@ impl<Action, Interaction> Client<Action, Interaction> {
             next_confirmed_id,
         }
     }
+
+    #[instrument(err, skip_all, fields(transaction_id = transaction.id.get()))]
     pub(crate) fn apply_confirmed<Lookup>(&mut self, lookup: &mut Lookup, transaction: transaction::Confirmed<Action>)
         -> RecoverableResult<(), ConfirmError>
     where
@@ -49,16 +53,20 @@ impl<Action, Interaction> Client<Action, Interaction> {
         Action: crate::Action<State = Lookup::State>,
     {
         if self.next_confirmed_id == transaction.id {
+            tracing::event!(name: "external_transaction", tracing::Level::DEBUG, transaction_len = transaction.transaction.records().len());
+
             self.next_confirmed_id = self.next_confirmed_id.next();
 
-            self.apply_records(lookup, transaction.transaction.records())
+            self.apply_server_records(lookup, transaction.transaction.records())
                 .map_err(|e| e.map_with(Into::into))
         } else {
+            tracing::event!(name: "external_transaction_invalid", tracing::Level::ERROR, expected_transaction_id = self.next_confirmed_id.get());
+            
             Err(ConfirmError::Mismatch(transaction::id::MismatchError { expected: self.next_confirmed_id, actual: transaction.id }).into())
         }
     }
 
-    fn apply_records<Lookup>(&mut self, lookup: &mut Lookup, records: &Records<Action>)
+    fn apply_server_records<Lookup>(&mut self, lookup: &mut Lookup, records: &Records<Action>)
         -> RecoverableResult<(), action::Error>
     where
         Lookup: item::Lookup,
@@ -71,7 +79,7 @@ impl<Action, Interaction> Client<Action, Interaction> {
                     // Log apply failed, discard our local pending changes...
                     // TODO we could instead look for the earliest incompatible transaction
                     // and only rollback until there
-                    match self.revert_pending(lookup, None) {
+                    match self.revert_pending(lookup, None, true) {
                         Ok(()) => {
                             // Then try one more time on what should be a clean slate
                             records.apply(lookup)
@@ -92,27 +100,44 @@ impl<Action, Interaction> Client<Action, Interaction> {
 
     pub fn stage_pending(
         &mut self, 
-        interaction: interaction::Staged<Interaction>, 
+        interaction: Interaction,
+        expected_versions: item::version::Expected, 
         undo_transaction: Transaction<Action>,
     )
         -> transaction::Pending
     {
-        let id = self.next_pending_id;
+        let pending_transaction_id = self.next_pending_id;
         self.next_pending_id = self.next_pending_id.next();
         
+        let staged = interaction::Staged {
+            interaction,
+            expected_versions,
+            pending_transaction_id,
+        };
+
         let pending = PendingTransaction {
-            id,
+            id: pending_transaction_id,
             undo_transaction,
-            interaction: Some(interaction),
+            interaction: Some(staged),
         };
         self.pending_undo_transactions.push_back(pending);
-        id
+
+        pending_transaction_id
     }
 
-    pub fn apply_pending(&mut self, pending_transaction_id: transaction::Pending)
+    pub fn apply_pending(&mut self, pending_transaction_id: Option<transaction::Pending>)
         -> Result<Vec<interaction::Staged<Interaction>>, crate::TempError>
     {
-        match self.pending_undo_transactions.binary_search_by_key(&pending_transaction_id, |p| p.id) {
+        let index = if let Some(pending_transaction_id) = pending_transaction_id {
+            self.pending_undo_transactions.binary_search_by_key(&pending_transaction_id, |p| p.id)
+        } else if !self.pending_undo_transactions.is_empty() {
+            Ok(self.pending_undo_transactions.len() - 1)
+        } else {
+            // No pending transactions
+            return Ok(vec![]);
+        };
+        
+        match index {
             Ok(index) => {
                 let mut output = vec![];
                 for i in 0..=index {
@@ -145,7 +170,7 @@ impl<Action, Interaction> Client<Action, Interaction> {
             Some(pending) => {
                 if pending.id == pending_transaction_id {
                     if self.next_confirmed_id == confirmed_transaction_id {
-                        self.apply_records(lookup, &reaction_records)
+                        self.apply_server_records(lookup, &reaction_records)
                             .map_err(crate::TempError::discard)?;
                         
                         self.next_confirmed_id = self.next_confirmed_id.next();
@@ -165,7 +190,7 @@ impl<Action, Interaction> Client<Action, Interaction> {
         }
     }
 
-    pub fn revert_pending<Lookup>(&mut self, lookup: &mut Lookup, until: Option<transaction::Pending>) 
+    pub(crate) fn revert_pending<Lookup>(&mut self, lookup: &mut Lookup, until: Option<transaction::Pending>, from_server: bool) 
         -> Result<(), action::Error> 
     where 
         Lookup: item::Lookup,
@@ -178,13 +203,21 @@ impl<Action, Interaction> Client<Action, Interaction> {
                 self.pending_undo_transactions.push_back(pending);
                 break;
             } else {
-                if pending.interaction.is_some() {
+                // If we have not attempted to apply this interaction yet, or the server 
+                // has explicitly rejected it, we can revert
+                if pending.interaction.is_some() || from_server {
                     pending.undo_transaction.apply(lookup)?;
                 } else {
+                    // We've already told the server to confirm the interaction, but have not yet
+                    // recieved a response. It's no longer our choice to revert.
+                    break;
+                    
                     // TODO CORRECTNESS
                     // If this revert is due to a conflict with an incoming server transaction, we need
                     // to be able to revert past the lock point because those pending changes may be the
                     // cause of the conflict. 
+                    // But this must be done one interaction at a time, because we must not undo an 
+                    // interaction the server could accept
                     todo!()
                 }
             }

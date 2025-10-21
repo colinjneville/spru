@@ -1,3 +1,6 @@
+#![allow(dead_code)]
+#![allow(missing_docs)]
+
 use std::{collections::{HashMap, hash_map}, ops};
 
 use crate::{item, player};
@@ -56,15 +59,15 @@ pub struct PlayerStatus {
 impl PlayerStatus {
     /// Returns true if this object is now visible to all players
     fn set_visibility(&mut self, player: player::Id, visibility: Visibility) -> bool {
-        let player = player.get();
-        let oob = self.status.len() < player;
+        let player = player.into_u32();
+        let oob = self.status.len() < player as usize;
         if visibility == Visibility::Visible && oob {
             false
         } else {
             if oob {
-                self.status.resize(player, Visibility::Visible);
+                self.status.resize(player as usize, Visibility::Visible);
             }
-            let prev_visibility = std::mem::replace(&mut self.status[player], visibility);
+            let prev_visibility = std::mem::replace(&mut self.status[player as usize], visibility);
             let diff = match (prev_visibility, visibility) {
                 (Visibility::Hidden(_), Visibility::Visible) => -1,
                 (Visibility::Visible, Visibility::Hidden(_)) => 1,
@@ -80,7 +83,7 @@ impl ops::Index<player::Id> for PlayerStatus {
     type Output = Visibility;
 
     fn index(&self, index: player::Id) -> &Self::Output {
-        self.status.get(index.get()).unwrap_or(&DEFAULT_VISIBILITY)
+        self.status.get(index.into_u32() as usize).unwrap_or(&DEFAULT_VISIBILITY)
     }
 }
 

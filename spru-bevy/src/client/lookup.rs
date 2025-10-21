@@ -1,24 +1,26 @@
-use std::{any, collections::{hash_map, HashMap}, marker::PhantomData};
+use std::{any, marker::PhantomData};
 
 use bevy::prelude;
 use spru::item;
 
-use crate::client::component;
+use crate::{client::component, common};
 
 #[doc(hidden)]
 #[derive(Debug)]
 pub struct BevyLookup<'l, State> {
     world: &'l mut prelude::World,
-    entity_map: &'l mut EntityMap,
+    entity_map: &'l mut super::component::EntityMap,
+    game_id: spru::game::Id,
     client_id: spru::player::Id,
     _state: PhantomData<fn() -> State>,
 }
 
 impl<'l, State> BevyLookup<'l, State> {
-    pub(crate) fn new(world: &'l mut prelude::World, entity_map: &'l mut EntityMap, client_id: spru::player::Id) -> Self {
+    pub(crate) fn new(world: &'l mut prelude::World, entity_map: &'l mut super::component::EntityMap, game_id: spru::game::Id, client_id: spru::player::Id) -> Self {
         Self { 
             world,
             entity_map,
+            game_id,
             client_id,
             _state: PhantomData,
         }
@@ -35,7 +37,7 @@ impl<'l, State: spru::State> spru::item::Lookup for BevyLookup<'l, State> {
     {
         let id = id.untyped();
         let entity = self.entity_map.get(id)?;
-        Ok(self.world.get::<component::Item<T>>(entity).ok_or(BevyError::ComponentNotFound(id, entity, any::type_name::<T>()))?.item())
+        Ok(self.world.get::<component::Item<T>>(entity).ok_or(super::BevyError::ComponentNotFound(id, entity, any::type_name::<T>()))?.item())
     }
 
     #[allow(refining_impl_trait)]
@@ -46,7 +48,7 @@ impl<'l, State: spru::State> spru::item::Lookup for BevyLookup<'l, State> {
     {
         let id = id.untyped();
         let entity = self.entity_map.get(id)?;
-        Ok(self.world.get_mut::<component::Item<T>>(entity).ok_or(BevyError::ComponentNotFound(id, entity, any::type_name::<T>()))?.map_unchanged(|sc| sc.item_mut()))
+        Ok(self.world.get_mut::<component::Item<T>>(entity).ok_or(super::BevyError::ComponentNotFound(id, entity, any::type_name::<T>()))?.map_unchanged(|sc| sc.item_mut()))
     }
 
     fn create<T>(&mut self, value: spru::Item<T>) 
@@ -54,12 +56,15 @@ impl<'l, State: spru::State> spru::item::Lookup for BevyLookup<'l, State> {
     where
         T: spru::item::lookup::Lookupable<Self::State>,
     {
-        self.entity_map.insert_as(value.id().untyped(), 
+        let id = value.id().untyped();
+        self.entity_map.insert_as(id, 
             || {
                 Ok(
                     self.world.spawn((
+                        prelude::Name::new(format!("[{:x}:{}.{id}] {}", self.game_id.friendly_display(), self.client_id, any::type_name::<T>())),
                         component::Item::new(value),
-                        component::ClientId(self.client_id),
+                        common::component::GameId(self.game_id),
+                        super::component::ClientId(self.client_id),
                     )).id()
                 )
             }
@@ -75,69 +80,14 @@ impl<'l, State: spru::State> spru::item::Lookup for BevyLookup<'l, State> {
         let id = id.untyped();
         self.entity_map.remove_as(id, |entity| {
             let mut entity_mut = self.world.get_entity_mut(entity)
-                .map_err(|_| BevyError::EntityNotFound(id, entity))?;
+                .map_err(|_| super::BevyError::EntityNotFound(id, entity))?;
             match entity_mut.take::<component::Item<T>>() {
                 Some(item) => Ok(item.into_inner()),
-                None => Err(BevyError::ComponentNotFound(id, entity, any::type_name::<T>()).into()),
+                None => Err(super::BevyError::ComponentNotFound(id, entity, any::type_name::<T>()).into()),
             }
         }).map_err(Into::into)
     }
 }
 
 
-#[derive(Debug, Clone)]
-#[derive(thiserror::Error)]
-pub enum BevyError {
-    #[error("Item {0} does not exist")]
-    IdNotFound(item::Id),
-    #[error("Item {0} should exist, but the bevy entity ({1}) has been removed")]
-    EntityNotFound(item::Id, prelude::Entity),
-    #[error("Item {0} should exist, but the bevy component ({1} {2}) has been removed")]
-    ComponentNotFound(item::Id, prelude::Entity, &'static str),
-    #[error("Item {0} already exists")]
-    IdAlreadyExists(item::Id, prelude::Entity),
-}
 
-pub type BevyResult<T> = std::result::Result<T, BevyError>;
-
-#[derive(Debug)]
-#[derive(prelude::Component)]
-pub struct EntityMap {
-    map: HashMap<item::Id, prelude::Entity>,
-}
-
-impl EntityMap {
-    pub fn get(&self, id: item::Id) -> BevyResult<prelude::Entity> {
-        self.map.get(&id).copied().ok_or(BevyError::IdNotFound(id))
-    }
-
-    fn insert_as(&mut self, id: item::Id, f: impl FnOnce() -> BevyResult<prelude::Entity>) ->  BevyResult<prelude::Entity> {
-        match self.map.entry(id) {
-            hash_map::Entry::Occupied(oe) => Err(BevyError::IdAlreadyExists(id, *oe.get()).into()),
-            hash_map::Entry::Vacant(ve) => {
-                let entity = f()?;
-                ve.insert(entity);
-                Ok(entity)
-            }
-        }
-    }
-
-    fn remove_as<T>(&mut self, id: item::Id, f: impl FnOnce(prelude::Entity) -> BevyResult<T>) -> BevyResult<T> {
-        match self.map.entry(id) {
-            hash_map::Entry::Occupied(oe) => {
-                let value = f(*oe.get())?;
-                oe.remove();
-                Ok(value)
-            },
-            hash_map::Entry::Vacant(_) => Err(BevyError::IdNotFound(id)),
-        }
-    }
-}
-
-impl Default for EntityMap {
-    fn default() -> Self {
-        Self { 
-            map: Default::default(), 
-        }
-    }
-}

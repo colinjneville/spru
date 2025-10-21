@@ -20,3 +20,6 @@ thiserror.workspace = true
 uuid.workspace = true
 
 derive-where.workspace = true
+
+[dev-dependencies]
+spru-test = { path = "../spru-test/" }

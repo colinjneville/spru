@@ -16,24 +16,18 @@ pub trait Lookup {
         -> self::Result<&Item<T>>
     where
         T: Lookupable<Self::State>,
-        // Self::State: tagset::TagSetDiscriminant<T>,
-        // T: any::Any + serde::Serialize + Send + Sync,
     ;
     
     fn lookup_mut<T>(&mut self, id: IdT<T>) 
         -> self::Result<impl ops::DerefMut<Target=Item<T>>>
     where
         T: Lookupable<Self::State>,
-        // Self::State: tagset::TagSetDiscriminant<T>,
-        // T: any::Any + serde::Serialize + Send + Sync,
     ;
 
     fn exists<T>(&self, id: IdT<T>) 
         -> bool
     where
         T: Lookupable<Self::State>,
-        // Self::State: tagset::TagSetDiscriminant<T>,
-        // T: any::Any + serde::Serialize + Send + Sync,
     {
         self.lookup(id).is_ok()
     }
@@ -42,15 +36,11 @@ pub trait Lookup {
         -> self::Result<()>
     where
         T: Lookupable<Self::State>,
-        // Self::State: tagset::TagSetDiscriminant<T>,
-        // T: any::Any + serde::Serialize + Send + Sync,
     ;
     fn destroy<T>(&mut self, id: IdT<T>) 
         -> self::Result<Item<T>>
     where
         T: Lookupable<Self::State>,
-        // Self::State: tagset::TagSetDiscriminant<T>,
-        // T: any::Any + serde::Serialize + Send + Sync,
     ;
 }
 

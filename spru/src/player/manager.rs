@@ -48,7 +48,7 @@ impl<PlayerInit> Manager<PlayerInit> {
         // State: crate::State<item::lookup::Canonical<State>>,
         PlayerInit: player::Init<State = State, Action = Action, Root = Root>, 
     {
-        let id = player::Id(self.player_details.len());
+        let id = player::Id(self.player_details.len() as u32);
         interactor.context_mut().player = id;
 
         let init_error = self.init.initialize(&mut interactor, input).err();
@@ -68,6 +68,6 @@ impl<PlayerInit> Manager<PlayerInit> {
     pub(crate) fn iter(&self) -> impl Iterator<Item = player::Id> {
         (0..self.player_details.len())
             .into_iter()
-            .map(|i| player::Id(i))
+            .map(|i| player::Id(i as u32))
     }
 }

@@ -1,103 +1,146 @@
-use std::{collections::VecDeque, ops};
+use std::{collections::{hash_map, HashMap, VecDeque}, fmt, ops};
 
 use bevy::prelude;
 use derive_where::derive_where;
+use spru::item;
 
 /// Specifies the Client the entity belongs to. This allows multiple Clients to co-exist 
 /// inside the same World. Note that while this uses a [spru::player::Id] as the id,
 /// this does not mean the attached game piece belongs to that player, only that it
-/// is their 'view' of thr game piece.
-#[derive(Debug)]
+/// is their 'view' of the game piece.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[derive(prelude::Component)]
+#[component(storage = "SparseSet")]
+#[component(immutable)]
 pub struct ClientId(pub spru::player::Id);
 
-#[derive_where(Debug; RunnerInner<Client>)]
+impl fmt::Display for ClientId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(&self.0, f)
+    }
+}
+
+#[derive(Debug)]
 #[derive(prelude::Component)]
-#[require(FromServer<Client>, ToServer<Client>)]
+#[component(storage = "SparseSet")]
+#[require(FromServer<Client>, ToServer<Client>, FromUser<Client>, EntityMap)]
 pub struct Runner<Client: super::ClientSSS> {
-    inner: Option<RunnerInner<Client>>,
+    pub(crate) client: Client,
 }
 
 impl<Client: super::ClientSSS> Runner<Client> {
-    pub(crate) fn new(world: &mut bevy::prelude::World, init: spru::client::init::Arg<Client::Common>) 
-        -> spru::client::init::Result<Self> 
-    {
-        let mut entity_map = super::lookup::EntityMap::default();
-        let mut lookup = super::lookup::BevyLookup::new(world, &mut entity_map, init.local_player_id());
-        let client = Client::init(&mut lookup, init)?;
-            
-        Ok(Self {
-            inner: Some(RunnerInner {
-                client,
-                entity_map,
-            })
-        })
-    }
-
-    pub(crate) fn inner(&self) -> &RunnerInner<Client> {
-        self.inner.as_ref()
-            .expect("Runner must be restored")
-    }
-
-    pub(crate) fn take(&mut self) -> RunnerInner<Client> {
-        self.inner.take()
-            .expect("Runner must be restored")
-    }
-
-    pub(crate) fn restore(&mut self, inner: RunnerInner<Client>) {
-        self.inner = Some(inner);
+    pub(crate) fn new(client: Client) 
+        -> Self
+    {    
+        Self {
+            client,
+        }
     }
 }
 
-#[derive(Debug)]
-pub(crate) struct RunnerInner<Client: super::ClientSSS> {
-    pub(crate) client: Client,
-    pub(crate) entity_map: super::lookup::EntityMap,
-}
-
-#[derive_where(Debug; spru::client::signal::Arg<Client::Common>)]
+#[derive_where(Debug; spru::client::signal::Signal<Client::Common>)]
 #[derive_where(Default)]
 #[derive(prelude::Component)]
+#[component(storage = "SparseSet")]
 pub struct FromServer<Client: super::ClientSSS> {
-    queue: VecDeque<spru::client::signal::Arg<Client::Common>>,
+    queue: VecDeque<spru::client::signal::Signal<Client::Common>>,
 }
 
 impl<Client: super::ClientSSS> FromServer<Client> {
-    pub(crate) fn enqueue(&mut self, signal: spru::client::signal::Arg<Client::Common>) {
+    pub fn len(&self) -> usize {
+        self.queue.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.queue.is_empty()
+    }
+
+    pub(crate) fn enqueue(&mut self, signal: spru::client::signal::Signal<Client::Common>) {
         self.queue
             .push_back(signal);
     }
 
-    pub fn dequeue(&mut self) -> Option<spru::client::signal::Arg<Client::Common>> {
+    pub fn dequeue(&mut self) -> Option<spru::client::signal::Signal<Client::Common>> {
         self.queue
             .pop_front()
     }
 }
 
-#[derive_where(Debug; spru::server::signal::Arg<Client::Common>)]
+#[derive_where(Debug; spru::server::signal::Signal<Client::Common>)]
 #[derive_where(Default)]
 #[derive(prelude::Component)]
+#[component(storage = "SparseSet")]
 pub struct ToServer<Client: super::ClientSSS> {
-    queue: VecDeque<spru::server::signal::Arg<Client::Common>>,
+    queue: VecDeque<spru::server::signal::Signal<Client::Common>>,
 }
 
 impl<Client: super::ClientSSS> ToServer<Client> {
-    pub fn enqueue(&mut self, signal: spru::server::signal::Arg<Client::Common>) {
+    pub fn len(&self) -> usize {
+        self.queue.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.queue.is_empty()
+    }
+
+    pub fn enqueue(&mut self, signal: spru::server::Signal<Client::Common>) {
         self.queue
             .push_back(signal);
     }
 
-    pub(crate) fn dequeue(&mut self) -> Option<spru::server::signal::Arg<Client::Common>> {
+    pub(crate) fn dequeue(&mut self) -> Option<spru::server::Signal<Client::Common>> {
         self.queue
             .pop_front()
     }
 }
 
-#[derive(Debug)]
+#[derive_where(Debug; UserInput<Client>)]
 #[derive_where(Default)]
 #[derive(prelude::Component)]
-pub struct ApplyInteraction<Client: super::ClientSSS> {
-    queue: VecDeque<Client::Interaction>,
+#[component(storage = "SparseSet")]
+pub struct FromUser<Client: super::ClientSSS> {
+    queue: VecDeque<UserInput<Client>>,
+}
+
+impl<Client: super::ClientSSS> FromUser<Client> {
+    pub fn len(&self) -> usize {
+        self.queue.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.queue.is_empty()
+    }
+
+    pub fn stage_interaction(&mut self, interaction: Client::Interaction) {
+        self.queue.push_back(UserInput::StageInteraction(interaction));
+    }
+
+    pub fn apply_interaction(&mut self, interaction_id: spru::transaction::Pending) {
+        self.queue.push_back(UserInput::ApplyInteraction(Some(interaction_id)));
+    }
+
+    pub fn apply_all_interactions(&mut self) {
+        self.queue.push_back(UserInput::ApplyInteraction(None));
+    }
+
+    pub fn revert_interaction(&mut self, interaction_id: spru::transaction::Pending) {
+        self.queue.push_back(UserInput::RevertInteraction(Some(interaction_id)));
+    }
+
+    pub fn revert_all_interactions(&mut self) {
+        self.queue.push_back(UserInput::RevertInteraction(None));
+    }
+
+    pub(crate) fn dequeue(&mut self) -> Option<UserInput<Client>> {
+        self.queue.pop_front()
+    }
+}
+
+#[derive_where(Debug; Client::Interaction)]
+pub(crate) enum UserInput<Client: super::ClientSSS> {
+    StageInteraction(Client::Interaction),
+    ApplyInteraction(Option<spru::transaction::Pending>),
+    RevertInteraction(Option<spru::transaction::Pending>),
 }
 
 #[derive(Debug)]
@@ -127,5 +170,41 @@ impl<T: Send + Sync + 'static> ops::Deref for Item<T> {
 
     fn deref(&self) -> &Self::Target {
         &*self.item()
+    }
+}
+
+#[derive(Debug, Default)]
+#[derive(prelude::Component)]
+#[component(storage = "SparseSet")]
+pub struct EntityMap {
+    map: HashMap<item::Id, prelude::Entity>,
+}
+
+impl EntityMap {
+    pub fn get<ID: Into<item::Id>>(&self, id: ID) -> super::BevyResult<prelude::Entity> {
+        let id = id.into();
+        self.map.get(&id).copied().ok_or(super::BevyError::IdNotFound(id))
+    }
+
+    pub(crate) fn insert_as(&mut self, id: item::Id, f: impl FnOnce() -> super::BevyResult<prelude::Entity>) -> super::BevyResult<prelude::Entity> {
+        match self.map.entry(id) {
+            hash_map::Entry::Occupied(oe) => Err(super::BevyError::IdAlreadyExists(id, *oe.get()).into()),
+            hash_map::Entry::Vacant(ve) => {
+                let entity = f()?;
+                ve.insert(entity);
+                Ok(entity)
+            }
+        }
+    }
+
+    pub(crate) fn remove_as<T>(&mut self, id: item::Id, f: impl FnOnce(prelude::Entity) -> super::BevyResult<T>) -> super::BevyResult<T> {
+        match self.map.entry(id) {
+            hash_map::Entry::Occupied(oe) => {
+                let value = f(*oe.get())?;
+                oe.remove();
+                Ok(value)
+            },
+            hash_map::Entry::Vacant(_) => Err(super::BevyError::IdNotFound(id)),
+        }
     }
 }

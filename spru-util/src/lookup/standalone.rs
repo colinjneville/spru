@@ -1,7 +1,7 @@
 use std::{any, collections::HashMap, marker::PhantomData};
 
 use derive_where::derive_where;
-use spru::{error::AnyResult, item::{self, IdT}, Item};
+use spru::{item::{self, IdT}, Item};
 
 #[derive_where(Debug, Default; )]
 pub struct Standalone<State> {
@@ -107,8 +107,6 @@ pub enum Error {
 
 #[cfg(test)]
 mod test {
-    use item::lookup::Lookup;
-
     use super::*;
 
     #[tagset::tagset(impl spru::State)]

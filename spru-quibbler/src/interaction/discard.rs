@@ -1,5 +1,6 @@
-use spru::{follow, item::{self, IdT}};
+use spru::{follow, item::IdT};
 use spru_util::{fsm, pile};
+use tracing::instrument;
 
 use crate::data;
 
@@ -9,12 +10,21 @@ pub struct Discard {
     discard: data::Card,
 }
 
+impl Discard {
+    pub fn new(discard: data::Card) -> Self {
+        Self {
+            discard,
+        }
+    }
+}
+
 impl spru::Interaction for Discard {
     type State = crate::State;
     type Action = crate::Actions;
     type Root = IdT<crate::game::Root>;
     type Trigger = crate::reaction::Trigger;
     
+    #[instrument(skip_all, ret, err)]
     fn apply<Lookup>(
         &self,
         interactor: &mut spru::interaction::Interactor<Lookup, Self::Action, Self::Root, Self::Trigger>
@@ -24,9 +34,9 @@ impl spru::Interaction for Discard {
         Lookup: spru::item::Lookup<State = Self::State>,
     {
         let player_id = interactor.context().player;
-        let mut root = interactor.get_root()?;
+        let root = interactor.get_root()?;
 
-        let mut players = follow!(
+        let players = follow!(
             root => root.players,
         )?;
 

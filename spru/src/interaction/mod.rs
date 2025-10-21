@@ -7,7 +7,7 @@ use derive_where::derive_where;
 use tagset::tagset_meta;
 use telety::telety;
 
-use crate::{interactor, item, player};
+use crate::{interactor, item, player, transaction};
 
 #[derive(Debug)]
 #[non_exhaustive]
@@ -91,4 +91,5 @@ pub type Result<T> = std::result::Result<T, self::Error>;
 pub struct Staged<Interaction> {
     pub(crate) interaction: Interaction,
     pub(crate) expected_versions: item::version::Expected,
+    pub(crate) pending_transaction_id: transaction::Pending,
 }

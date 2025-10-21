@@ -5,13 +5,12 @@ edition = "2024"
 
 [features]
 default = []
-smol = ["dep:spru-smol", "dep:spru-message", "dep:smol"]
+smol = ["dep:spru-smol", "dep:smol"]
 bevy = []
 
 [dependencies]
 spru = { path = "../spru" }
 spru-util = { path = "../spru-util" }
-spru-message = { path = "../spru-message", optional = true }
 spru-smol = { path = "../spru-smol", optional = true }
 
 telety.workspace = true

@@ -1,16 +1,22 @@
+use std::fmt;
+
 use bevy::prelude;
+use derive_where::derive_where;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[derive(prelude::Component)]
 #[derive(serde::Serialize, serde::Deserialize)]
-pub struct GameId {
-    uuid: uuid::Uuid,
+#[derive(prelude::Component)]
+#[component(immutable)]
+pub struct GameId(pub spru::game::Id);
+
+impl GameId {
+    pub(crate) fn new(game_id: spru::game::Id) -> Self {
+        Self(game_id)
+    }
 }
 
-impl Default for GameId {
-    fn default() -> Self {
-        Self { 
-            uuid: uuid::Uuid::new_v4(),
-        }
+impl fmt::Display for GameId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(&self.0, f)
     }
 }
