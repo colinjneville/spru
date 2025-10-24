@@ -34,6 +34,13 @@ impl spru::player::Init for Init {
     ) 
         -> spru::player::init::Result<()> 
     {
+        let root = interactor.get_root()?;
+        if root.has_started {
+            // TODO Need a simpler path for string literal -> try-able error
+            let e: spru::common::error::AnyError = spru::common::error::AnyError::new_boxed("Players can't join after the game has started".into());
+            return Err(spru::common::error::PsuedoError::into_error(e).into());
+        }
+
         let score = interactor.create(counter::create(0)).id();
         let hand = interactor.create(pile::default()).id();
         let fsm = interactor.create(fsm::default()).id();

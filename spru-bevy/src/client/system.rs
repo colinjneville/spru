@@ -135,7 +135,7 @@ pub(crate) fn process_output<Client: super::ClientSSS, Ret>(
 }
 
 pub(crate) fn init<Client: super::ClientSSS>(
-    init: spru::client::init::Arg<Client::Common>,
+    init: spru::common::Seed<Client::Common>,
 
     world: &mut prelude::World, 
     event_trigger: &mut impl common::TriggerEvent,
@@ -168,7 +168,7 @@ pub(crate) fn init<Client: super::ClientSSS>(
 pub(crate) fn signal<Client: super::ClientSSS>(
     game_id: common::component::GameId,
     client_id: super::component::ClientId,
-    signal: spru::client::Signal<Client::Common>,
+    signal: spru::common::signal::ToClient<Client::Common>,
 
     lookup: &mut super::BevyLookup<Client::State>, 
     mut runner: impl DerefMut<Target=super::component::Runner<Client>>,
@@ -177,9 +177,7 @@ pub(crate) fn signal<Client: super::ClientSSS>(
 ) {
     let result = (|| {
         let output = runner.client.signal(lookup, signal)?;
-        let spru::client::signal::Ret {
-            
-        } = process_output(game_id, client_id, output, to_server, event_trigger);
+        let () = process_output(game_id, client_id, output, to_server, event_trigger);
         Ok(())
     })();
     
@@ -204,10 +202,8 @@ pub(crate) fn stage_interaction<Client: super::ClientSSS<Interaction: Clone>>(
     let interaction_clone = interaction.clone();
     let result = (|| {
         let output = runner.client.stage_interaction(lookup, interaction_clone)?;
-        let spru::client::stage_interaction::Ret {
-            pending_transaction_id,
-        } = process_output(game_id, client_id, output, to_server, event_trigger);
-        Ok(pending_transaction_id)
+        let pending_interaction_id =process_output(game_id, client_id, output, to_server, event_trigger);
+        Ok(pending_interaction_id)
     })();
     
     event_trigger.trigger(super::event::StageInteraction::<Client> {
@@ -221,7 +217,7 @@ pub(crate) fn stage_interaction<Client: super::ClientSSS<Interaction: Clone>>(
 pub(crate) fn apply_interactions<Client: super::ClientSSS>(
     game_id: common::component::GameId,
     client_id: super::component::ClientId,
-    pending_transaction_id: Option<spru::transaction::Pending>,
+    pending_interaction_id: Option<spru::interaction::Pending>,
 
     lookup: &mut super::BevyLookup<Client::State>, 
     mut runner: impl DerefMut<Target=super::component::Runner<Client>>,
@@ -229,17 +225,16 @@ pub(crate) fn apply_interactions<Client: super::ClientSSS>(
     event_trigger: &mut impl common::TriggerEvent,
 ) {
     let result = (|| {
-        let output = runner.client.apply_interactions(lookup, pending_transaction_id)?;
-        let spru::client::apply_interactions::Ret {
-            
-        } = process_output(game_id, client_id, output, to_server, event_trigger);
+        let output = runner.client.apply_interactions(lookup, pending_interaction_id)?;
+        let () = process_output(game_id, client_id, output, to_server, event_trigger);
+
         Ok(())
     })();
 
     event_trigger.trigger(super::event::ApplyInteractions::<Client> {
         game_id,
         client_id,
-        pending_transaction_id,
+        pending_interaction_id,
         result,
         _client: PhantomData,
     });
@@ -248,7 +243,7 @@ pub(crate) fn apply_interactions<Client: super::ClientSSS>(
 pub(crate) fn revert_interactions<Client: super::ClientSSS>(
     game_id: common::component::GameId,
     client_id: super::component::ClientId,
-    pending_transaction_id: Option<spru::transaction::Pending>,
+    pending_interaction_id: Option<spru::interaction::Pending>,
 
     lookup: &mut super::BevyLookup<Client::State>, 
     mut runner: impl DerefMut<Target=super::component::Runner<Client>>,
@@ -256,17 +251,15 @@ pub(crate) fn revert_interactions<Client: super::ClientSSS>(
     event_trigger: &mut impl common::TriggerEvent,
 ) {
     let result = (|| {
-        let output = runner.client.revert_interactions(lookup, pending_transaction_id)?;
-        let spru::client::revert_interactions::Ret {
-            
-        } = process_output(game_id, client_id, output, to_server, event_trigger);
+        let output = runner.client.revert_interactions(lookup, pending_interaction_id)?;
+        let () = process_output(game_id, client_id, output, to_server, event_trigger);
         Ok(())
     })();
     
     event_trigger.trigger(super::event::RevertInteractions::<Client> {
         game_id,
         client_id,
-        pending_transaction_id,
+        pending_interaction_id,
         result,
         _client: PhantomData,
     });

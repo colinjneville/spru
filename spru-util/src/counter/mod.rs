@@ -1,6 +1,6 @@
 mod range_type;
 pub use range_type::RangeType;
-use spru::error::AnyResult;
+use spru::common::error::AnyResult;
 
 use std::{ops::{self, RangeBounds}, cmp};
 

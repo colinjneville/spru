@@ -24,7 +24,7 @@ impl<Server: spru::Server> SyncServer<Server> {
 }
 
 enum SyncClientState<Client: spru::Client, Lookup> {
-    Pending(spru::client::init::Arg<Client::Common>),
+    Pending(spru::common::Seed<Client::Common>),
     Initialized(SyncClientInitialized<Client, Lookup>),
     // TODO: SyncClient should be broken into SyncClientState and a new SyncClientData
     Invalid,
@@ -32,19 +32,19 @@ enum SyncClientState<Client: spru::Client, Lookup> {
 
 struct SyncClientInitialized<Client: spru::Client, Lookup> {
     client: Client,
-    outgoing_queue: VecDeque<spru::server::signal::Signal<Client::Common>>,
+    outgoing_queue: VecDeque<spru::common::signal::ToServer<Client::Common>>,
     lookup: Lookup,
     game_outcome: Option<Client::GameOutcome>,
 }
 
 struct SyncClient<Client: spru::Client, Lookup> {
-    incoming_queue: VecDeque<spru::client::signal::Signal<Client::Common>>,
+    incoming_queue: VecDeque<spru::common::signal::ToClient<Client::Common>>,
     user_incoming_queue: VecDeque<ClientCommand<Client>>,
     state: SyncClientState<Client, Lookup>,
 }
 
 impl<Client: spru::Client, Lookup> SyncClient<Client, Lookup> {
-    pub fn new(init: spru::client::init::Arg<Client::Common>) -> Self {
+    pub fn new(init: spru::common::Seed<Client::Common>) -> Self {
         Self {
             incoming_queue: VecDeque::new(),
             user_incoming_queue: VecDeque::new(),
@@ -75,20 +75,6 @@ where
         GameOutcome: fmt::Debug + PartialEq + Clone,
     >,
     Lookup: spru::item::Lookup<State = Client::State> + Default,
-    // State: 
-    //     spru::State<spru::item::lookup::Canonical<State>> +
-    //     spru::State<Lookup> +
-    //     tagset::TagSet<Repr: TryFrom<u32>>,
-    // Action: 
-    //     Clone + 
-    //     spru::action::Base<Undo = Action> +
-    //     spru::Action<spru::item::lookup::Canonical<State>> +
-    //     spru::Action<Lookup>,
-    // Root: Clone,
-    // PlayerInit: spru::player::Init<State = State, Action = Action, Root = Root>,
-    // Interaction: spru::Interaction<Action = Action, Root = Root> + Send,
-    // Reaction: spru::Reaction<State = State, Action = Action, Root = Root, Trigger = Interaction::Trigger, GameOutcome = GameOutcome>,
-    // GameOutcome: fmt::Debug + PartialEq + Clone,
 {
     pub fn new<GameInit>(
         game_init: GameInit, 
@@ -127,13 +113,13 @@ where
         self.client_command(player_id, ClientCommand::StageInteraction(interaction))
     }
 
-    pub fn apply_interactions(&mut self, player_id: player::Id, pending: Option<spru::transaction::Pending>)
+    pub fn apply_interactions(&mut self, player_id: player::Id, pending: Option<spru::interaction::Pending>)
         -> Result<(), ()>
     {
         self.client_command(player_id, ClientCommand::ApplyInteractions(pending))
     }
 
-    pub fn revert_interactions(&mut self, player_id: player::Id, pending: Option<spru::transaction::Pending>)
+    pub fn revert_interactions(&mut self, player_id: player::Id, pending: Option<spru::interaction::Pending>)
         -> Result<(), ()>
     {
         self.client_command(player_id, ClientCommand::RevertInteractions(pending))
@@ -210,9 +196,7 @@ where
         let spru::server::Output {
             outbound,
             events,
-            ret: spru::server::add_player::Ret {
-                client_init,
-            },
+            ret: client_init,
         } = self.server.server.add_player(player)?;
 
         let player_id = client_init.local_player_id();
@@ -239,9 +223,7 @@ where
         let spru::server::Output {
             outbound,
             events,
-            ret: spru::server::signal::Ret {
-                
-            },
+            ret: (),
         } = self.server.server.apply_signal(client_id, signal)?;
 
         self.queue_server_outbound(outbound);
@@ -278,9 +260,7 @@ where
                 let spru::client::Output {
                     outbound,
                     events,
-                    ret: spru::client::stage_interaction::Ret {
-                        pending_transaction_id,
-                    }
+                    ret: pending_interaction_id,
                 } = initialized.client.stage_interaction(&mut initialized.lookup, arg)?;
 
                 // TODO unify these
@@ -290,7 +270,7 @@ where
 
                 messaging.record_event(event::InteractionStaged {
                     player_id: client_id,
-                    pending_transaction_id,
+                    pending_interaction_id,
                 });
 
                 outbound
@@ -299,9 +279,7 @@ where
                 let spru::client::Output {
                     outbound,
                     events,
-                    ret: spru::client::apply_interactions::Ret {
-
-                    },
+                    ret: (),
                 } = initialized.client.apply_interactions(&mut initialized.lookup, arg)?;
 
                 let events = events.into_iter()
@@ -314,9 +292,7 @@ where
                 let spru::client::Output {
                     outbound,
                     events,
-                    ret: spru::client::revert_interactions::Ret {
-                        
-                    },
+                    ret: (),
                 } = initialized.client.revert_interactions(&mut initialized.lookup, arg)?;
 
                 let events = events.into_iter()
@@ -339,9 +315,7 @@ where
         let spru::client::Output {
             outbound,
             events,
-            ret: spru::client::signal::Ret {
-
-            },
+            ret: (),
         } = initialized.client.signal(&mut initialized.lookup, directive)?;
 
         Self::queue_client_outbound(&mut initialized, outbound);
@@ -352,7 +326,7 @@ where
         Ok(initialized)
     }
 
-    fn run_pending_client(&mut self, _messaging: &mut Messaging<Server, Client>, init: spru::client::init::Arg<Server::Common>) 
+    fn run_pending_client(&mut self, _messaging: &mut Messaging<Server, Client>, init: spru::common::Seed<Server::Common>) 
         -> anyhow::Result<SyncClientInitialized<Client, Lookup>> 
     {
         let mut lookup = Lookup::default();
@@ -369,14 +343,14 @@ where
         Ok(client)
     }
 
-    fn queue_server_outbound(&mut self, outbound: impl IntoIterator<Item = (spru::player::Id, spru::client::signal::Signal<Server::Common>)>) {
+    fn queue_server_outbound(&mut self, outbound: impl IntoIterator<Item = (spru::player::Id, spru::common::signal::ToClient<Server::Common>)>) {
         for (id, signal) in outbound {
             let client = self.clients.get_mut(&id).unwrap();
             client.incoming_queue.push_back(signal);
         }
     }
 
-    fn queue_client_outbound(client: &mut SyncClientInitialized<Client, Lookup>, outbound: impl IntoIterator<Item = spru::server::signal::Signal<Server::Common>>) {
+    fn queue_client_outbound(client: &mut SyncClientInitialized<Client, Lookup>, outbound: impl IntoIterator<Item = spru::common::signal::ToServer<Server::Common>>) {
         for signal in outbound {
             client.outgoing_queue.push_back(signal);
         }
@@ -426,6 +400,6 @@ pub enum Run<Server: spru::Server, Client: spru::Client> {
 #[derive_where(Debug; Client::Interaction)]
 enum ClientCommand<Client: spru::Client> {
     StageInteraction(Client::Interaction),
-    ApplyInteractions(Option<spru::transaction::Pending>),
-    RevertInteractions(Option<spru::transaction::Pending>),
+    ApplyInteractions(Option<spru::interaction::Pending>),
+    RevertInteractions(Option<spru::interaction::Pending>),
 }

@@ -4,7 +4,7 @@ use std::mem;
 
 use amass::amass_telety;
 use derive_where::derive_where;
-use spru::{error::AnyResult, Serial};
+use spru::{common::error::AnyResult, Serial};
 pub use rust_fsm::StateMachineImpl;
 use tagset::tagset;
 use telety::telety;

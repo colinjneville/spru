@@ -1,6 +1,6 @@
 use std::{collections::VecDeque, fmt};
 
-use crate::{action, error::RecoverableResult, item, record::Records, transaction};
+use crate::{action, common::error::RecoverableError, item, record::Records, transaction};
 
 #[derive(Debug, Clone)]
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -29,14 +29,6 @@ impl<Action> Transactions<Action> {
             .map(move |(i, tx)| transaction::Confirmed::new(transaction::Id::new(self.start_id.get() + i as u32), tx))
     }
 
-    pub(crate) fn drain(&mut self) -> impl DoubleEndedIterator<Item = transaction::Confirmed<Action>> + '_ {
-        let old_start_id = self.start_id.get();
-        self.start_id = transaction::Id::new(old_start_id + self.transactions.len() as u32);
-        self.transactions.drain(..)
-            .enumerate()
-            .map(move |(i, tx)| transaction::Confirmed::new(transaction::Id::new(old_start_id + i as u32), tx))
-    }
-
     pub fn start_id(&self) -> transaction::Id {
         self.start_id
     }
@@ -57,19 +49,6 @@ impl<Action> Transactions<Action> {
         let id = self.next_id();
         self.transactions.push_back(transaction);
         id
-    }
-
-    pub(crate) fn pop_front(&mut self) -> Option<Transaction<Action>> {
-        if let Some(transaction) = self.transactions.pop_front() {
-            self.start_id = self.start_id.next();
-            Some(transaction)
-        } else {
-            None
-        }
-    }
-
-    pub(crate) fn pop_back(&mut self) -> Option<Transaction<Action>> {
-        self.transactions.pop_back()
     }
 
     pub(crate) fn trim_start(&mut self, id: transaction::Id) {
@@ -105,7 +84,7 @@ impl<Action> Transaction<Action> {
     }
 
     pub(crate) fn apply_or_revert<Lookup>(&self, lookup: &mut Lookup) 
-        -> RecoverableResult<Transaction<Action>, action::Error> 
+        -> Result<Transaction<Action>, RecoverableError<action::Error>> 
     where 
         Lookup: item::Lookup,
         Action: crate::Action<State = Lookup::State>, 
@@ -187,18 +166,5 @@ impl<Action> Confirmed<Action> {
             id,
             transaction,
         }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[derive(serde::Serialize, serde::Deserialize)]
-#[repr(transparent)]
-pub struct Pending(pub(crate) transaction::Id);
-
-impl Pending {
-    pub(crate) const ZERO: Self = Self(transaction::Id::ZERO);
-
-    pub(crate) fn next(&self) -> Self {
-        Self(self.0.next())
     }
 }

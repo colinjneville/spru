@@ -3,7 +3,7 @@ use std::mem;
 use derive_where::derive_where;
 
 use rand::{seq::IndexedRandom, Rng};
-use spru::error::AnyResult;
+use spru::common::error::AnyResult;
 use tagset::tagset;
 use telety::telety;
 

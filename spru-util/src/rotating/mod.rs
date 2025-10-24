@@ -3,7 +3,7 @@ pub mod error;
 use std::marker::PhantomData;
 
 use derive_where::derive_where;
-use spru::error::AnyResult;
+use spru::common::error::AnyResult;
 use tagset::tagset;
 use telety::telety;
 

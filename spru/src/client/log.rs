@@ -2,12 +2,12 @@ use std::collections::VecDeque;
 
 use tracing::instrument;
 
-use crate::{action, error::RecoverableResult, interaction, item, log::error::ConfirmError, record::Records, transaction, Transaction};
+use crate::{action, common::error::RecoverableError, interaction, item, record::Records, transaction, Transaction};
 
 #[derive(Debug)]
 #[derive(serde::Serialize, serde::Deserialize)]
 struct PendingTransaction<Action, Interaction> {
-    id: transaction::Pending,
+    id: interaction::Pending,
     undo_transaction: Transaction<Action>,
     // Once we have sent an apply message to the server, we shouldn't allow the client
     // to attempt to revert that transaction (otherwise the revert may be forcibly
@@ -19,7 +19,7 @@ struct PendingTransaction<Action, Interaction> {
 
 #[derive(Debug)]
 #[derive(serde::Serialize, serde::Deserialize)]
-pub(crate) struct Client<Action, Interaction> {
+pub(crate) struct Log<Action, Interaction> {
     // Transactions applied locally which have not been confirmed by the server.
     // Any rejected transaction rolls back all pending, because the player may
     // have made a later Interaction on the assumption the earlier one was valid.
@@ -29,25 +29,25 @@ pub(crate) struct Client<Action, Interaction> {
     // Next pending id to use. If we cancel a staged transaction, we don't want to reuse
     // the pending id to prevent cancelling the newer staged transaction with the id
     // by mistake.
-    next_pending_id: transaction::Pending,
+    next_pending_id: interaction::Pending,
     // Next transaction id expected from the server. If everything is implemented
     // correctly, this is not strictly necessary, but if helps us detect if we
     // have missed any confirmed transactions because of an incorrect implementation.
     next_confirmed_id: transaction::Id,
 }
 
-impl<Action, Interaction> Client<Action, Interaction> {
+impl<Action, Interaction> Log<Action, Interaction> {
     pub(crate) fn new(next_confirmed_id: transaction::Id) -> Self {
         Self {
             pending_undo_transactions: VecDeque::new(),
-            next_pending_id: transaction::Pending::ZERO,
+            next_pending_id: interaction::Pending::ZERO,
             next_confirmed_id,
         }
     }
 
     #[instrument(err, skip_all, fields(transaction_id = transaction.id.get()))]
     pub(crate) fn apply_confirmed<Lookup>(&mut self, lookup: &mut Lookup, transaction: transaction::Confirmed<Action>)
-        -> RecoverableResult<(), ConfirmError>
+        -> Result<(), RecoverableError<super::error::TransactionConfirmationError>>
     where
         Lookup: item::Lookup,
         Action: crate::Action<State = Lookup::State>,
@@ -58,16 +58,16 @@ impl<Action, Interaction> Client<Action, Interaction> {
             self.next_confirmed_id = self.next_confirmed_id.next();
 
             self.apply_server_records(lookup, transaction.transaction.records())
-                .map_err(|e| e.map_with(Into::into))
+                .map_err(|e| e.map_with(super::error::TransactionConfirmationError::Action))
         } else {
             tracing::event!(name: "external_transaction_invalid", tracing::Level::ERROR, expected_transaction_id = self.next_confirmed_id.get());
             
-            Err(ConfirmError::Mismatch(transaction::id::MismatchError { expected: self.next_confirmed_id, actual: transaction.id }).into())
+            Err(super::error::TransactionConfirmationError::Mismatch(transaction::id::MismatchError { expected: self.next_confirmed_id, actual: transaction.id }).into())
         }
     }
 
     fn apply_server_records<Lookup>(&mut self, lookup: &mut Lookup, records: &Records<Action>)
-        -> RecoverableResult<(), action::Error>
+        -> Result<(), RecoverableError<action::Error>>
     where
         Lookup: item::Lookup,
         Action: crate::Action<State = Lookup::State>,
@@ -104,32 +104,32 @@ impl<Action, Interaction> Client<Action, Interaction> {
         expected_versions: item::version::Expected, 
         undo_transaction: Transaction<Action>,
     )
-        -> transaction::Pending
+        -> interaction::Pending
     {
-        let pending_transaction_id = self.next_pending_id;
+        let pending_interaction_id = self.next_pending_id;
         self.next_pending_id = self.next_pending_id.next();
         
         let staged = interaction::Staged {
             interaction,
             expected_versions,
-            pending_transaction_id,
+            pending_interaction_id,
         };
 
         let pending = PendingTransaction {
-            id: pending_transaction_id,
+            id: pending_interaction_id,
             undo_transaction,
             interaction: Some(staged),
         };
         self.pending_undo_transactions.push_back(pending);
 
-        pending_transaction_id
+        pending_interaction_id
     }
 
-    pub fn apply_pending(&mut self, pending_transaction_id: Option<transaction::Pending>)
-        -> Result<Vec<interaction::Staged<Interaction>>, crate::TempError>
+    pub fn apply_pending(&mut self, pending_interaction_id: Option<interaction::Pending>)
+        -> Result<Vec<interaction::Staged<Interaction>>, super::error::InvalidPendingTransactionError>
     {
-        let index = if let Some(pending_transaction_id) = pending_transaction_id {
-            self.pending_undo_transactions.binary_search_by_key(&pending_transaction_id, |p| p.id)
+        let index = if let Some(pending_interaction_id) = pending_interaction_id {
+            self.pending_undo_transactions.binary_search_by_key(&pending_interaction_id, |p| p.id)
         } else if !self.pending_undo_transactions.is_empty() {
             Ok(self.pending_undo_transactions.len() - 1)
         } else {
@@ -150,47 +150,46 @@ impl<Action, Interaction> Client<Action, Interaction> {
                 Ok(output)
             },
             // transaction not found (invalid, reverted, or commited)
-            Err(_) => Err(crate::TempError::new()),
+            Err(_) => Err(super::error::InvalidPendingTransactionError::new(pending_interaction_id.unwrap())),
         }
     }
 
     pub fn confirm_pending<Lookup>(
         &mut self, 
         lookup: &mut Lookup,
-        pending_transaction_id: transaction::Pending, 
+        pending_interaction_id: interaction::Pending, 
         confirmed_transaction_id: transaction::Id, 
         reaction_records: &Records<Action>
     )
-        -> Result<(), crate::TempError>
+        -> Result<(), super::error::ConfirmPendingError>
     where
         Lookup: item::Lookup,
         Action: crate::Action<State = Lookup::State>,
     {
         match self.pending_undo_transactions.get(0) {
             Some(pending) => {
-                if pending.id == pending_transaction_id {
+                if pending.id == pending_interaction_id {
                     if self.next_confirmed_id == confirmed_transaction_id {
-                        self.apply_server_records(lookup, &reaction_records)
-                            .map_err(crate::TempError::discard)?;
+                        self.apply_server_records(lookup, &reaction_records)?;
                         
                         self.next_confirmed_id = self.next_confirmed_id.next();
                         self.pending_undo_transactions.pop_front();
                         Ok(())
                     } else {
                         // We expected a different confirmed transaction id
-                        Err(crate::TempError::new())
+                        Err(super::error::TransactionOutOfOrderError::WrongConfirmdId { expected: self.next_confirmed_id, actual: confirmed_transaction_id }.into())
                     }
                 } else {
                     // We expected a different pending tranaction id
-                    Err(crate::TempError::new())
+                    Err(super::error::TransactionOutOfOrderError::WrongPendingId { expected: Some(pending.id), actual: pending_interaction_id }.into())
                 }
             }
             // No pending transactions
-            None => Err(crate::TempError::new()),
+            None => Err(super::error::TransactionOutOfOrderError::WrongPendingId { expected: None, actual: pending_interaction_id }.into()),
         }
     }
 
-    pub(crate) fn revert_pending<Lookup>(&mut self, lookup: &mut Lookup, until: Option<transaction::Pending>, from_server: bool) 
+    pub(crate) fn revert_pending<Lookup>(&mut self, lookup: &mut Lookup, until: Option<interaction::Pending>, from_server: bool) 
         -> Result<(), action::Error> 
     where 
         Lookup: item::Lookup,
@@ -218,7 +217,10 @@ impl<Action, Interaction> Client<Action, Interaction> {
                     // cause of the conflict. 
                     // But this must be done one interaction at a time, because we must not undo an 
                     // interaction the server could accept
-                    todo!()
+                    #[allow(unreachable_code)]
+                    {
+                        todo!()
+                    }
                 }
             }
         }

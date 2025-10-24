@@ -16,12 +16,3 @@ pub struct Save<Server: super::Server> {
     pub(crate) reaction: Server::Reaction,
 }
 
-pub type Result<Server> = std::result::Result<Save<Server>, self::Error>;
-
-#[derive(Debug)]
-#[derive(thiserror::Error)]
-pub enum Error {
-    #[error(transparent)]
-    Snapshot(#[from] common::error::Save),
-}
-

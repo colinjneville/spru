@@ -14,22 +14,6 @@ impl Version {
     pub(crate) fn next(&self) -> Self {
         Self(self.0 + 1)
     }
-
-    pub(crate) fn previous(&self) -> Option<Self> {
-        if self.0 > 0 {
-            Some(Self(self.0 - 1))
-        } else {
-            None
-        }
-    }
-
-    pub(crate) fn subsequent(&self, is_undo: bool) -> Option<Self> {
-        if is_undo {
-            self.previous()
-        } else {
-            Some(self.next())
-        }
-    }
 }
 
 impl fmt::Display for Version {
@@ -71,10 +55,6 @@ impl Change {
     }
 
     pub fn update(before: Version) -> Self {
-        Self::new(before, before.next())
-    }
-
-    pub fn destroy(before: Version) -> Self {
         Self::new(before, before.next())
     }
 
@@ -121,7 +101,6 @@ impl Expected {
             }
 
             if actual_version != expected_version {
-                unsafe { std::arch::asm!("int3"); }
                 return Err(item::version::Error {
                     item: expected_id,
                     expected: expected_version,
@@ -131,7 +110,6 @@ impl Expected {
         }
 
         if let Some((actual_id, actual_version)) = actual_iter.next() {
-            unsafe { std::arch::asm!("int3"); }
             Err(item::version::Error {
                 item: actual_id,
                 expected: item::Version::INVALID,

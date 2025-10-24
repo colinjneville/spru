@@ -38,12 +38,12 @@ impl<Client: super::ClientSSS> Runner<Client> {
     }
 }
 
-#[derive_where(Debug; spru::client::signal::Signal<Client::Common>)]
+#[derive_where(Debug; spru::common::signal::ToClient<Client::Common>)]
 #[derive_where(Default)]
 #[derive(prelude::Component)]
 #[component(storage = "SparseSet")]
 pub struct FromServer<Client: super::ClientSSS> {
-    queue: VecDeque<spru::client::signal::Signal<Client::Common>>,
+    queue: VecDeque<spru::common::signal::ToClient<Client::Common>>,
 }
 
 impl<Client: super::ClientSSS> FromServer<Client> {
@@ -55,23 +55,23 @@ impl<Client: super::ClientSSS> FromServer<Client> {
         self.queue.is_empty()
     }
 
-    pub(crate) fn enqueue(&mut self, signal: spru::client::signal::Signal<Client::Common>) {
+    pub(crate) fn enqueue(&mut self, signal: spru::common::signal::ToClient<Client::Common>) {
         self.queue
             .push_back(signal);
     }
 
-    pub fn dequeue(&mut self) -> Option<spru::client::signal::Signal<Client::Common>> {
+    pub fn dequeue(&mut self) -> Option<spru::common::signal::ToClient<Client::Common>> {
         self.queue
             .pop_front()
     }
 }
 
-#[derive_where(Debug; spru::server::signal::Signal<Client::Common>)]
+#[derive_where(Debug; spru::common::signal::ToServer<Client::Common>)]
 #[derive_where(Default)]
 #[derive(prelude::Component)]
 #[component(storage = "SparseSet")]
 pub struct ToServer<Client: super::ClientSSS> {
-    queue: VecDeque<spru::server::signal::Signal<Client::Common>>,
+    queue: VecDeque<spru::common::signal::ToServer<Client::Common>>,
 }
 
 impl<Client: super::ClientSSS> ToServer<Client> {
@@ -83,12 +83,12 @@ impl<Client: super::ClientSSS> ToServer<Client> {
         self.queue.is_empty()
     }
 
-    pub fn enqueue(&mut self, signal: spru::server::Signal<Client::Common>) {
+    pub fn enqueue(&mut self, signal: spru::common::signal::ToServer<Client::Common>) {
         self.queue
             .push_back(signal);
     }
 
-    pub(crate) fn dequeue(&mut self) -> Option<spru::server::Signal<Client::Common>> {
+    pub(crate) fn dequeue(&mut self) -> Option<spru::common::signal::ToServer<Client::Common>> {
         self.queue
             .pop_front()
     }
@@ -115,7 +115,7 @@ impl<Client: super::ClientSSS> FromUser<Client> {
         self.queue.push_back(UserInput::StageInteraction(interaction));
     }
 
-    pub fn apply_interaction(&mut self, interaction_id: spru::transaction::Pending) {
+    pub fn apply_interaction(&mut self, interaction_id: spru::interaction::Pending) {
         self.queue.push_back(UserInput::ApplyInteraction(Some(interaction_id)));
     }
 
@@ -123,7 +123,7 @@ impl<Client: super::ClientSSS> FromUser<Client> {
         self.queue.push_back(UserInput::ApplyInteraction(None));
     }
 
-    pub fn revert_interaction(&mut self, interaction_id: spru::transaction::Pending) {
+    pub fn revert_interaction(&mut self, interaction_id: spru::interaction::Pending) {
         self.queue.push_back(UserInput::RevertInteraction(Some(interaction_id)));
     }
 
@@ -139,8 +139,8 @@ impl<Client: super::ClientSSS> FromUser<Client> {
 #[derive_where(Debug; Client::Interaction)]
 pub(crate) enum UserInput<Client: super::ClientSSS> {
     StageInteraction(Client::Interaction),
-    ApplyInteraction(Option<spru::transaction::Pending>),
-    RevertInteraction(Option<spru::transaction::Pending>),
+    ApplyInteraction(Option<spru::interaction::Pending>),
+    RevertInteraction(Option<spru::interaction::Pending>),
 }
 
 #[derive(Debug)]

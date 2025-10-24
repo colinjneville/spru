@@ -138,12 +138,6 @@ impl Erased {
 #[derive(Debug)]
 pub struct Mut<M>(M);
 
-impl<M> Mut<M> {
-    pub(crate) fn new(m: M) -> Self {
-        Self(m)
-    }
-}
-
 #[cfg(feature = "test-util")]
 #[doc(hidden)]
 impl<M> Mut<M> {
@@ -163,31 +157,5 @@ impl<T, M: ops::DerefMut<Target=Item<T>>> ops::Deref for Mut<M> {
 impl<T, M: ops::DerefMut<Target=Item<T>>> ops::DerefMut for Mut<M> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         Item::get_mut(&mut *self.0)
-    }
-}
-
-#[cfg(test)]
-mod test {
-    
-    #[test]
-    fn catalog() {
-        extern crate self as spru;
-
-        // #[repr(u32)]
-        // #[derive(crate::item::Catalog)]
-        // #[allow(dead_code)]
-        // enum MyCatalog {
-        //     A(bool),
-        //     B(u8),
-        //     C(u16) = 7,
-        //     D(u32),
-        //     E(u64) = 1 + 1,
-        // }
-
-        // assert!(registry.0.contains_key(&0)); // A
-        // assert!(registry.0.contains_key(&1)); // B
-        // assert!(registry.0.contains_key(&7)); // C
-        // assert!(registry.0.contains_key(&8)); // D
-        // assert!(registry.0.contains_key(&2)); // E
     }
 }

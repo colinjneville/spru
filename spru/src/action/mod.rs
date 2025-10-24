@@ -1,7 +1,7 @@
 pub mod error;
 pub use error::Error;
 
-use crate::{action, error::AnyResult, item, Item};
+use crate::{action, common::error::AnyResult, item, Item};
 
 pub use spru_macro::{Create, Update, Destroy};
 use tagset::tagset_meta;
@@ -138,7 +138,6 @@ impl<'l, Lookup> Context<'l, Lookup> {
 
             Ok(undo)
         } else {
-            unsafe { std::arch::asm!("int3"); }
             Err(action::Error::from(item::version::Error { item: id.untyped(), expected: version.before, actual: (*value).version() }))
         }
     }
@@ -163,7 +162,6 @@ impl<'l, Lookup> Context<'l, Lookup> {
             let undo = d.destroy(item.into_value())?;
             Ok(Some(undo))
         } else {
-            unsafe { std::arch::asm!("int3"); }
             Err(action::Error::from(item::version::Error { item: id.untyped(), expected: version.before, actual: item.version() }))
         }
     }

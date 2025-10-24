@@ -1,20 +1,20 @@
 use bevy::prelude;
 use derive_where::derive_where;
 
-#[derive_where(Debug; spru::client::init::Arg<Client::Common>)]
+#[derive_where(Debug; spru::common::Seed<Client::Common>)]
 pub struct Init<Client: super::ClientSSS> {
-    pub init: spru::client::init::Arg<Client::Common>,
+    pub seed: spru::common::Seed<Client::Common>,
 }
 
 impl<Client: super::ClientSSS> prelude::Command for Init<Client> {
     fn apply(self, world: &mut bevy::ecs::world::World) {
         let Self {
-            init,
+            seed,
         } = self;
 
         let mut command_queue = bevy::ecs::world::CommandQueue::default();
 
-        super::system::init::<Client>(init, world, &mut command_queue);
+        super::system::init::<Client>(seed, world, &mut command_queue);
 
         command_queue.apply(world);
     }
@@ -27,9 +27,9 @@ impl<Client: super::ClientSSS> prelude::Command for Init<Client> {
 //     pub client_id: super::component::ClientId,
 // }
 
-// impl<Client: super::ClientSSS> prelude::Command<prelude::Result<spru::transaction::Pending>> for StageInteraction<Client> {
+// impl<Client: super::ClientSSS> prelude::Command<prelude::Result<spru::interaction::Pending>> for StageInteraction<Client> {
 //     fn apply(self, world: &mut bevy::ecs::world::World) 
-//         -> prelude::Result<spru::transaction::Pending> 
+//         -> prelude::Result<spru::interaction::Pending> 
 //     {
 //         use bevy::ecs::system::RunSystemOnce as _;
 
@@ -74,7 +74,7 @@ impl<Client: super::ClientSSS> prelude::Command for Init<Client> {
 // pub struct ApplyInteractions<Client: super::ClientSSS> {
 //     pub game_id: common::component::GameId,
 //     pub client_id: super::component::ClientId,
-//     pub pending_transaction: Option<spru::transaction::Pending>,
+//     pub pending_interaction: Option<spru::interaction::Pending>,
 //     pub client: PhantomData<fn() -> Client>,
 // }
 
@@ -83,7 +83,7 @@ impl<Client: super::ClientSSS> prelude::Command for Init<Client> {
 //         use bevy::ecs::system::RunSystemOnce as _;
 
 //         let Self {
-//             pending_transaction,
+//             pending_interaction,
 //             game_id,
 //             client_id,
 //             client: _client,
@@ -111,7 +111,7 @@ impl<Client: super::ClientSSS> prelude::Command for Init<Client> {
 
 //         let mut lookup = super::BevyLookup::new(world, entity_map.inner_mut(), client_id.0);
 
-//         let result = super::system::apply_interactions(&mut lookup, runner, to_server, game_outcome, pending_transaction);
+//         let result = super::system::apply_interactions(&mut lookup, runner, to_server, game_outcome, pending_interaction);
 
 //         world.entity_mut(client_entity)
 //             .insert(bundle);
@@ -124,7 +124,7 @@ impl<Client: super::ClientSSS> prelude::Command for Init<Client> {
 // pub struct RevertInteractions<Client: super::ClientSSS> {
 //     pub game_id: common::component::GameId,
 //     pub client_id: super::component::ClientId,
-//     pub pending_transaction: Option<spru::transaction::Pending>,
+//     pub pending_interaction: Option<spru::interaction::Pending>,
 //     pub client: PhantomData<fn() -> Client>,
 // }
 
@@ -133,7 +133,7 @@ impl<Client: super::ClientSSS> prelude::Command for Init<Client> {
 //         use bevy::ecs::system::RunSystemOnce as _;
 
 //         let Self {
-//             pending_transaction,
+//             pending_interaction,
 //             game_id,
 //             client_id,
 //             client: _client,
@@ -161,7 +161,7 @@ impl<Client: super::ClientSSS> prelude::Command for Init<Client> {
 
 //         let mut lookup = super::BevyLookup::new(world, entity_map.inner_mut(), client_id.0);
 
-//         let result = super::system::revert_interactions(&mut lookup, runner, to_server, game_outcome, pending_transaction);
+//         let result = super::system::revert_interactions(&mut lookup, runner, to_server, game_outcome, pending_interaction);
 //         world.trigger_ref(event);
 
 //         world.entity_mut(client_entity)

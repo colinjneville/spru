@@ -8,16 +8,19 @@ pub struct Id(u32);
 impl Id {
     pub(crate) const INVALID: Self = Self(u32::MAX);
 
+    pub(crate) fn force_type<T>(self) -> IdT<T> {
+        IdT::new(self)
+    }
+}
+
+#[cfg(test)]
+impl Id {
     pub(crate) fn new() -> Self {
         Self(0)
     }
 
     pub(crate) fn next(&self) -> Self {
         Self(self.0 + 1)
-    }
-
-    pub(crate) fn force_type<T>(self) -> IdT<T> {
-        IdT::new(self)
     }
 }
 
@@ -132,6 +135,12 @@ impl Range {
             next_id: AtomicU32::new(self.range.start),
             end_of_id_reservation: self.range.end,
         }
+    }
+}
+
+impl fmt::Display for Range {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}..{}", self.range.start, self.range.end)
     }
 }
 

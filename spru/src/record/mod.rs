@@ -1,12 +1,6 @@
-// pub mod error;
-// pub use error::Error;
-
 use std::{collections::VecDeque};
 
-use crate::{action, error::{RecoverableError, RecoverableResult}, item};
-
-
-// pub type Result<T> = std::result::Result<T, self::Error>;
+use crate::{action, common::error::RecoverableError, item};
 
 #[derive(Debug, Clone)]
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -31,21 +25,9 @@ impl<Action> Packed<Action> {
         self.appended_actions.push(action);
     }
 
-    pub(crate) fn item_id(&self) -> item::Id {
-        self.item_id
-    }
-
-    pub(crate) fn version_change(&self) -> item::version::Change {
-        self.version_change
-    }
-
     pub(crate) fn expand(&self) -> impl Iterator<Item = Record<'_, Action>> {
         (0..self.appended_actions.len() + 1).into_iter()
             .map(|i| Record::new(self, i))
-    }
-
-    pub(crate) fn into_action(self) -> Action {
-        self.action
     }
 }
 
@@ -147,7 +129,7 @@ impl<Action> Records<Action> {
     }
 
     pub fn apply_or_revert<'l, Lookup>(&self, lookup: &'l mut Lookup) 
-        -> RecoverableResult<Self, action::Error> 
+        -> Result<Self, RecoverableError<action::Error>> 
     where 
         Lookup: item::Lookup,
         Action: crate::Action<State = Lookup::State>, 

@@ -1,6 +1,6 @@
-use std::fmt;
+use std::{fmt, ops};
 
-use crate::{item::lookup, AnyError, PsuedoError};
+use crate::{common::error::{AnyError, PsuedoError}, item::lookup};
 
 
 #[derive(Debug)]
@@ -20,6 +20,14 @@ impl Error {
     pub(crate) fn with_context<Action: ?Sized>(mut self, action: &Action) -> Self {
         self.context = Some(Context::new(action));
         self
+    }
+}
+
+impl ops::Deref for Error {
+    type Target = dyn std::error::Error;
+
+    fn deref(&self) -> &Self::Target {
+        self.as_error()
     }
 }
 

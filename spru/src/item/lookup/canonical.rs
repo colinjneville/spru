@@ -3,6 +3,13 @@ use std::{any, fmt, marker::PhantomData};
 use crate::{common, item::{self, lookup}, state, Item};
 
 #[derive(Debug)]
+#[derive(thiserror::Error)]
+enum Error {
+    #[error("Item {0} does not exist")]
+    ItemDoesNotExist(item::Id),
+}
+
+#[derive(Debug)]
 pub struct Canonical<State> {
     items_map: ItemsMap<State>,
 }
@@ -26,11 +33,10 @@ impl<State: crate::State> item::lookup::Lookup for Canonical<State> {
         -> Result<&Item<T>, lookup::Error> 
     where
         T: super::Lookupable<Self::State>,
-        // State: tagset::TagSetDiscriminant<T>,
-        // T: any::Any + serde::Serialize + Send + Sync,
     {
         self.items_map.get(id)
-            .ok_or(lookup::Error::default())
+            .ok_or(Error::ItemDoesNotExist(id.untyped()))
+            .map_err(Into::into)
     }
 
     #[allow(refining_impl_trait)]
@@ -38,19 +44,16 @@ impl<State: crate::State> item::lookup::Lookup for Canonical<State> {
         -> Result<&mut Item<T>, lookup::Error> 
     where
         T: super::Lookupable<Self::State>,
-        // State: tagset::TagSetDiscriminant<T>,
-        // T: any::Any + serde::Serialize + Send + Sync,
     {
         self.items_map.get_mut(id)
-            .ok_or(lookup::Error::default())
+            .ok_or(Error::ItemDoesNotExist(id.untyped()))
+            .map_err(Into::into)
     }
 
     fn create<T>(&mut self, value: Item<T>) 
         -> Result<(), lookup::Error> 
     where
         T: super::Lookupable<Self::State>,
-        // State: tagset::TagSetDiscriminant<T>,
-        // T: any::Any + serde::Serialize + Send + Sync,
     {
         self.items_map.insert(value);
         Ok(())
@@ -60,11 +63,10 @@ impl<State: crate::State> item::lookup::Lookup for Canonical<State> {
         -> Result<Item<T>, lookup::Error> 
     where
         T: super::Lookupable<Self::State>,
-        // State: tagset::TagSetDiscriminant<T>,
-        // T: any::Any + serde::Serialize + Send + Sync,
     {
         self.items_map.remove(id)
-            .ok_or(lookup::Error::default())
+            .ok_or(Error::ItemDoesNotExist(id.untyped()))
+            .map_err(Into::into)
     }
 }
 
@@ -169,22 +171,10 @@ impl<T> ErasedItemMap for ItemMap<T>
 where T: any::Any + serde::Serialize + Send + Sync {
     fn as_serialized(&self) -> Result<Box<[item::Erased]>, common::error::Save> {
         let items = self.map.values()
-            .map(map_item)
+            .map(item::Erased::new)
             .collect::<Result<Vec<_>, _>>()?;
         Ok(items.into_boxed_slice())
     }
-}
-
-fn map_item<T>(item: &Item<T>) -> Result<item::Erased, common::error::Save> 
-where T: serde::Serialize {
-    let id = item.id().untyped();
-    let version = item.version();
-    let item = item::Erased {
-        id, 
-        version, 
-        state: rmp_serde::to_vec(&item.get())?.into_boxed_slice()
-    };
-    Ok(item)
 }
 
 #[derive(Debug)]

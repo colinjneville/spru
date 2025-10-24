@@ -10,7 +10,7 @@ use crate::common;
 #[non_exhaustive]
 pub struct Init<Client: super::ClientSSS> {
     pub game_id: common::component::GameId,
-    pub result: Result<super::component::ClientId, spru::client::init::Error>,
+    pub result: Result<super::component::ClientId, spru::client::error::InitError>,
     pub(crate) _client: PhantomData<fn() -> Client>,
 }
 
@@ -20,7 +20,7 @@ pub struct Init<Client: super::ClientSSS> {
 pub struct Signal<Client: super::ClientSSS> {
     pub game_id: common::component::GameId,
     pub client_id: super::component::ClientId,
-    pub result: Result<(), spru::client::signal::Error>,
+    pub result: Result<(), spru::client::error::SignalError>,
     pub(crate) _client: PhantomData<fn() -> Client>,
 }
 
@@ -31,7 +31,7 @@ pub struct StageInteraction<Client: super::ClientSSS> {
     pub game_id: common::component::GameId,
     pub client_id: super::component::ClientId,
     pub interaction: Client::Interaction,
-    pub result: Result<spru::transaction::Pending, spru::client::stage_interaction::Error>,
+    pub result: Result<spru::interaction::Pending, spru::client::error::StageInteractionError>,
 }
 
 #[derive_where(Debug; )]
@@ -40,8 +40,8 @@ pub struct StageInteraction<Client: super::ClientSSS> {
 pub struct RevertInteractions<Client: super::ClientSSS> {
     pub game_id: common::component::GameId,
     pub client_id: super::component::ClientId,
-    pub pending_transaction_id: Option<spru::transaction::Pending>,
-    pub result: Result<(), spru::client::revert_interactions::Error>,
+    pub pending_interaction_id: Option<spru::interaction::Pending>,
+    pub result: Result<(), spru::client::error::RevertInteractionError>,
     pub(crate) _client: PhantomData<fn() -> Client>,
 }
 
@@ -51,8 +51,8 @@ pub struct RevertInteractions<Client: super::ClientSSS> {
 pub struct ApplyInteractions<Client: super::ClientSSS> {
     pub game_id: common::component::GameId,
     pub client_id: super::component::ClientId,
-    pub pending_transaction_id: Option<spru::transaction::Pending>,
-    pub result: Result<(), spru::client::apply_interactions::Error>,
+    pub pending_interaction_id: Option<spru::interaction::Pending>,
+    pub result: Result<(), spru::client::error::ApplyInteractionError>,
     pub(crate) _client: PhantomData<fn() -> Client>,
 }
 

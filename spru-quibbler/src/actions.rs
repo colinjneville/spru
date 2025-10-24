@@ -1,4 +1,4 @@
-use spru::error::AnyResult;
+use spru::common::error::AnyResult;
 use spru_util::{counter, fsm, pile, player_map, rotating, verbatim};
 use tagset::tagset;
 

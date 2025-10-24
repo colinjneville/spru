@@ -1,6 +1,6 @@
-use std::{any, fmt};
+use std::{any, fmt, ops};
 
-use crate::{game, item::lookup, AnyError, PsuedoError};
+use crate::{action, common::error::{AnyError, PsuedoError}, game, item::lookup};
 
 
 #[derive(Debug)]
@@ -19,11 +19,11 @@ impl Error {
 
     /// GameInit is taken by value, so it won't be available once we have the error
     pub(crate) fn prepare_context<GameInit: game::Init>(game_init: &GameInit)
-        -> impl FnOnce(Self) -> Self + 'static
+        -> impl FnMut(Self) -> Self + 'static
     {
         let context = Some(Context::new(game_init));
-        |mut e| {
-            e.context = context;
+        move|mut e| {
+            e.context = context.clone();
             e
         }
     }
@@ -33,9 +33,23 @@ impl Error {
     }
 }
 
+impl ops::Deref for Error {
+    type Target = dyn std::error::Error;
+
+    fn deref(&self) -> &Self::Target {
+        self.as_error()
+    }
+}
+
 impl From<lookup::Error> for Error {
     fn from(value: lookup::Error) -> Self {
-        Self::new(Kind::Lookup(value))
+        Self::new(Kind::Action(action::Error::from(value)))
+    }
+}
+
+impl From<action::Error> for Error {
+    fn from(value: action::Error) -> Self {
+        Self::new(Kind::Action(value))
     }
 }
 
@@ -66,7 +80,7 @@ impl fmt::Display for Error {
 impl PsuedoError for Error {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match &self.kind {
-            Kind::Lookup(e) => std::error::Error::source(e.as_error()),
+            Kind::Action(e) => std::error::Error::source(e.as_error()),
             Kind::Init(e) => std::error::Error::source(e.as_error()),
         }
     }
@@ -74,20 +88,20 @@ impl PsuedoError for Error {
 
 #[derive(Debug)]
 pub enum Kind {
-    Lookup(lookup::Error),
+    Action(action::Error),
     Init(AnyError),
 }
 
 impl fmt::Display for Kind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Kind::Lookup(e) => fmt::Display::fmt(e, f),
+            Kind::Action(e) => fmt::Display::fmt(e, f),
             Kind::Init(e) => fmt::Display::fmt(e, f),
         }
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct Context {
     game_init_name: &'static str,
 }

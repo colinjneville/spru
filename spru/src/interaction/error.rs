@@ -1,9 +1,9 @@
-use std::fmt;
+use std::{fmt, ops};
 
-use crate::{action, item::lookup, AnyError, PsuedoError};
+use crate::{action, common::error::{AnyError, PsuedoError}, item::lookup};
 
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct Error {
     kind: Kind,
     context: Option<Context>,
@@ -24,6 +24,14 @@ impl Error {
 
     pub fn kind(&self) -> &Kind {
         &self.kind
+    }
+}
+
+impl ops::Deref for Error {
+    type Target = dyn std::error::Error;
+
+    fn deref(&self) -> &Self::Target {
+        self.as_error()
     }
 }
 
@@ -104,12 +112,6 @@ pub enum Kind {
     Lookup(lookup::Error),
     Record(action::Error),
     Interaction(AnyError),
-}
-
-impl Default for Kind {
-    fn default() -> Self {
-        Self::Interaction(AnyError::default())
-    }
 }
 
 impl fmt::Display for Kind {

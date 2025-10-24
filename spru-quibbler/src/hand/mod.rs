@@ -1,5 +1,5 @@
 use amass::amass_telety;
-use spru::error::AnyResult;
+use spru::common::error::AnyResult;
 use spru_util::verbatim;
 use tagset::tagset;
 use telety::telety;

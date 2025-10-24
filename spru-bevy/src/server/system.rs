@@ -76,7 +76,7 @@ where
 pub(crate) fn signal<Server: super::ServerSSS>(
     game_id: common::component::GameId,
     sender: spru::player::Id,
-    signal: spru::server::Signal<Server::Common>,
+    signal: spru::common::signal::ToServer<Server::Common>,
 
     mut runner: impl DerefMut<Target=super::component::Runner<Server>>,
     to_client: impl DerefMut<Target=super::component::ToClient<Server>>,
@@ -84,9 +84,7 @@ pub(crate) fn signal<Server: super::ServerSSS>(
 ) {
     let result = (|| {
         let output = runner.server.apply_signal(sender, signal)?;
-        let spru::server::signal::Ret {
-            
-        } = process_output(game_id, output, to_client, event_trigger);
+        let () = process_output(game_id, output, to_client, event_trigger);
         Ok(())
     })();
     
@@ -109,10 +107,10 @@ pub(crate) fn add_player<Server: super::ServerSSS>(
 ) {
     let result = (|| {
         let output = runner.server.add_player(player_init_input)?;
-        let ret = process_output(game_id, output, to_client, event_trigger);
-        let player_id = ret.client_init.local_player_id();
+        let seed = process_output(game_id, output, to_client, event_trigger);
+        let player_id = seed.local_player_id();
 
-        pending_clients.enqueue(ret);
+        pending_clients.enqueue(seed);
 
         Ok(player_id)
     })();
@@ -134,9 +132,7 @@ pub(crate) fn manual_trigger<Server: super::ServerSSS>(
 ) {
     let result = (|| {
         let output = runner.server.manual_trigger(trigger)?;
-        let spru::server::manual_trigger::Ret {
-            
-        } = process_output(game_id, output, to_client, event_trigger);
+        let () = process_output(game_id, output, to_client, event_trigger);
 
         Ok(())
     })();

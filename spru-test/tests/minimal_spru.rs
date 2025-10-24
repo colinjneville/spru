@@ -44,8 +44,8 @@ fn minimal_spru() {
                                 runner.stage_interaction(winner.unwrap(), interaction).unwrap();
                             }
                         }
-                        Event::InteractionStaged(event::InteractionStaged { player_id, pending_transaction_id }) => {
-                            runner.apply_interactions(player_id, Some(pending_transaction_id))
+                        Event::InteractionStaged(event::InteractionStaged { player_id, pending_interaction_id }) => {
+                            runner.apply_interactions(player_id, Some(pending_interaction_id))
                                 .unwrap();
                         }
                         Event::ServerEvent(event::ServerEvent { event }) => match event {

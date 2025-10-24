@@ -1,6 +1,6 @@
 use std::{cell::RefCell, collections::{HashMap, VecDeque}, mem, ops};
 
-use crate::{action, error::{RecoverableError, RecoverableResult}, interactor, item::{self, lookup, IdT}, player, record::{self, Records}, Item};
+use crate::{action, common::error::RecoverableError, interactor, item::{self, lookup, IdT}, player, record::{self, Records}, Item};
 
 #[macro_export]
 macro_rules! follow {
@@ -31,31 +31,6 @@ macro_rules! follow {
 }
 use derive_where::derive_where;
 pub use follow;
-
-// #[macro_export]
-// macro_rules! update {
-//     ($get:expr, $update:expr) => {
-//         {
-//             let get = $get;
-//             let update = $update;
-//             let ret = ::$crate::action::UpdateReturn::return_value(&update, get.get());
-//             get.update(update)
-//                 .map(|_| ret)
-//         }
-//     };
-// }
-// pub use update;
-
-// #[derive(Debug)]
-// enum ItemTracking<Action> {
-//     // We only read the item. The version must match to ensure the read remains
-//     // the same, but no undo is needed
-//     Read(item::Version),
-//     // Log is generated, but items are not modified yet. Not implemented until 
-//     // there is a clear use case
-//     Deferred(std::convert::Infallible),
-//     Modified(Modified<Action>),
-// }
 
 #[derive(Debug)]
 struct ItemStatus<Action> {
@@ -251,15 +226,6 @@ impl<Action> ItemsStatus<Action> {
         Ok(())
     }
 
-    fn is_item_flushed(&self, id: item::Id) -> bool {
-        let items = self.items.borrow();
-        if let Some(item) = items.get(&id) {
-            item.is_flushed()
-        } else {
-            true
-        }
-    }
-
     fn revert<Lookup>(self, lookup: &mut Lookup)
         -> action::Result<()>
     where 
@@ -449,7 +415,7 @@ impl<'l, Lookup, Action, Context, Output> Interactor<'l, Lookup, Action, Context
     }
 
     pub(crate) fn complete<E>(mut self, error: Option<E>) 
-        -> RecoverableResult<interactor::Complete<Action, Context, Output>, E> 
+        -> Result<interactor::Complete<Action, Context, Output>, RecoverableError<E>> 
     where 
         Action: crate::Action<State = Lookup::State>,
         action::Error: Into<E>,

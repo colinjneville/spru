@@ -1,11 +1,19 @@
-use std::{any, fmt};
+use std::{any, fmt, ops};
 
-use crate::{item::{self, IdT}, AnyError, PsuedoError};
+use crate::{common::error::{AnyError, PsuedoError}, item::{self, IdT}};
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct Error {
     inner: AnyError,
     context: Option<Context>,
+}
+
+impl ops::Deref for Error {
+    type Target = dyn std::error::Error;
+
+    fn deref(&self) -> &Self::Target {
+        self.as_error()
+    }
 }
 
 impl Error {

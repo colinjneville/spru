@@ -1,9 +1,11 @@
+#![allow(dead_code, reason = "Core undo functionality is implemented, but not yet exposed")]
+
 use std::sync::{atomic::{self, AtomicU32}, Arc, Mutex};
 
-use crate::{action, error::RecoverableResult, item, log::error::UndoError, transaction::{self, Transactions}, Transaction};
+use crate::{action, common::{self, error::RecoverableError}, item, transaction::{self, Transactions}, Transaction};
 
 #[derive(Debug)]
-pub(crate) struct Server<Action> {
+pub(crate) struct Log<Action> {
     next_id: transaction::Id,
     // Compensation transactions to be applied to undo the effects of a transaction.
     // Can be cleared when game logic decides undos are no longer allowed
@@ -11,7 +13,7 @@ pub(crate) struct Server<Action> {
     undo_pin_board: Arc<UndoPinBoard>,
 }
 
-impl<Action> Server<Action> {
+impl<Action> Log<Action> {
     pub(crate) fn new() -> Self {
         Self::new_with_next_id(transaction::Id::ZERO)
         
@@ -30,9 +32,9 @@ impl<Action> Server<Action> {
     }
 }
 
-impl<Action> Server<Action> {
+impl<Action> Log<Action> {
     fn apply_or_revert<Lookup>(&mut self, lookup: &mut Lookup, transaction: Transaction<Action>) 
-        -> RecoverableResult<transaction::Confirmed<Action>, action::Error>
+        -> Result<transaction::Confirmed<Action>, RecoverableError<action::Error>>
     where 
         Lookup: item::Lookup,
         Action: crate::Action<State = Lookup::State>,
@@ -60,13 +62,13 @@ impl<Action> Server<Action> {
     }
 
     pub fn undo<Lookup>(&mut self, lookup: &mut Lookup, transaction_id: transaction::Id) 
-        -> RecoverableResult<transaction::Confirmed<Action>, UndoError>
+        -> Result<transaction::Confirmed<Action>, RecoverableError<common::error::UndoError>>
     where 
         Lookup: item::Lookup,
         Action: crate::Action<State = Lookup::State> + Clone,
     {
         let transaction = self.undo_transactions.get(transaction_id)
-            .ok_or(UndoError::Invalid(transaction::id::InvalidError(transaction_id)))?
+            .ok_or(common::error::UndoError::Invalid(transaction::id::InvalidError(transaction_id)))?
             .clone();
         
         let confirmed = self.apply_or_revert(lookup, transaction)

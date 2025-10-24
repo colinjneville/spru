@@ -4,7 +4,7 @@ use std::{marker::PhantomData, mem, ops};
 
 use amass::amass_telety;
 use derive_where::derive_where;
-use spru::{error::AnyResult, Serial};
+use spru::{common::error::AnyResult, Serial};
 use tagset::tagset;
 use telety::telety;
 

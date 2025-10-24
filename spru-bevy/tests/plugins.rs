@@ -89,7 +89,7 @@ fn local_multiplayer() -> impl std::process::Termination {
     //             spru_bevy::client::command::RevertInteractions::<minimal::Client> {
     //                 game_id,
     //                 client_id: spru_bevy::client::component::ClientId(p1_id),
-    //                 pending_transaction: Some(interaction_id),
+    //                 pending_interaction: Some(interaction_id),
     //                 client: PhantomData,
     //             }
     //                 .apply(world)
@@ -106,7 +106,7 @@ fn local_multiplayer() -> impl std::process::Termination {
     //             spru_bevy::client::command::ApplyInteractions::<minimal::Client> {
     //                 game_id,
     //                 client_id: spru_bevy::client::component::ClientId(p1_id),
-    //                 pending_transaction: Some(interaction_id),
+    //                 pending_interaction: Some(interaction_id),
     //                 client: PhantomData,
     //             }
     //                 .apply(world)

@@ -93,13 +93,13 @@ impl<Server:
 #[derive(thiserror::Error)]
 pub enum RunServerError {
     #[error(transparent)]
-    Signal(#[from] spru::server::signal::Error),
+    Signal(#[from] spru::server::error::SignalError),
     #[error(transparent)]
-    AddPlayer(#[from] spru::server::add_player::Error),
+    AddPlayer(#[from] spru::server::error::AddPlayerError),
     #[error(transparent)]
-    ManualTrigger(#[from] spru::server::manual_trigger::Error),
+    ManualTrigger(#[from] spru::server::error::ManualTriggerError),
     #[error(transparent)]
-    CreateSave(#[from] spru::server::save::Error),
+    CreateSave(#[from] spru::server::error::SaveError),
 }
 
 pub type RunServerResult<T> = std::result::Result<T, RunServerError>;

@@ -1,13 +1,13 @@
 pub mod error;
 pub use error::Error;
 
-use std::{collections::VecDeque};
+use std::{collections::VecDeque, fmt};
 
 use derive_where::derive_where;
 use tagset::tagset_meta;
 use telety::telety;
 
-use crate::{interactor, item, player, transaction};
+use crate::{interactor, item, player};
 
 #[derive(Debug)]
 #[non_exhaustive]
@@ -91,5 +91,28 @@ pub type Result<T> = std::result::Result<T, self::Error>;
 pub struct Staged<Interaction> {
     pub(crate) interaction: Interaction,
     pub(crate) expected_versions: item::version::Expected,
-    pub(crate) pending_transaction_id: transaction::Pending,
+    pub(crate) pending_interaction_id: Pending,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(serde::Serialize, serde::Deserialize)]
+#[repr(transparent)]
+pub struct Pending(u32);
+
+impl Pending {
+    pub(crate) const ZERO: Self = Self(0);
+
+    pub(crate) fn next(&self) -> Self {
+        Self(self.0 + 1)
+    }
+
+    pub(crate) fn into_u32(self) -> u32 {
+        self.0
+    }
+}
+
+impl fmt::Display for Pending {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "i{}", self.0)
+    }
 }

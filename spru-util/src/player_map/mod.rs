@@ -4,7 +4,7 @@ pub use error::Error;
 use std::marker::PhantomData;
 
 use derive_where::derive_where;
-use spru::{error::AnyResult, player};
+use spru::{common::error::AnyResult, player};
 use tagset::tagset;
 use telety::telety;
 

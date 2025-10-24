@@ -61,7 +61,7 @@ pub struct PlayerConfirmed {
 #[derive(Debug)]
 pub struct InteractionStaged {
     pub player_id: spru::player::Id,
-    pub pending_transaction_id: spru::transaction::Pending,
+    pub pending_interaction_id: spru::interaction::Pending,
 }
 
 #[derive_where(Debug; spru::server::Event<Server>)]

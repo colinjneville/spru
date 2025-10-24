@@ -9,7 +9,7 @@ use crate::common;
 #[derive(prelude::Event)]
 #[non_exhaustive]
 pub struct Init<Server: super::ServerSSS> {
-    pub result: Result<common::component::GameId, spru::server::init::Error>,
+    pub result: Result<common::component::GameId, spru::server::error::InitError>,
     pub(crate) _server: PhantomData<fn() -> Server>,
 }
 
@@ -19,7 +19,7 @@ pub struct Init<Server: super::ServerSSS> {
 pub struct Signal<Server: super::ServerSSS> {
     pub game_id: common::component::GameId,
     pub sender: spru::player::Id,
-    pub result: Result<(), spru::server::signal::Error>,
+    pub result: Result<(), spru::server::error::SignalError>,
     pub(crate) _server: PhantomData<fn() -> Server>,
 }
 
@@ -28,7 +28,7 @@ pub struct Signal<Server: super::ServerSSS> {
 #[non_exhaustive]
 pub struct AddPlayer<Server: super::ServerSSS> {
     pub game_id: common::component::GameId,
-    pub result: Result<spru::player::Id, spru::server::add_player::Error>,
+    pub result: Result<spru::player::Id, spru::server::error::AddPlayerError>,
     pub(crate) _server: PhantomData<fn() -> Server>,
 }
 
@@ -37,7 +37,7 @@ pub struct AddPlayer<Server: super::ServerSSS> {
 #[non_exhaustive]
 pub struct ManualTrigger<Server: super::ServerSSS> {
     pub game_id: common::component::GameId,
-    pub result: Result<(), spru::server::manual_trigger::Error>,
+    pub result: Result<(), spru::server::error::ManualTriggerError>,
     pub(crate) _server: PhantomData<fn() -> Server>,
 }
 

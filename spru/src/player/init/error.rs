@@ -1,12 +1,20 @@
-use std::{any, fmt};
+use std::{any, fmt, ops};
 
-use crate::{action, item, player, AnyError, PsuedoError};
+use crate::{action, common::error::{AnyError, PsuedoError}, item, player};
 
 
 #[derive(Debug)]
 pub struct Error {
     kind: Kind,
     context: Option<Context>,
+}
+
+impl ops::Deref for Error {
+    type Target = dyn std::error::Error;
+
+    fn deref(&self) -> &Self::Target {
+        self.as_error()
+    }
 }
 
 impl Error {
@@ -17,8 +25,9 @@ impl Error {
         }
     }
 
-    pub(crate) fn set_context<PlayerInit: player::Init>(&mut self, player_init: &PlayerInit) {
+    pub(crate) fn with_context<PlayerInit: player::Init>(mut self, player_init: &PlayerInit) -> Self {
         self.context = Some(Context::new(player_init));
+        self
     }
 
     pub fn kind(&self) -> &Kind {

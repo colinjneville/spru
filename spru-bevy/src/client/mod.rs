@@ -113,15 +113,15 @@ pub type BevyResult<T> = std::result::Result<T, BevyError>;
 #[derive(thiserror::Error)]
 pub enum RunClientError {
     #[error(transparent)]
-    Init(#[from] spru::client::init::Error),
+    Init(spru::common::error::FatalError),
     #[error(transparent)]
-    StageInteraction(#[from] spru::client::stage_interaction::Error),
+    StageInteraction(#[from] spru::client::error::StageInteractionError),
     #[error(transparent)]
-    ApplyInteraction(#[from] spru::client::apply_interactions::Error),
+    ApplyInteraction(#[from] spru::client::error::ApplyInteractionError),
     #[error(transparent)]
-    RevertInteraction(#[from] spru::client::revert_interactions::Error),
+    RevertInteraction(#[from] spru::client::error::RevertInteractionError),
     #[error(transparent)]
-    Signal(#[from] spru::client::signal::Error),
+    Signal(spru::common::error::FatalError),
 }
 
 pub type RunClientResult<T> = std::result::Result<T, RunClientError>;

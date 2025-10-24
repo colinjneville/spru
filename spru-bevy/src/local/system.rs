@@ -58,13 +58,11 @@ where
     >,
 {
     for (mut pending_clients, ) in q_server {
-        while let Some(ret) = pending_clients.dequeue() {
-            let spru::server::add_player::Ret {
-                client_init,
-            } = ret;
+        while let Some(seed) = pending_clients.dequeue() {
+            
 
             commands.queue(crate::client::command::Init::<Client> {
-                init: client_init,
+                seed,
             });
         }
     }

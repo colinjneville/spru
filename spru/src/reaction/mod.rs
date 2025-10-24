@@ -72,10 +72,3 @@ pub trait Reaction {
 }
 
 pub type Interactor<'l, 'r, State, Action, Root, Trigger, GameOutcome> = crate::Interactor<'l, Canonical<State>, Action, Context<'r, Root>, Output<Trigger, GameOutcome>>;
-
-// #[derive(Debug)]
-// #[derive(thiserror::Error)]
-// pub enum Error {
-//     #[error(transparent)]
-//     Lookup(canonical::Error),
-// }
