@@ -7,14 +7,14 @@ pub use play::Play;
 use spru::item::IdT;
 use tagset::tagset;
 
-pub(crate) type Interactor<'l, 'r, Lookup> = spru::interaction::Interactor<
-    'l,
-    'r,
-    Lookup,
-    crate::Actions,
-    IdT<crate::game::Root>,
-    crate::reaction::Trigger,
->;
+// pub(crate) type Interactor<'l, 'r, Lookup> = spru::interaction::Interactor<
+//     'l,
+//     'r,
+//     Lookup,
+//     crate::Actions,
+//     IdT<crate::game::Root>,
+//     crate::reaction::Trigger,
+// >;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {

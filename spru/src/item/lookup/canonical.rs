@@ -1,9 +1,10 @@
 use std::{any, fmt, marker::PhantomData};
 
+use derive_where::derive_where;
+
 use crate::{
     Item, common,
     item::{self, lookup},
-    state,
 };
 
 #[derive(Debug, thiserror::Error)]
@@ -12,24 +13,24 @@ enum Error {
     ItemDoesNotExist(item::Id),
 }
 
-#[derive(Debug)]
-pub struct Canonical<State> {
-    items_map: ItemsMap<State>,
+#[derive_where(Debug; Repr)]
+pub struct Canonical<Repr, State> {
+    items_map: ItemsMap<Repr, State>,
 }
 
-impl<State> Canonical<State> {
+impl<Repr, State> Canonical<Repr, State> {
     pub(crate) fn new() -> Self {
         Self {
             items_map: ItemsMap::new(),
         }
     }
 
-    pub(crate) fn items_map(&self) -> &ItemsMap<State> {
+    pub(crate) fn items_map(&self) -> &ItemsMap<Repr, State> {
         &self.items_map
     }
 }
 
-impl<State: crate::State> item::lookup::Lookup for Canonical<State> {
+impl<State: crate::State> item::lookup::Lookup for Canonical<State::Repr, State> {
     type State = State;
 
     fn lookup<T>(&self, id: item::IdT<T>) -> Result<&Item<T>, lookup::Error>
@@ -177,28 +178,30 @@ where
     }
 }
 
-#[derive(Debug)]
-pub(crate) struct ItemsMap<State> {
-    raw: std::collections::HashMap<state::Index, Box<dyn ErasedItemMap>>,
+#[derive_where(Debug; Repr)]
+pub(crate) struct ItemsMap<Repr, State> {
+    raw: std::collections::HashMap<Repr, Box<dyn ErasedItemMap>>,
     _p: PhantomData<fn(State) -> State>,
 }
 
-impl<State> ItemsMap<State> {
-    pub fn new() -> Self {
+impl<Repr, State> ItemsMap<Repr, State> {
+     pub fn new() -> Self {
         Self {
             raw: Default::default(),
             _p: PhantomData,
         }
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = (&state::Index, &Box<dyn ErasedItemMap>)> {
+    pub fn iter(&self) -> impl Iterator<Item = (&Repr, &Box<dyn ErasedItemMap>)> {
         self.raw.iter()
     }
+}
 
+impl<State: crate::State> ItemsMap<State::Repr, State> {
     pub fn insert<T>(&mut self, item: Item<T>)
     where
         T: any::Any + serde::Serialize + Send + Sync,
-        State: tagset::TagSetDiscriminant<T, Repr: Into<state::Index>>,
+        State: tagset::TagSetDiscriminant<T, Repr: Eq + std::hash::Hash>,
     {
         let index = State::DISCRIMINANT.into();
         let item_map = self
@@ -215,7 +218,7 @@ impl<State> ItemsMap<State> {
     pub fn remove<T>(&mut self, item_id: item::IdT<T>) -> Option<Item<T>>
     where
         T: any::Any,
-        State: tagset::TagSetDiscriminant<T, Repr: Into<state::Index>>,
+        State: tagset::TagSetDiscriminant<T, Repr: Eq + std::hash::Hash>,
     {
         let index = State::DISCRIMINANT.into();
         if let Some(item_map) = self.raw.get_mut(&index) {
@@ -231,7 +234,7 @@ impl<State> ItemsMap<State> {
     pub fn get<T>(&self, item_id: item::IdT<T>) -> Option<&Item<T>>
     where
         T: any::Any,
-        State: tagset::TagSetDiscriminant<T, Repr: Into<state::Index>>,
+        State: tagset::TagSetDiscriminant<T, Repr: Eq + std::hash::Hash>,
     {
         let index = State::DISCRIMINANT.into();
         if let Some(item_map) = self.raw.get(&index) {
@@ -247,7 +250,7 @@ impl<State> ItemsMap<State> {
     pub fn get_mut<T>(&mut self, item_id: item::IdT<T>) -> Option<&mut Item<T>>
     where
         T: any::Any,
-        State: tagset::TagSetDiscriminant<T, Repr: Into<state::Index>>,
+        State: tagset::TagSetDiscriminant<T, Repr: Eq + std::hash::Hash>,
     {
         let index = State::DISCRIMINANT.into();
         if let Some(item_map) = self.raw.get_mut(&index) {
@@ -290,7 +293,7 @@ mod test {
         extern crate self as spru;
 
         let mut id = item::Id::new();
-        let mut canonical = Canonical::<MyCatalog>::new();
+        let mut canonical = Canonical::<u32, MyCatalog>::new();
 
         canonical
             .create(Item::new_untyped_id(id, item::Version::ZERO, S0(1i32)))
@@ -311,7 +314,7 @@ mod test {
         let checkpoint = common::Snapshot::new(item::Id::new().force_type::<()>(), &canonical)
             .expect("checkpoint failed");
 
-        let mut canonical2 = Canonical::<MyCatalog>::new();
+        let mut canonical2 = Canonical::<u32, MyCatalog>::new();
         checkpoint
             .apply(&mut canonical2)
             .expect("checkpoint apply failed");

@@ -55,13 +55,7 @@ impl spru::Reaction for Reaction {
 
     fn apply(
         &self,
-        interactor: &mut spru::reaction::Interactor<
-            State,
-            Actions,
-            IdT<GameRoot>,
-            Trigger,
-            GameOutcome,
-        >,
+        interactor: &mut spru::reaction::Interactor<Self>,
         input: Self::Trigger,
     ) -> spru::action::Result<()> {
         interactor.set_game_outcome(GameOutcome(input.0));
@@ -95,7 +89,7 @@ impl spru::player::Init for PlayerInit {
 
     fn initialize(
         &self,
-        interactor: &mut spru::player::init::Interactor<State, Actions, IdT<GameRoot>>,
+        interactor: &mut spru::player::init::Interactor<Self>,
         input: Self::In,
     ) -> spru::player::init::Result<()> {
         let player_id = interactor.context().player;
@@ -127,7 +121,7 @@ impl spru::game::Init for GameInit {
 
     fn initialize(
         self,
-        interactor: &mut spru::game::init::Interactor<State, Actions>,
+        interactor: &mut spru::game::init::Interactor<Self>,
     ) -> spru::game::init::Result<Self::Root> {
         let players = interactor.create(player_map::create()).id();
         let root = interactor.create(spru_util::verbatim::create(GameRoot { players }));
@@ -146,7 +140,7 @@ impl spru::Interaction for Interaction {
 
     fn apply<Lookup>(
         &self,
-        interactor: &mut spru::interaction::Interactor<Lookup, Actions, IdT<GameRoot>, Trigger>,
+        interactor: &mut spru::interaction::Interactor<Lookup, Self>,
     ) -> spru::interaction::Result<()>
     where
         Lookup: spru::item::Lookup<State = Self::State>,
@@ -158,8 +152,8 @@ impl spru::Interaction for Interaction {
 }
 
 pub type Server =
-    spru::server::Impl<State, Actions, IdT<GameRoot>, Interaction, Reaction, PlayerInit>;
+    spru::server::ServerImpl<Interaction, Reaction, PlayerInit>;
 
-pub type Client = spru::client::Impl<State, Actions, IdT<GameRoot>, Interaction, GameOutcome>;
+pub type Client = spru::client::ClientImpl<Interaction, GameOutcome>;
 
 pub type Common = <Server as spru::Server>::Common;

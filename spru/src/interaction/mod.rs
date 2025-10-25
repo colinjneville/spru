@@ -73,14 +73,21 @@ pub trait Interaction {
 
     fn apply<'l, 'r, Lookup>(
         &self,
-        interactor: &mut Interactor<'l, 'r, Lookup, Self::Action, Self::Root, Self::Trigger>,
+        interactor: &mut Interactor<'l, 'r, Lookup, Self>,
     ) -> self::Result<()>
     where
         Lookup: item::Lookup<State = Self::State>;
 }
 
-pub type Interactor<'l, 'r, Lookup, Action, Root, Trigger> =
-    crate::Interactor<'l, Lookup, Action, Context<'r, Root>, Output<Trigger>>;
+pub type Interactor<'l, 'r, Lookup, Interaction> =
+    crate::Interactor<'l,
+        Lookup,
+        <Interaction as self::Interaction>::Action,
+        Context<'r,
+            <Interaction as self::Interaction>::Root>,
+            Output<<Interaction as self::Interaction>::Trigger
+        >
+    >;
 
 pub type Result<T> = std::result::Result<T, self::Error>;
 

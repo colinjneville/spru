@@ -12,18 +12,26 @@ use crate::{
 pub trait Init {
     type In;
     type Root;
-    type State;
+    type State: tagset::TagSet;
     type Action;
 
     fn initialize(
         &self,
-        interactor: &mut Interactor<Self::State, Self::Action, Self::Root>,
+        interactor: &mut Interactor<Self>,
         input: Self::In,
     ) -> self::Result<()>;
 }
 
-pub type Interactor<'l, 'r, State, Action, Root> =
-    crate::Interactor<'l, item::lookup::Canonical<State>, Action, Context<'r, Root>, Output>;
+pub type Interactor<'l, 'r, Init> =
+    crate::Interactor<'l,
+        item::lookup::Canonical<
+            <<Init as self::Init>::State as tagset::TagSet>::Repr,
+            <Init as self::Init>::State
+        >,
+        <Init as self::Init>::Action,
+        Context<'r, <Init as self::Init>::Root>,
+        Output
+    >;
 
 pub(crate) type Complete<'r, Action, Root> =
     crate::interactor::Complete<Action, self::Context<'r, Root>, Output>;

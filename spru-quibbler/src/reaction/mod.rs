@@ -6,15 +6,17 @@ use tracing::instrument;
 
 use crate::round;
 
-pub(crate) type Interactor<'l, 'r> = spru::reaction::Interactor<
-    'l,
-    'r,
-    crate::State,
-    crate::Actions,
-    IdT<crate::game::Root>,
-    Trigger,
-    crate::game::Outcome,
->;
+// pub(crate) type Interactor<'l, 'r> = spru::reaction::Interactor<
+//     'l,
+//     'r,
+//     crate::State,
+//     crate::Actions,
+//     IdT<crate::game::Root>,
+//     Trigger,
+//     crate::game::Outcome,
+// >;
+
+type Interactor<'l, 'r> = spru::reaction::Interactor<'l, 'r, Reaction>;
 
 #[derive(Debug, Clone)]
 pub enum Trigger {
@@ -234,7 +236,7 @@ impl spru::Reaction for Reaction {
 
     fn apply(
         &self,
-        interactor: &mut self::Interactor,
+        interactor: &mut spru::reaction::Interactor<Self>,
         trigger: Self::Trigger,
     ) -> spru::action::Result<()> {
         match trigger {

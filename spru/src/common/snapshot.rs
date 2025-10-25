@@ -1,30 +1,32 @@
 use std::{marker::PhantomData, sync::Arc};
 
+use derive_where::derive_where;
+
 use crate::{common, item};
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
-struct SnapshotType {
-    index: u32,
+struct SnapshotType<Index> {
+    index: Index,
     items: Box<[item::Erased]>,
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
-pub struct Snapshot<State, Root> {
+#[derive_where(Debug, Serialize, Deserialize; Repr, Root)]
+pub(crate) struct Snapshot<Repr, State, Root> {
     root: Root,
-    items: Arc<[SnapshotType]>,
+    items: Arc<[SnapshotType<Repr>]>,
     #[serde(skip)]
     _p: PhantomData<fn(State) -> State>,
 }
 
-impl<State, Root> Snapshot<State, Root> {
+impl<State: tagset::TagSet<Repr: Clone>, Root> Snapshot<State::Repr, State, Root> {
     pub(crate) fn new(
         root: Root,
-        lookup: &item::lookup::Canonical<State>,
+        lookup: &item::lookup::Canonical<State::Repr, State>,
     ) -> Result<Self, common::error::Save> {
         let mut snapshot_items_map = vec![];
         for (key, item_map) in lookup.items_map().iter() {
             snapshot_items_map.push(SnapshotType {
-                index: *key,
+                index: key.clone(),
                 items: item_map.as_serialized()?,
             });
         }
@@ -47,12 +49,7 @@ impl<State, Root> Snapshot<State, Root> {
     {
         for item_type in &*self.items {
             for item in &*item_type.items {
-                let Ok(index) = item_type.index.try_into() else {
-                    // TODO This should be a proper error
-                    unimplemented!("Index could not be converted back to repr type");
-                };
-
-                State::apply_state(index, item, lookup)?;
+                State::apply_state(item_type.index.clone(), item, lookup)?;
             }
         }
         Ok(())

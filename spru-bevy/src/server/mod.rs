@@ -11,7 +11,7 @@ use crate::common;
 
 pub trait ServerSSS:
     spru::Server<
-        State: spru::State + Send + Sync + 'static,
+        State: spru::State<Repr: Send + Sync + 'static> + Send + Sync + 'static,
         Action: Send + Sync + 'static,
         Interaction: Send + Sync + 'static,
         PlayerInit: spru::player::Init<In: Send + Sync + 'static> + Send + Sync + 'static,
@@ -78,7 +78,7 @@ pub trait ServerSSS:
 
 impl<
     Server: spru::Server<
-            State: spru::State + Send + Sync + 'static,
+            State: spru::State<Repr: Send + Sync + 'static> + Send + Sync + 'static,
             Action: Send + Sync + 'static,
             Interaction: Send + Sync + 'static,
             PlayerInit: spru::player::Init<In: Send + Sync + 'static> + Send + Sync + 'static,

@@ -136,24 +136,31 @@ pub trait Server: Sized {
     fn game_id(&self) -> game::Id;
 }
 
-impl<State, Action, Root, Interaction, Reaction, PlayerInit> Server
-    for Impl<State, Action, Root, Interaction, Reaction, PlayerInit>
+pub type ServerImpl<Interaction, Reaction, PlayerInit> =
+    Impl<
+        <<Interaction as crate::Interaction>::State as tagset::TagSet>::Repr,
+        <Interaction as crate::Interaction>::State,
+        <Interaction as crate::Interaction>::Action,
+        <Interaction as crate::Interaction>::Root,
+        Interaction,
+        Reaction,
+        PlayerInit
+    >;
+
+impl<Interaction, Reaction, PlayerInit> Server
+    for Impl<<Interaction::State as tagset::TagSet>::Repr, Interaction::State, Interaction::Action, Interaction::Root, Interaction, Reaction, PlayerInit>
 where
-    State: crate::State,
-    Action: crate::Action<State = State> + Clone,
-    Root: Clone,
     Interaction: crate::Interaction<
-            State = State,
-            Action = Action,
-            Root = Root,
-            Trigger = <Reaction as crate::Reaction>::Trigger,
+            // State: crate::State,
+            Action: Clone,
+            Root: Clone,
         > + Clone,
-    Reaction: crate::Reaction<State = State, Action = Action, Root = Root, GameOutcome: Clone>,
-    PlayerInit: crate::player::Init<State = State, Action = Action, Root = Root>,
+    Reaction: crate::Reaction<State = Interaction::State, Action = Interaction::Action, Root = Interaction::Root, Trigger = Interaction::Trigger, GameOutcome: Clone>,
+    PlayerInit: crate::player::Init<State = Interaction::State, Action = Interaction::Action, Root = Interaction::Root>,
 {
-    type State = State;
-    type Action = Action;
-    type Root = Root;
+    type State = Interaction::State;
+    type Action = Interaction::Action;
+    type Root = Interaction::Root;
     type PlayerInit = PlayerInit;
     type Interaction = Interaction;
     type Reaction = Reaction;
@@ -442,16 +449,16 @@ where
 }
 
 #[derive(Debug)]
-pub struct Impl<State, Action, Root, Interaction, Reaction, PlayerInit> {
-    inner: ImplInner<State, Action, Root, Interaction, Reaction, PlayerInit>,
+pub struct Impl<Repr, State, Action, Root, Interaction, Reaction, PlayerInit> {
+    inner: ImplInner<Repr, State, Action, Root, Interaction, Reaction, PlayerInit>,
     root: Root,
 }
 
 // Needed for split borrows on root
-#[derive(Debug)]
-struct ImplInner<State, Action, Root, Interaction, Reaction, PlayerInit> {
+#[derive_where(Debug; Repr, Action, Reaction, PlayerInit)]
+struct ImplInner<Repr, State, Action, Root, Interaction, Reaction, PlayerInit> {
     game_id: game::Id,
-    lookup: item::lookup::Canonical<State>,
+    lookup: item::lookup::Canonical<Repr, State>,
     player_manager: player::Manager<PlayerInit>,
     log: Log<Action>,
     visibility: visibility::Manager,
@@ -462,10 +469,10 @@ struct ImplInner<State, Action, Root, Interaction, Reaction, PlayerInit> {
     _root: PhantomData<Root>,
 }
 
-impl<State, Action, Root, Interaction, Reaction, PlayerInit>
-    ImplInner<State, Action, Root, Interaction, Reaction, PlayerInit>
+impl<Repr, State, Action, Root, Interaction, Reaction, PlayerInit>
+    ImplInner<Repr, State, Action, Root, Interaction, Reaction, PlayerInit>
 where
-    State: crate::State,
+    State: crate::State<Repr = Repr>,
     Action: crate::Action<State = State> + Clone,
     Root: Clone,
     Interaction: crate::Interaction<
@@ -481,10 +488,10 @@ where
     fn apply_interaction(
         &mut self,
         root: &Root,
-        messaging: &mut Messaging<Impl<State, Action, Root, Interaction, Reaction, PlayerInit>>,
+        messaging: &mut Messaging<Impl<Repr, State, Action, Root, Interaction, Reaction, PlayerInit>>,
         sender: player::Id,
         apply_interaction: common::signal::ApplyInteraction<
-            <Impl<State, Action, Root, Interaction, Reaction, PlayerInit> as Server>::Common,
+            <Impl<Repr, State, Action, Root, Interaction, Reaction, PlayerInit> as Server>::Common,
         >,
     ) -> action::Result<()> {
         let common::signal::ApplyInteraction {
@@ -559,7 +566,7 @@ where
     fn build_transaction<Context, Output>(
         &mut self,
         root: &Root,
-        messaging: &mut Messaging<Impl<State, Action, Root, Interaction, Reaction, PlayerInit>>,
+        messaging: &mut Messaging<Impl<Repr, State, Action, Root, Interaction, Reaction, PlayerInit>>,
         // This is a bit of a kludge to special case Interactions where a Client already has some of the transaction
         // applied locally and only needs log generated from Server Reactions
         pending_interaction: Option<interaction::Pending>,
@@ -740,7 +747,7 @@ where
     fn create_snapshot(
         &self,
         root: &Root,
-    ) -> Result<common::Snapshot<State, Root>, common::error::Save>
+    ) -> Result<common::Snapshot<Repr, State, Root>, common::error::Save>
     where
         Root: Clone,
     {

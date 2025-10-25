@@ -8,7 +8,7 @@ use crate::{
     player,
 };
 
-type Interactor<'l> = spru::game::init::Interactor<'l, crate::State, crate::Actions>;
+// type Interactor<'l> = spru::game::init::Interactor<'l, crate::State, crate::Actions>;
 
 #[derive(Debug)]
 pub struct Start;
@@ -20,7 +20,7 @@ impl spru::game::Init for Init {
     type Action = crate::Actions;
     type Root = IdT<Root>;
 
-    fn initialize(self, interactor: &mut self::Interactor) -> spru::game::init::Result<Self::Root> {
+    fn initialize(self, interactor: &mut spru::game::init::Interactor<Self>) -> spru::game::init::Result<Self::Root> {
         let deck = interactor.create(pile::create(card::Card::all())).id();
         let discard = interactor.create(pile::create([])).id();
         let round = interactor.create(counter::create(0)).id();

@@ -1,4 +1,4 @@
-pub mod canonical;
+pub(crate) mod canonical;
 pub use canonical::Canonical;
 pub mod error;
 pub use error::Error;

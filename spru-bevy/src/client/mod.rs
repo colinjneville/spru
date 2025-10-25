@@ -13,7 +13,7 @@ pub mod system;
 
 pub trait ClientSSS:
     spru::client::Client<
-        State: Send + Sync + 'static,
+        State: spru::State<Repr: Send + Sync + 'static> + Send + Sync + 'static,
         Action: spru::Action<State = Self::State> + Send + Sync + 'static,
         GameOutcome: Send + Sync + 'static,
         Interaction: Clone + Send + Sync + 'static,
@@ -84,7 +84,7 @@ pub trait ClientSSS:
 
 impl<
     Client: spru::client::Client<
-            State: Send + Sync + 'static,
+            State: spru::State<Repr: Send + Sync + 'static> + Send + Sync + 'static,
             Action: spru::Action<State = Self::State> + Send + Sync + 'static,
             GameOutcome: Send + Sync + 'static,
             Interaction: Clone + Send + Sync + 'static,

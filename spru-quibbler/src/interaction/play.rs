@@ -86,7 +86,7 @@ impl spru::Interaction for Play {
     #[instrument(skip_all, ret, err)]
     fn apply<Lookup>(
         &self,
-        interactor: &mut super::Interactor<Lookup>,
+        interactor: &mut spru::interaction::Interactor<Lookup, Self>,
     ) -> spru::interaction::Result<()>
     where
         Lookup: spru::item::Lookup<State = Self::State>,

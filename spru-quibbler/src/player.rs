@@ -25,7 +25,7 @@ impl spru::player::Init for Init {
 
     fn initialize(
         &self,
-        interactor: &mut spru::player::init::Interactor<Self::State, Self::Action, Self::Root>,
+        interactor: &mut spru::player::init::Interactor<Self>,
         input: Self::In,
     ) -> spru::player::init::Result<()> {
         let root = interactor.get_root()?;

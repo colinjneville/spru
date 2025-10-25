@@ -11,7 +11,6 @@ pub mod hand;
 pub mod interaction;
 pub use interaction::Interaction;
 pub mod round;
-use spru::item::IdT;
 mod play;
 pub use play::Play;
 mod player;
@@ -24,9 +23,8 @@ pub use state::State;
 
 use bevy::{ecs::system::IntoSystem, prelude};
 
-type Client = spru::client::Impl<State, Actions, IdT<game::Root>, Interaction, game::Outcome>;
-type Server =
-    spru::server::Impl<State, Actions, IdT<game::Root>, Interaction, Reaction, player::Init>;
+type Client = spru::client::ClientImpl<Interaction, game::Outcome>;
+type Server = spru::server::ServerImpl<Interaction, Reaction, player::Init>;
 
 fn main() {
     use prelude::PluginGroup as _;

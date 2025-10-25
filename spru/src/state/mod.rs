@@ -7,7 +7,7 @@ pub type Index = u32;
 #[telety::telety(crate::state, alias_traits = "always")]
 #[tagset_meta]
 #[meta(bounds(for<VAR> Self: tagset::TagSetDiscriminant<VAR>))]
-pub trait State: tagset::TagSet<Repr: TryFrom<Index> + Into<Index>> + Sized {
+pub trait State: tagset::TagSet<Repr: Clone + Eq + std::hash::Hash> + Sized {
     #[doc(hidden)]
     #[meta(default {
         match_by_discriminant!(index, T => item.cast::<Lookup, T>(lookup))

@@ -24,12 +24,7 @@ impl spru::Interaction for Discard {
     #[instrument(skip_all, ret, err)]
     fn apply<Lookup>(
         &self,
-        interactor: &mut spru::interaction::Interactor<
-            Lookup,
-            Self::Action,
-            Self::Root,
-            Self::Trigger,
-        >,
+        interactor: &mut spru::interaction::Interactor<Lookup, Self>,
     ) -> spru::interaction::Result<()>
     where
         Lookup: spru::item::Lookup<State = Self::State>,

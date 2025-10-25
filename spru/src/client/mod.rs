@@ -17,6 +17,15 @@ use crate::{
 };
 use std::marker::PhantomData;
 
+pub type ClientImpl<Interaction, GameOutcome> =
+    Impl<
+        <Interaction as crate::Interaction>::State,
+        <Interaction as crate::Interaction>::Action,
+        <Interaction as crate::Interaction>::Root,
+        Interaction,
+        GameOutcome,
+    >;
+
 #[derive_where(Debug; common::signal::ToServer<Client::Common>, Event<Client>, Ret)]
 pub struct Output<Client: self::Client, Ret> {
     pub outbound: Vec<common::signal::ToServer<Client::Common>>,
@@ -210,7 +219,7 @@ where
         let state = self::Messaging::new();
 
         let context = interaction::Context::new(&self.inner.root, self.inner.local_player_id);
-        let mut interactor = interaction::Interactor::new(lookup, &self.inner.reservation, context);
+        let mut interactor = interaction::Interactor::<Lookup, Self::Interaction>::new(lookup, &self.inner.reservation, context);
 
         let interaction_error = interaction
             .apply(&mut interactor)

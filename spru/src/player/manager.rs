@@ -47,16 +47,14 @@ impl<PlayerInit> Manager<PlayerInit> {
         }
     }
 
-    pub(crate) fn add<'r, State, Action, Root>(
+    pub(crate) fn add<'r>(
         &mut self,
-        mut interactor: player::init::Interactor<'_, 'r, State, Action, Root>,
+        mut interactor: player::init::Interactor<'_, 'r, PlayerInit>,
         reservation_range: item::id::Range,
         input: PlayerInit::In,
-    ) -> Result<player::init::Complete<'r, Action, Root>, RecoverableError<player::init::Error>>
+    ) -> Result<player::init::Complete<'r, PlayerInit::Action, PlayerInit::Root>, RecoverableError<player::init::Error>>
     where
-        State: crate::State,
-        Action: crate::Action<State = State>,
-        PlayerInit: player::Init<State = State, Action = Action, Root = Root>,
+        PlayerInit: player::Init<State: crate::State, Action: crate::Action<State = PlayerInit::State>>,
     {
         let id = player::Id(self.player_details.len() as u32);
         interactor.context_mut().player = id;

@@ -10,17 +10,25 @@ use crate::{
 
 pub trait Init {
     type Root;
-    type State;
+    type State: tagset::TagSet;
     type Action;
 
     fn initialize(
         self,
-        interactor: &mut Interactor<Self::State, Self::Action>,
+        interactor: &mut Interactor<Self>,
     ) -> self::Result<Self::Root>;
 }
 
-pub type Interactor<'l, State, Action> =
-    crate::Interactor<'l, item::lookup::Canonical<State>, Action, Context, Output>;
+pub type Interactor<'l, Init> =
+    crate::Interactor<'l,
+        item::lookup::Canonical<
+            <<Init as self::Init>::State as tagset::TagSet>::Repr,
+            <Init as self::Init>::State
+        >,
+        <Init as self::Init>::Action,
+        Context,
+        Output
+    >;
 
 #[derive(Debug)]
 #[non_exhaustive]

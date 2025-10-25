@@ -59,7 +59,7 @@ impl<Trigger, GameOutcome> interactor::TakeGameOutcome<GameOutcome>
 
 #[telety(crate::reaction)]
 pub trait Reaction {
-    type State;
+    type State: tagset::TagSet;
     type Action;
     type Root;
     type Trigger;
@@ -67,23 +67,18 @@ pub trait Reaction {
 
     fn apply<'l, 'r>(
         &self,
-        interactor: &mut Interactor<
-            'l,
-            'r,
-            Self::State,
-            Self::Action,
-            Self::Root,
-            Self::Trigger,
-            Self::GameOutcome,
-        >,
+        interactor: &mut Interactor<'l, 'r, Self>,
         trigger: Self::Trigger,
     ) -> action::Result<()>;
 }
 
-pub type Interactor<'l, 'r, State, Action, Root, Trigger, GameOutcome> = crate::Interactor<
+pub type Interactor<'l, 'r, Reaction> = crate::Interactor<
     'l,
-    Canonical<State>,
-    Action,
-    Context<'r, Root>,
-    Output<Trigger, GameOutcome>,
+    Canonical<
+        <<Reaction as self::Reaction>::State as tagset::TagSet>::Repr,
+        <Reaction as self::Reaction>::State
+    >,
+    <Reaction as self::Reaction>::Action,
+    Context<'r, <Reaction as self::Reaction>::Root>,
+    Output<<Reaction as self::Reaction>::Trigger, <Reaction as self::Reaction>::GameOutcome>,
 >;
