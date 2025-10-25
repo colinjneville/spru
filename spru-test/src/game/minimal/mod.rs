@@ -1,10 +1,7 @@
-#[cfg(feature = "bevy")]
-mod bevy;
-
 use spru::item::IdT;
 use tagset::tagset;
 
-use spru_util::verbatim;
+use spru_util::{player_map, verbatim};
 
 #[derive(Debug)]
 pub struct LobbyInfo;
@@ -21,7 +18,7 @@ pub struct GameOutcome(pub spru::player::Id);
 #[tagset(impl crate::proxy::std::fmt::Debug)]
 #[tagset(impl spru::State)]
 #[tagset(GameRoot)]
-#[tagset(PlayerData)]
+#[tagset(player_map::State<PlayerData>)]
 pub struct State;
 
 #[tagset(derive(Clone))]
@@ -33,7 +30,7 @@ pub struct State;
 #[tagset(impl<'de> tagset::serde::DeserializeFromDiscriminant<'de>)]
 #[tagset(impl<'de> tagset::proxy::serde::Deserialize<'de>)]
 #[tagset(include(verbatim::Actions<GameRoot>))]
-#[tagset(include(verbatim::Actions<PlayerData>))]
+#[tagset(include(player_map::Actions<PlayerData>))]
 pub struct Actions;
 
 #[derive(Debug, spru::FromInfallible, thiserror::Error)]
@@ -101,14 +98,11 @@ impl spru::player::Init for PlayerInit {
         interactor: &mut spru::player::init::Interactor<State, Actions, IdT<GameRoot>>,
         input: Self::In,
     ) -> spru::player::init::Result<()> {
-        let player_root = interactor.create(verbatim::create(PlayerData { color: input }));
+        let player_id = interactor.context().player;
+        let root = interactor.get_root()?;
 
-        let mut game_root = interactor.get_root()?.clone();
-
-        game_root.players.push(player_root.id());
-        interactor
-            .get_root()?
-            .update(spru_util::verbatim::update(game_root));
+        spru::follow!(root => root.players)?
+            .update(player_map::add_player(player_id, PlayerData { color: input }));
 
         Ok(())
     }
@@ -119,9 +113,9 @@ pub struct PlayerData {
     color: PlayerColor,
 }
 
-#[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct GameRoot {
-    players: Vec<IdT<PlayerData>>,
+    players: IdT<player_map::State<PlayerData>>,
 }
 
 pub struct GameInit(pub LobbyInfo);
@@ -135,7 +129,8 @@ impl spru::game::Init for GameInit {
         self,
         interactor: &mut spru::game::init::Interactor<State, Actions>,
     ) -> spru::game::init::Result<Self::Root> {
-        let root = interactor.create(spru_util::verbatim::create(GameRoot::default()));
+        let players = interactor.create(player_map::create()).id();
+        let root = interactor.create(spru_util::verbatim::create(GameRoot { players }));
 
         Ok(root.id())
     }

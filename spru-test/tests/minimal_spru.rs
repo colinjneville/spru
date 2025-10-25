@@ -8,6 +8,11 @@ use rand::seq::IndexedRandom as _;
 fn minimal_spru() {
     use spru_test::game::minimal;
 
+    let subscriber = tracing_subscriber::fmt()
+        .with_env_filter("trace")
+        .finish();
+    tracing::subscriber::set_global_default(subscriber).unwrap();
+
     let mut rng = rand::rng();
 
     let mut runner = SyncRunner::<

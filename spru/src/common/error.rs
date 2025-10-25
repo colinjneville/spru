@@ -267,10 +267,9 @@ impl FatalErrorState {
     }
 
     /// Use [Result::map_err] to convert the error to a fatal error and record it in the [FatalErrorState].
-    /// ```rust
-    /// # let fatal_error_state = FatalErrorState::default();
-    /// i32::parse("not a number")
-    ///     .map_err(fatal_error_state.into_fatal())?;
+    /// ```rust,ignore
+    /// i32::from_str("not a number")
+    ///     .map_err(fatal_error_state.into_fatal())
     /// ```
     pub(crate) fn make_fatal<E: Into<AnyError>>(&mut self) -> impl FnOnce(E) -> FatalError {
         |err| {

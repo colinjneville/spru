@@ -145,16 +145,13 @@ where
         player_id: player::Id,
         command: ClientCommand<Client>,
     ) -> Result<(), RunnerError> {
-        if let Some(client) = self.clients.get_mut(&player_id) {
-            client.user_incoming_queue.push_back(command);
-            Ok(())
-        } else {
-            Err(RunnerError::ClientDoesNotExist(player_id))
-        }
+        let client = self.get_client_mut(player_id)?;
+        client.user_incoming_queue.push_back(command);
+        Ok(())
     }
 
     pub fn run_one(&mut self) -> anyhow::Result<Run<Server, Client>> {
-        let mut events = Messaging::new();
+        let mut messaging = Messaging::new();
 
         let mut picker = Picker::new(&mut self.random);
 
@@ -183,12 +180,12 @@ where
             self.is_dirty = true;
 
             match choice {
-                Choice::AddPlayer(index) => self.run_add_player(&mut events, index)?,
-                Choice::Incoming(id) => self.run_incoming(&mut events, id)?,
-                Choice::Outgoing(id) => self.run_outgoing(&mut events, id)?,
-                Choice::UserCommand(id) => self.run_user_command(&mut events, id)?,
+                Choice::AddPlayer(index) => self.run_add_player(&mut messaging, index)?,
+                Choice::Incoming(id) => self.run_incoming(&mut messaging, id)?,
+                Choice::Outgoing(id) => self.run_outgoing(&mut messaging, id)?,
+                Choice::UserCommand(id) => self.run_user_command(&mut messaging, id)?,
             }
-            Ok(Run::Ran(events))
+            Ok(Run::Ran(messaging))
         } else {
             if self.is_dirty {
                 self.check_consistent(self.game_outcome.is_some());
@@ -216,7 +213,7 @@ where
 
     fn run_add_player(
         &mut self,
-        state: &mut Messaging<Server, Client>,
+        messaging: &mut Messaging<Server, Client>,
         index: usize,
     ) -> anyhow::Result<()> {
         let player = self.server.add_player_requests.swap_remove(index);
@@ -228,18 +225,18 @@ where
 
         let player_id = client_init.local_player_id();
 
-        state.record_event(event::PlayerConfirmed { player_id });
+        messaging.record_event(event::PlayerConfirmed { player_id });
 
         self.clients.insert(player_id, SyncClient::new(client_init));
         self.queue_server_outbound(outbound);
-        state.record_events(events);
+        messaging.record_events(events);
 
         Ok(())
     }
 
     fn run_outgoing(
         &mut self,
-        state: &mut Messaging<Server, Client>,
+        messaging: &mut Messaging<Server, Client>,
         client_id: spru::player::Id,
     ) -> anyhow::Result<()> {
         println!("run_outgoing {client_id}");
@@ -257,7 +254,7 @@ where
         } = self.server.server.apply_signal(client_id, signal)?;
 
         self.queue_server_outbound(outbound);
-        state.record_events(events);
+        messaging.record_events(events);
 
         Ok(())
     }
@@ -408,10 +405,13 @@ where
             ),
         >,
     ) {
+        let mut n = 0;
         for (id, signal) in outbound {
+            n += 1;
             let client = self.clients.get_mut(&id).unwrap();
             client.incoming_queue.push_back(signal);
         }
+        println!("enqueued {n} signals from server");
     }
 
     fn queue_client_outbound(
@@ -421,6 +421,17 @@ where
         for signal in outbound {
             client.outgoing_queue.push_back(signal);
         }
+    }
+
+    #[allow(dead_code)]
+    fn get_client(&self, player_id: player::Id) -> Result<&SyncClient<Client, Lookup>, RunnerError> {
+        self.clients.get(&player_id)
+            .ok_or(RunnerError::ClientDoesNotExist(player_id))
+    }
+
+    fn get_client_mut(&mut self, player_id: player::Id) -> Result<&mut SyncClient<Client, Lookup>, RunnerError> {
+        self.clients.get_mut(&player_id)
+            .ok_or(RunnerError::ClientDoesNotExist(player_id))
     }
 }
 

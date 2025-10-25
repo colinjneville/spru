@@ -23,3 +23,7 @@ derive_more = { workspace = true, features = ["from"] }
 derive-where.workspace = true
 
 serde.workspace = true
+
+[dev-dependencies]
+tracing.workspace = true
+tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
