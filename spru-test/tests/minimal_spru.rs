@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use spru_test::*;
 
-use rand::seq::{IndexedRandom as _, };
+use rand::seq::IndexedRandom as _;
 
 #[test]
 fn minimal_spru() {
@@ -14,12 +14,17 @@ fn minimal_spru() {
         minimal::Server,
         minimal::Client,
         spru_util::lookup::Standalone<minimal::State>,
-    >::new(minimal::GameInit(minimal::LobbyInfo), minimal::PlayerInit, minimal::Reaction).unwrap();
+    >::new(
+        minimal::GameInit(minimal::LobbyInfo),
+        minimal::PlayerInit,
+        minimal::Reaction,
+    )
+    .unwrap();
 
     for color in minimal::PLAYER_COLORS {
         runner.add_player(color).unwrap();
     }
-    
+
     let mut player_ids = vec![];
     let mut winner = None;
 
@@ -28,7 +33,7 @@ fn minimal_spru() {
     'game: loop {
         match runner.run_one().unwrap() {
             sync_runner::Run::Idle => break 'game,
-            sync_runner::Run::Ran(events) => { 
+            sync_runner::Run::Ran(events) => {
                 print!(".");
                 for event in events {
                     match event {
@@ -39,27 +44,36 @@ fn minimal_spru() {
                             if player_ids.len() == minimal::PLAYER_COLORS.len() {
                                 winner = player_ids.choose(&mut rng).copied();
                                 println!("winner: {}", winner.unwrap());
-                                
+
                                 let interaction = minimal::Interaction;
-                                runner.stage_interaction(winner.unwrap(), interaction).unwrap();
+                                runner
+                                    .stage_interaction(winner.unwrap(), interaction)
+                                    .unwrap();
                             }
                         }
-                        Event::InteractionStaged(event::InteractionStaged { player_id, pending_interaction_id }) => {
-                            runner.apply_interactions(player_id, Some(pending_interaction_id))
+                        Event::InteractionStaged(event::InteractionStaged {
+                            player_id,
+                            pending_interaction_id,
+                        }) => {
+                            runner
+                                .apply_interactions(player_id, Some(pending_interaction_id))
                                 .unwrap();
                         }
                         Event::ServerEvent(event::ServerEvent { event }) => match event {
-                                spru::server::Event::GameComplete(game_complete) => {
-                                    game_outcomes.insert(None, game_complete.game_outcome);
-                                }
-                                _ => { }
-                            },
-                        Event::ClientEvent(event::ClientEvent { player_id, event }) => match event {
+                            spru::server::Event::GameComplete(game_complete) => {
+                                game_outcomes.insert(None, game_complete.game_outcome);
+                            }
+                            _ => {}
+                        },
+                        Event::ClientEvent(event::ClientEvent { player_id, event }) => {
+                            match event {
                                 spru::client::Event::GameComplete(game_complete) => {
-                                    game_outcomes.insert(Some(player_id), game_complete.game_outcome);
+                                    game_outcomes
+                                        .insert(Some(player_id), game_complete.game_outcome);
                                 }
-                                _ => { }
-                            },
+                                _ => {}
+                            }
+                        }
                     }
                 }
             }

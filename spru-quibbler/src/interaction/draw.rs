@@ -5,8 +5,7 @@ use tracing::instrument;
 
 use crate::reaction;
 
-#[derive(Debug, Clone)]
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum Draw {
     Deck,
     Discard,
@@ -20,11 +19,10 @@ impl spru::Interaction for Draw {
 
     #[instrument(skip_all, ret, err)]
     fn apply<'l, Lookup>(
-        &self, 
-        interactor: &mut super::Interactor<Lookup>, 
-    ) 
-        -> spru::interaction::Result<()> 
-    where 
+        &self,
+        interactor: &mut super::Interactor<Lookup>,
+    ) -> spru::interaction::Result<()>
+    where
         Lookup: spru::item::Lookup<State = Self::State>,
     {
         let player_id = interactor.context().player;
@@ -32,7 +30,7 @@ impl spru::Interaction for Draw {
         // This should be the only place we *need* to check if it is our turn, as the fsm
         // should always be on ToDraw when it is not our turn
         interactor.get(root.current_turn)?.expect(&player_id)?;
-        
+
         let players = follow!(root => root.players)?;
         let player = players.get(player_id)?;
 
@@ -46,16 +44,16 @@ impl spru::Interaction for Draw {
             }
             Draw::Discard => {
                 let discard = follow!(root => root.discard)?;
-                    
-                let card = discard.top()
-                    .expect("Discard cannot be empty");
+
+                let card = discard.top().expect("Discard cannot be empty");
                 discard.update(pile::pop_top());
 
-                interactor.get(player.hand)?
+                interactor
+                    .get(player.hand)?
                     .update(pile::push_top(card.clone()));
             }
         }
-        
+
         Ok(())
     }
 }

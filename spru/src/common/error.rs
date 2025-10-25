@@ -2,16 +2,14 @@ use std::{fmt, ops, sync::Arc};
 
 use crate::{action, item::lookup, transaction};
 
-#[derive(Debug)]
-#[derive(thiserror::Error)]
+#[derive(Debug, thiserror::Error)]
 pub enum Save {
     #[error(transparent)]
     Serialization(#[from] rmp_serde::encode::Error),
 }
 
 #[doc(hidden)]
-#[derive(Debug)]
-#[derive(thiserror::Error)]
+#[derive(Debug, thiserror::Error)]
 pub enum Load {
     #[error(transparent)]
     Deserialization(#[from] rmp_serde::decode::Error),
@@ -32,15 +30,11 @@ pub struct AnyError {
 
 impl AnyError {
     pub fn new<E: std::error::Error + Send + Sync + 'static>(e: E) -> Self {
-        Self {
-            inner: Box::new(e),
-        }
+        Self { inner: Box::new(e) }
     }
 
     pub fn new_boxed(e: Box<dyn std::error::Error + Send + Sync + 'static>) -> Self {
-        Self {
-            inner: e,
-        }
+        Self { inner: e }
     }
 
     pub fn get(&self) -> &(dyn std::error::Error + Send + Sync + 'static) {
@@ -48,18 +42,14 @@ impl AnyError {
     }
 
     pub fn try_cast<E: std::error::Error + Send + Sync + 'static>(self) -> Result<E, Self> {
-        let Self {
-            mut inner,
-        } = self;
+        let Self { mut inner } = self;
 
         match inner.downcast() {
             Ok(e) => return Ok(*e),
             Err(e) => inner = e,
         }
 
-        Err(Self {
-            inner,
-        })
+        Err(Self { inner })
     }
 }
 
@@ -95,8 +85,8 @@ pub trait PsuedoError: fmt::Debug + fmt::Display {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)>;
 
     fn into_error(self) -> ImplError<Self>
-    where 
-        Self: Sized 
+    where
+        Self: Sized,
     {
         ImplError::new(self)
     }
@@ -119,9 +109,7 @@ impl<E> ImplError<E> {
 impl<E: ?Sized> ImplError<E> {
     pub fn new_ref(e: &E) -> &Self {
         // SAFETY: transparent struct refs can be transmuted safely
-        unsafe {
-            std::mem::transmute(e)
-        }
+        unsafe { std::mem::transmute(e) }
     }
 }
 
@@ -140,19 +128,17 @@ impl<E: PsuedoError> std::error::Error for ImplError<E> {
 #[derive(Debug)]
 pub(crate) struct RecoverableError<E> {
     pub initial_error: E,
-    pub recovery_error: Option<action::Error>,
+    pub recovery_error: Option<Box<action::Error>>,
 }
 
 impl<E: PsuedoError + 'static> ops::Deref for RecoverableError<E> {
     type Target = dyn std::error::Error;
-    
+
     fn deref(&self) -> &Self::Target {
         // SAFETY: This is safe as long as the layout of a containing type (RecoverableError)
         // does not change between identical layout fields (E/ImplError<E>).
         // At the very least, Miri does not complain
-        let e: &RecoverableError::<ImplError<E>> = unsafe {
-            std::mem::transmute(self)
-        };
+        let e: &RecoverableError<ImplError<E>> = unsafe { std::mem::transmute(self) };
         e
     }
 }
@@ -166,7 +152,7 @@ impl<E> RecoverableError<E> {
     }
 
     pub(crate) fn set_recovery_error(&mut self, recovery_error: action::Error) {
-        self.recovery_error = Some(recovery_error);
+        self.recovery_error = Some(Box::new(recovery_error));
     }
 
     pub fn is_recovered(&self) -> bool {
@@ -184,15 +170,15 @@ impl<E> RecoverableError<E> {
 
         let initial_error: E2 = initial_error.into();
 
-        RecoverableError { 
-            initial_error, 
+        RecoverableError {
+            initial_error,
             recovery_error,
         }
     }
 
     pub(crate) fn map_with<F, E2>(self, f: F) -> RecoverableError<E2>
-    where 
-        F: FnOnce(E) -> E2
+    where
+        F: FnOnce(E) -> E2,
     {
         let Self {
             initial_error,
@@ -207,8 +193,8 @@ impl<E> RecoverableError<E> {
         }
     }
 
-    pub(crate) fn into_error(self) -> RecoverableError<ImplError<E>> 
-    where 
+    pub(crate) fn into_error(self) -> RecoverableError<ImplError<E>>
+    where
         E: PsuedoError,
     {
         let Self {
@@ -216,9 +202,9 @@ impl<E> RecoverableError<E> {
             recovery_error,
         } = self;
 
-        RecoverableError { 
-            initial_error: initial_error.into_error(), 
-            recovery_error, 
+        RecoverableError {
+            initial_error: initial_error.into_error(),
+            recovery_error,
         }
     }
 }
@@ -253,8 +239,7 @@ impl<E: std::error::Error + 'static> std::error::Error for RecoverableError<E> {
     }
 }
 
-#[derive(Debug)]
-#[derive(thiserror::Error)]
+#[derive(Debug, thiserror::Error)]
 #[error("Transaction undo failed: {0}")]
 pub(crate) enum UndoError {
     Record(action::Error),
@@ -266,7 +251,6 @@ impl From<action::Error> for UndoError {
         Self::Record(value)
     }
 }
-
 
 #[derive(Debug)]
 pub(crate) struct FatalErrorState(Result<(), FatalError>);
@@ -288,7 +272,7 @@ impl FatalErrorState {
     /// i32::parse("not a number")
     ///     .map_err(fatal_error_state.into_fatal())?;
     /// ```
-    pub(crate) fn into_fatal<E: Into<AnyError>>(&mut self) -> impl FnOnce(E) -> FatalError {
+    pub(crate) fn make_fatal<E: Into<AnyError>>(&mut self) -> impl FnOnce(E) -> FatalError {
         |err| {
             // Only keep the first fatal error, because any further errors were born of an already faulty state
             if let Err(err) = self.check() {
@@ -302,7 +286,6 @@ impl FatalErrorState {
     }
 }
 
-
 #[derive(Debug, Clone)]
 pub struct FatalError {
     inner: std::sync::Arc<AnyError>,
@@ -310,7 +293,7 @@ pub struct FatalError {
 
 impl FatalError {
     fn new(inner: AnyError) -> Self {
-        Self { 
+        Self {
             inner: Arc::new(inner),
         }
     }
@@ -318,7 +301,11 @@ impl FatalError {
 
 impl fmt::Display for FatalError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "The server or client is inoperable due to implementation error: {}", self.inner)
+        write!(
+            f,
+            "The server or client is inoperable due to implementation error: {}",
+            self.inner
+        )
     }
 }
 

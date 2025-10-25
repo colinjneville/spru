@@ -12,7 +12,13 @@ pub mod verbatim;
 pub(crate) type Rng = rand_chacha::ChaCha8Rng;
 
 pub trait AddSigned: Sized + Send + Sync + Copy + std::fmt::Debug + std::fmt::Display {
-    type Signed: Sized + Send + Sync + Copy + num_traits::Signed + std::fmt::Debug + std::fmt::Display;
+    type Signed: Sized
+        + Send
+        + Sync
+        + Copy
+        + num_traits::Signed
+        + std::fmt::Debug
+        + std::fmt::Display;
     fn checked_add(self, rhs: Self::Signed) -> Option<Self>;
     fn saturating_add(self, rhs: Self::Signed) -> Self;
     fn into_signed(self) -> Self::Signed;
@@ -29,7 +35,7 @@ macro_rules! signed_unsigned {
             fn checked_add(self, rhs: Self::Signed) -> Option<Self> {
                 self.$checked(rhs)
             }
-        
+
             fn saturating_add(self, rhs: Self::Signed) -> Self {
                 self.$saturating(rhs)
             }

@@ -39,14 +39,18 @@ impl<T> State<T> {
         self.items.len()
     }
 
-    pub fn expect<U>(&self, expected_value: &U) -> Result<&T, error::Expected> 
-    where 
+    pub fn is_empty(&self) -> bool {
+        self.items.is_empty()
+    }
+
+    pub fn expect<U>(&self, expected_value: &U) -> Result<&T, error::Expected>
+    where
         T: PartialEq<U>,
     {
-        if let Some(current) = self.current() {
-            if current == expected_value {
-                return Ok(current);
-            }
+        if let Some(current) = self.current()
+            && current == expected_value
+        {
+            return Ok(current);
         }
         Err(error::Expected)
     }
@@ -55,12 +59,7 @@ impl<T> State<T> {
 pub fn create<T>(items: Vec<T>, position: usize) -> Create<T> {
     assert!(items.is_empty() || position < items.len());
 
-    verbatim::create(
-        State {
-            items,
-            position,
-        }
-    )
+    verbatim::create(State { items, position })
 }
 
 pub fn default<T>() -> Create<T> {
@@ -123,7 +122,7 @@ pub struct Rotate<T> {
 }
 
 impl<T> spru::action::Update for Rotate<T>
-where 
+where
     Self: Clone + spru::Serial,
 {
     type T = State<T>;
@@ -131,10 +130,7 @@ where
 
     #[allow(refining_impl_trait)]
     fn update(&self, value: &mut Self::T) -> AnyResult<Option<Self::Undo>> {
-        let Self {
-            reverse,
-            _p,
-        } = *self;
+        let Self { reverse, _p } = *self;
 
         let len = value.items.len();
         if len > 0 {
@@ -145,14 +141,12 @@ where
                 } else {
                     old_index - 1
                 }
+            } else if old_index == len - 1 {
+                0
             } else {
-                if old_index == len - 1 {
-                    0
-                } else {
-                    old_index + 1
-                }
+                old_index + 1
             };
-            
+
             if old_index != new_index {
                 value.position = new_index;
                 return Ok(Some(Self {
@@ -183,29 +177,21 @@ where
 
     #[allow(refining_impl_trait)]
     fn update(&self, value: &mut Self::T) -> AnyResult<Option<Self::Undo>> {
-        let Self {
-            mut position,
-            _p,
-        } = *self;
+        let Self { mut position, _p } = *self;
 
         if position >= value.items.len() {
             Err(Error::InvalidPosition(position, value.items.len()).into())
         } else if position != value.position {
             std::mem::swap(&mut value.position, &mut position);
 
-            Ok(Some(Self {
-                position,
-                _p,
-            }))
+            Ok(Some(Self { position, _p }))
         } else {
             Ok(None)
         }
     }
 }
 
-#[derive(Debug, Clone, Default)]
-#[derive(serde::Serialize, serde::Deserialize)]
-#[derive(spru::action::Update)]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize, spru::action::Update)]
 #[must_use]
 pub struct Insert<T> {
     position: usize,
@@ -220,7 +206,6 @@ where
 {
     type T = State<T>;
     type Undo = Remove<T>;
-
 
     #[allow(refining_impl_trait)]
     fn update(&self, value: &mut Self::T) -> AnyResult<Self::Undo> {
@@ -242,8 +227,10 @@ where
                 value.position += 1;
             }
 
-
-            Ok(Remove { position, _p: PhantomData })
+            Ok(Remove {
+                position,
+                _p: PhantomData,
+            })
         } else {
             Err(Error::InvalidPosition(position, value.items.len()).into())
         }
@@ -259,7 +246,7 @@ pub struct Remove<T> {
 }
 
 impl<T> spru::action::Update for Remove<T>
-where 
+where
     Self: Clone + spru::Serial,
 {
     type T = State<T>;
@@ -267,10 +254,7 @@ where
 
     #[allow(refining_impl_trait)]
     fn update(&self, value: &mut Self::T) -> AnyResult<Self::Undo> {
-        let Self {
-            position,
-            _p,
-        } = *self;
+        let Self { position, _p } = *self;
 
         if position < value.items.len() {
             let set_to_inserted = position == value.position;
@@ -281,16 +265,18 @@ where
             if value.position == value.items.len() {
                 value.position = 0;
             }
-            Ok(Insert { position, item, set_to_inserted })
+            Ok(Insert {
+                position,
+                item,
+                set_to_inserted,
+            })
         } else {
             Err(Error::InvalidPosition(position, value.items.len()).into())
         }
     }
 }
 
-#[derive(Debug, Clone)]
-#[derive(spru::FromInfallible)]
-#[derive(thiserror::Error)]
+#[derive(Debug, Clone, spru::FromInfallible, thiserror::Error)]
 #[non_exhaustive]
 pub enum Error {
     #[error("Invalid position {0}, len() is {1}")]

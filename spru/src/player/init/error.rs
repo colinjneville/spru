@@ -1,7 +1,10 @@
 use std::{any, fmt, ops};
 
-use crate::{action, common::error::{AnyError, PsuedoError}, item, player};
-
+use crate::{
+    action,
+    common::error::{AnyError, PsuedoError},
+    item, player,
+};
 
 #[derive(Debug)]
 pub struct Error {
@@ -25,7 +28,10 @@ impl Error {
         }
     }
 
-    pub(crate) fn with_context<PlayerInit: player::Init>(mut self, player_init: &PlayerInit) -> Self {
+    pub(crate) fn with_context<PlayerInit: player::Init>(
+        mut self,
+        player_init: &PlayerInit,
+    ) -> Self {
         self.context = Some(Context::new(player_init));
         self
     }
@@ -55,10 +61,7 @@ impl<E: std::error::Error + Send + Sync + 'static> From<E> for Error {
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let Self {
-            kind,
-            context,
-        } = self;
+        let Self { kind, context } = self;
 
         if let Some(context) = context {
             write!(f, "{context}")?;
@@ -110,9 +113,7 @@ impl Context {
 
 impl fmt::Display for Context {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let Self {
-            player_init_name,
-        } = self;
+        let Self { player_init_name } = self;
 
         write!(f, "Player Initializer '{player_init_name}'")?;
 

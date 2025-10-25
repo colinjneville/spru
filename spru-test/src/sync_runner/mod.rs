@@ -1,13 +1,22 @@
-use std::{collections::{HashMap, VecDeque}, fmt};
+use std::{
+    collections::{HashMap, VecDeque},
+    fmt,
+};
 
 use derive_where::derive_where;
 use rand::{Rng, SeedableRng};
 use spru::player;
 
-use crate::{event, Messaging};
+use crate::{Messaging, event};
 
-pub trait Anyhow: std::error::Error + Send + Sync + 'static { }
-impl<E: std::error::Error + Send + Sync + 'static> Anyhow for E { }
+#[derive(Debug, thiserror::Error)]
+pub enum RunnerError {
+    #[error("Client {0} does not exist")]
+    ClientDoesNotExist(player::Id),
+}
+
+pub trait Anyhow: std::error::Error + Send + Sync + 'static {}
+impl<E: std::error::Error + Send + Sync + 'static> Anyhow for E {}
 
 struct SyncServer<Server: spru::Server> {
     server: Server,
@@ -66,23 +75,20 @@ pub struct SyncRunner<Server: spru::Server, Client: spru::Client, Lookup> {
     is_dirty: bool,
 }
 
-impl<Server, Client, Lookup> 
-    SyncRunner<Server, Client, Lookup> 
+impl<Server, Client, Lookup> SyncRunner<Server, Client, Lookup>
 where
     Server: spru::Server,
-    Client: spru::Client<
-        Common = Server::Common, 
-        GameOutcome: fmt::Debug + PartialEq + Clone,
-    >,
+    Client: spru::Client<Common = Server::Common, GameOutcome: fmt::Debug + PartialEq + Clone>,
     Lookup: spru::item::Lookup<State = Client::State> + Default,
 {
     pub fn new<GameInit>(
-        game_init: GameInit, 
+        game_init: GameInit,
         player_init: Server::PlayerInit,
         reaction: Server::Reaction,
     ) -> anyhow::Result<Self>
-    where 
-        GameInit: spru::game::Init<State = Server::State, Action = Server::Action, Root = Server::Root>,
+    where
+        GameInit:
+            spru::game::Init<State = Server::State, Action = Server::Action, Root = Server::Root>,
     {
         let spru_server = Server::init(game_init, player_init, reaction)?;
         let server = SyncServer::new(spru_server);
@@ -96,7 +102,10 @@ where
         })
     }
 
-    pub fn add_player(&mut self, player: <Server::PlayerInit as spru::player::Init>::In) -> anyhow::Result<()> {
+    pub fn add_player(
+        &mut self,
+        player: <Server::PlayerInit as spru::player::Init>::In,
+    ) -> anyhow::Result<()> {
         self.is_dirty = true;
 
         self.server.add_player_requests.push(player);
@@ -107,32 +116,40 @@ where
         self.clients.keys().copied()
     }
 
-    pub fn stage_interaction(&mut self, player_id: player::Id, interaction: Client::Interaction)
-        -> Result<(), ()>
-    {
+    pub fn stage_interaction(
+        &mut self,
+        player_id: player::Id,
+        interaction: Client::Interaction,
+    ) -> Result<(), RunnerError> {
         self.client_command(player_id, ClientCommand::StageInteraction(interaction))
     }
 
-    pub fn apply_interactions(&mut self, player_id: player::Id, pending: Option<spru::interaction::Pending>)
-        -> Result<(), ()>
-    {
+    pub fn apply_interactions(
+        &mut self,
+        player_id: player::Id,
+        pending: Option<spru::interaction::Pending>,
+    ) -> Result<(), RunnerError> {
         self.client_command(player_id, ClientCommand::ApplyInteractions(pending))
     }
 
-    pub fn revert_interactions(&mut self, player_id: player::Id, pending: Option<spru::interaction::Pending>)
-        -> Result<(), ()>
-    {
+    pub fn revert_interactions(
+        &mut self,
+        player_id: player::Id,
+        pending: Option<spru::interaction::Pending>,
+    ) -> Result<(), RunnerError> {
         self.client_command(player_id, ClientCommand::RevertInteractions(pending))
     }
 
-    fn client_command(&mut self, player_id: player::Id, command: ClientCommand<Client>) 
-        -> Result<(), ()> 
-    {
+    fn client_command(
+        &mut self,
+        player_id: player::Id,
+        command: ClientCommand<Client>,
+    ) -> Result<(), RunnerError> {
         if let Some(client) = self.clients.get_mut(&player_id) {
             client.user_incoming_queue.push_back(command);
             Ok(())
         } else {
-            Err(())
+            Err(RunnerError::ClientDoesNotExist(player_id))
         }
     }
 
@@ -144,10 +161,12 @@ where
         for i in 0..self.server.add_player_requests.len() {
             picker.add_choice(Choice::AddPlayer(i));
         }
-        
+
         for (&id, client) in &self.clients {
             // TODO this is kinda hacky
-            if !client.incoming_queue.is_empty() || matches!(&client.state, SyncClientState::Pending(_)) {
+            if !client.incoming_queue.is_empty()
+                || matches!(&client.state, SyncClientState::Pending(_))
+            {
                 picker.add_choice(Choice::Incoming(id));
             }
             if let SyncClientState::Initialized(initialized) = &client.state {
@@ -180,18 +199,26 @@ where
         }
     }
 
-    fn check_consistent(&self, is_complete: bool) {
+    fn check_consistent(&self, _is_complete: bool) {
         // TODO more checks
-        
-        for (id, client) in &self.clients {
-            let SyncClientState::Initialized(initialized) = &client.state
-                else { unreachable!("Runner is idle, but client {id} is uninitialized") };
 
-            assert_eq!(initialized.game_outcome, self.game_outcome, "Runner is idle, but client {id}'s GameOutcome doesn't match the server's");
+        for (id, client) in &self.clients {
+            let SyncClientState::Initialized(initialized) = &client.state else {
+                unreachable!("Runner is idle, but client {id} is uninitialized")
+            };
+
+            assert_eq!(
+                initialized.game_outcome, self.game_outcome,
+                "Runner is idle, but client {id}'s GameOutcome doesn't match the server's"
+            );
         }
     }
 
-    fn run_add_player(&mut self, state: &mut Messaging<Server, Client>, index: usize) -> anyhow::Result<()> {
+    fn run_add_player(
+        &mut self,
+        state: &mut Messaging<Server, Client>,
+        index: usize,
+    ) -> anyhow::Result<()> {
         let player = self.server.add_player_requests.swap_remove(index);
         let spru::server::Output {
             outbound,
@@ -201,9 +228,7 @@ where
 
         let player_id = client_init.local_player_id();
 
-        state.record_event(event::PlayerConfirmed {
-            player_id,
-        });
+        state.record_event(event::PlayerConfirmed { player_id });
 
         self.clients.insert(player_id, SyncClient::new(client_init));
         self.queue_server_outbound(outbound);
@@ -212,12 +237,17 @@ where
         Ok(())
     }
 
-    fn run_outgoing(&mut self, state: &mut Messaging<Server, Client>, client_id: spru::player::Id) -> anyhow::Result<()> {
+    fn run_outgoing(
+        &mut self,
+        state: &mut Messaging<Server, Client>,
+        client_id: spru::player::Id,
+    ) -> anyhow::Result<()> {
         println!("run_outgoing {client_id}");
 
         let client = self.clients.get_mut(&client_id).unwrap();
-        let SyncClientState::Initialized(initialized) = &mut client.state
-            else { unreachable!("Uninitialized client has no outgoing directives") };
+        let SyncClientState::Initialized(initialized) = &mut client.state else {
+            unreachable!("Uninitialized client has no outgoing directives")
+        };
         let signal = initialized.outgoing_queue.pop_front().unwrap();
 
         let spru::server::Output {
@@ -232,40 +262,57 @@ where
         Ok(())
     }
 
-    fn run_incoming(&mut self, messaging: &mut Messaging<Server, Client>, client_id: player::Id) -> anyhow::Result<()> {
+    fn run_incoming(
+        &mut self,
+        messaging: &mut Messaging<Server, Client>,
+        client_id: player::Id,
+    ) -> anyhow::Result<()> {
         println!("run_incoming {client_id}");
 
         let mut client = self.clients.remove(&client_id).unwrap();
-        client.state = SyncClientState::Initialized(match std::mem::replace(&mut client.state, SyncClientState::Invalid) {
-            SyncClientState::Pending(init) => self.run_pending_client(messaging, init)?,
-            SyncClientState::Initialized(sync_client_initialized) 
-                => self.run_initialized_client(messaging, client_id, &mut client, sync_client_initialized)?,
-            SyncClientState::Invalid => unreachable!(),
-        });
+        client.state = SyncClientState::Initialized(
+            match std::mem::replace(&mut client.state, SyncClientState::Invalid) {
+                SyncClientState::Pending(init) => self.run_pending_client(messaging, init)?,
+                SyncClientState::Initialized(sync_client_initialized) => self
+                    .run_initialized_client(
+                        messaging,
+                        client_id,
+                        &mut client,
+                        sync_client_initialized,
+                    )?,
+                SyncClientState::Invalid => unreachable!(),
+            },
+        );
 
         self.clients.insert(client_id, client);
         Ok(())
     }
 
-    fn run_user_command(&mut self, messaging: &mut Messaging<Server, Client>, client_id: spru::player::Id) -> anyhow::Result<()> {
+    fn run_user_command(
+        &mut self,
+        messaging: &mut Messaging<Server, Client>,
+        client_id: spru::player::Id,
+    ) -> anyhow::Result<()> {
         println!("run_user_interaction {client_id}");
 
         let client = self.clients.get_mut(&client_id).unwrap();
-        let SyncClientState::Initialized(initialized) = &mut client.state
-            else { unreachable!("Uninitialized client can't run user command") };
+        let SyncClientState::Initialized(initialized) = &mut client.state else {
+            unreachable!("Uninitialized client can't run user command")
+        };
         let command = client.user_incoming_queue.pop_front().unwrap();
-        
+
         let outbound = match command {
             ClientCommand::StageInteraction(arg) => {
                 let spru::client::Output {
                     outbound,
                     events,
                     ret: pending_interaction_id,
-                } = initialized.client.stage_interaction(&mut initialized.lookup, arg)?;
+                } = initialized
+                    .client
+                    .stage_interaction(&mut initialized.lookup, arg)?;
 
                 // TODO unify these
-                let events = events.into_iter()
-                    .map(|e| (client_id, e));
+                let events = events.into_iter().map(|e| (client_id, e));
                 messaging.record_events(events);
 
                 messaging.record_event(event::InteractionStaged {
@@ -280,10 +327,11 @@ where
                     outbound,
                     events,
                     ret: (),
-                } = initialized.client.apply_interactions(&mut initialized.lookup, arg)?;
+                } = initialized
+                    .client
+                    .apply_interactions(&mut initialized.lookup, arg)?;
 
-                let events = events.into_iter()
-                    .map(|e| (client_id, e));
+                let events = events.into_iter().map(|e| (client_id, e));
                 messaging.record_events(events);
 
                 outbound
@@ -293,42 +341,50 @@ where
                     outbound,
                     events,
                     ret: (),
-                } = initialized.client.revert_interactions(&mut initialized.lookup, arg)?;
+                } = initialized
+                    .client
+                    .revert_interactions(&mut initialized.lookup, arg)?;
 
-                let events = events.into_iter()
-                    .map(|e| (client_id, e));
+                let events = events.into_iter().map(|e| (client_id, e));
                 messaging.record_events(events);
 
                 outbound
             }
         };
-        
+
         Self::queue_client_outbound(initialized, outbound);
 
         Ok(())
     }
 
-    fn run_initialized_client(&mut self, messaging: &mut Messaging<Server, Client>, client_id: spru::player::Id, client: &mut SyncClient<Client, Lookup>, mut initialized: SyncClientInitialized<Client, Lookup>)
-        -> anyhow::Result<SyncClientInitialized<Client, Lookup>>
-    {
+    fn run_initialized_client(
+        &mut self,
+        messaging: &mut Messaging<Server, Client>,
+        client_id: spru::player::Id,
+        client: &mut SyncClient<Client, Lookup>,
+        mut initialized: SyncClientInitialized<Client, Lookup>,
+    ) -> anyhow::Result<SyncClientInitialized<Client, Lookup>> {
         let directive = client.incoming_queue.pop_front().unwrap();
         let spru::client::Output {
             outbound,
             events,
             ret: (),
-        } = initialized.client.signal(&mut initialized.lookup, directive)?;
+        } = initialized
+            .client
+            .signal(&mut initialized.lookup, directive)?;
 
         Self::queue_client_outbound(&mut initialized, outbound);
-        let events = events.into_iter()
-            .map(|e| (client_id, e));
+        let events = events.into_iter().map(|e| (client_id, e));
         messaging.record_events(events);
 
         Ok(initialized)
     }
 
-    fn run_pending_client(&mut self, _messaging: &mut Messaging<Server, Client>, init: spru::common::Seed<Server::Common>) 
-        -> anyhow::Result<SyncClientInitialized<Client, Lookup>> 
-    {
+    fn run_pending_client(
+        &mut self,
+        _messaging: &mut Messaging<Server, Client>,
+        init: spru::common::Seed<Server::Common>,
+    ) -> anyhow::Result<SyncClientInitialized<Client, Lookup>> {
         let mut lookup = Lookup::default();
 
         let client = Client::init(&mut lookup, init)?;
@@ -343,14 +399,25 @@ where
         Ok(client)
     }
 
-    fn queue_server_outbound(&mut self, outbound: impl IntoIterator<Item = (spru::player::Id, spru::common::signal::ToClient<Server::Common>)>) {
+    fn queue_server_outbound(
+        &mut self,
+        outbound: impl IntoIterator<
+            Item = (
+                spru::player::Id,
+                spru::common::signal::ToClient<Server::Common>,
+            ),
+        >,
+    ) {
         for (id, signal) in outbound {
             let client = self.clients.get_mut(&id).unwrap();
             client.incoming_queue.push_back(signal);
         }
     }
 
-    fn queue_client_outbound(client: &mut SyncClientInitialized<Client, Lookup>, outbound: impl IntoIterator<Item = spru::common::signal::ToServer<Server::Common>>) {
+    fn queue_client_outbound(
+        client: &mut SyncClientInitialized<Client, Lookup>,
+        outbound: impl IntoIterator<Item = spru::common::signal::ToServer<Server::Common>>,
+    ) {
         for signal in outbound {
             client.outgoing_queue.push_back(signal);
         }

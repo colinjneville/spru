@@ -16,7 +16,7 @@ impl<'r, Root> crate::interactor::GetRoot for Context<'r, Root> {
     type Root = Root;
 
     fn get_root(&self) -> &Self::Root {
-        &self.root
+        self.root
     }
 }
 
@@ -49,7 +49,9 @@ impl<Trigger, GameOutcome> interactor::SetGameOutcome for Output<Trigger, GameOu
     }
 }
 
-impl<Trigger, GameOutcome> interactor::TakeGameOutcome<GameOutcome> for Output<Trigger, GameOutcome> {
+impl<Trigger, GameOutcome> interactor::TakeGameOutcome<GameOutcome>
+    for Output<Trigger, GameOutcome>
+{
     fn take_game_outcome(&mut self) -> Option<GameOutcome> {
         self.game_outcome.take()
     }
@@ -62,13 +64,26 @@ pub trait Reaction {
     type Root;
     type Trigger;
     type GameOutcome;
-    
+
     fn apply<'l, 'r>(
-        &self, 
-        interactor: &mut Interactor<'l, 'r, Self::State, Self::Action, Self::Root, Self::Trigger, Self::GameOutcome>, 
-        trigger: Self::Trigger
-    ) 
-        -> action::Result<()>;
+        &self,
+        interactor: &mut Interactor<
+            'l,
+            'r,
+            Self::State,
+            Self::Action,
+            Self::Root,
+            Self::Trigger,
+            Self::GameOutcome,
+        >,
+        trigger: Self::Trigger,
+    ) -> action::Result<()>;
 }
 
-pub type Interactor<'l, 'r, State, Action, Root, Trigger, GameOutcome> = crate::Interactor<'l, Canonical<State>, Action, Context<'r, Root>, Output<Trigger, GameOutcome>>;
+pub type Interactor<'l, 'r, State, Action, Root, Trigger, GameOutcome> = crate::Interactor<
+    'l,
+    Canonical<State>,
+    Action,
+    Context<'r, Root>,
+    Output<Trigger, GameOutcome>,
+>;

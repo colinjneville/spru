@@ -11,8 +11,7 @@ use crate::common;
 
 pub type Index = u32;
 
-#[derive(Debug)]
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct Item<T> {
     id: IdT<T>,
     version: Version,
@@ -21,11 +20,7 @@ pub struct Item<T> {
 
 impl<T> Item<T> {
     pub(crate) fn new(id: IdT<T>, version: Version, state: T) -> Self {
-        Self {
-            id,
-            version,
-            state,
-        }
+        Self { id, version, state }
     }
 
     // Only to be used by macros for deserialization
@@ -35,11 +30,11 @@ impl<T> Item<T> {
         Self::new(id, version, state)
     }
 
-    pub fn id(self: &Self) -> IdT<T> {
+    pub fn id(&self) -> IdT<T> {
         self.id
     }
 
-    pub fn version(self: &Self) -> Version {
+    pub fn version(&self) -> Version {
         self.version
     }
 
@@ -90,8 +85,7 @@ impl<T> ops::Deref for Item<T> {
 }
 
 #[doc(hidden)]
-#[derive(Debug)]
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct Erased {
     id: Id,
     version: Version,
@@ -100,9 +94,8 @@ pub struct Erased {
 }
 
 impl Erased {
-    pub(crate) fn new<T>(item: &Item<T>) 
-        -> Result<Self, common::error::Save> 
-    where 
+    pub(crate) fn new<T>(item: &Item<T>) -> Result<Self, common::error::Save>
+    where
         T: serde::Serialize,
     {
         let Item {
@@ -115,22 +108,21 @@ impl Erased {
         Ok(Self {
             id,
             version,
-            state: rmp_serde::to_vec(state)?.into_boxed_slice()
+            state: rmp_serde::to_vec(state)?.into_boxed_slice(),
         })
     }
 
     #[doc(hidden)]
-    pub fn cast<Lookup, T>(&self, lookup: &mut Lookup) 
-        -> Result<(), common::error::Load> 
-    where 
+    pub fn cast<Lookup, T>(&self, lookup: &mut Lookup) -> Result<(), common::error::Load>
+    where
         Lookup: self::Lookup,
         T: lookup::Lookupable<Lookup::State> + serde::de::DeserializeOwned,
     {
         let id = IdT::new(self.id);
-        let value = rmp_serde::from_slice::<T>(&*self.state)?;
+        let value = rmp_serde::from_slice::<T>(&self.state)?;
         let item = Item::new(id, self.version, value);
         lookup.create(item)?;
-        
+
         Ok(())
     }
 }
@@ -146,15 +138,15 @@ impl<M> Mut<M> {
     }
 }
 
-impl<T, M: ops::DerefMut<Target=Item<T>>> ops::Deref for Mut<M> {
+impl<T, M: ops::DerefMut<Target = Item<T>>> ops::Deref for Mut<M> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
-        &**self.0
+        &self.0
     }
 }
 
-impl<T, M: ops::DerefMut<Target=Item<T>>> ops::DerefMut for Mut<M> {
+impl<T, M: ops::DerefMut<Target = Item<T>>> ops::DerefMut for Mut<M> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         Item::get_mut(&mut *self.0)
     }

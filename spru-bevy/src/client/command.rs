@@ -8,9 +8,7 @@ pub struct Init<Client: super::ClientSSS> {
 
 impl<Client: super::ClientSSS> prelude::Command for Init<Client> {
     fn apply(self, world: &mut bevy::ecs::world::World) {
-        let Self {
-            seed,
-        } = self;
+        let Self { seed } = self;
 
         let mut command_queue = bevy::ecs::world::CommandQueue::default();
 
@@ -28,8 +26,8 @@ impl<Client: super::ClientSSS> prelude::Command for Init<Client> {
 // }
 
 // impl<Client: super::ClientSSS> prelude::Command<prelude::Result<spru::interaction::Pending>> for StageInteraction<Client> {
-//     fn apply(self, world: &mut bevy::ecs::world::World) 
-//         -> prelude::Result<spru::interaction::Pending> 
+//     fn apply(self, world: &mut bevy::ecs::world::World)
+//         -> prelude::Result<spru::interaction::Pending>
 //     {
 //         use bevy::ecs::system::RunSystemOnce as _;
 
@@ -40,7 +38,7 @@ impl<Client: super::ClientSSS> prelude::Command for Init<Client> {
 //         } = self;
 
 //         let client_entity = world.run_system_once_with(super::system::find_client::<Client>, (game_id, client_id.clone()))
-//             .expect("System must be valid") 
+//             .expect("System must be valid")
 //             .ok_or("Client not found")?;
 
 //         let mut bundle = world.entity_mut(client_entity)
@@ -60,7 +58,7 @@ impl<Client: super::ClientSSS> prelude::Command for Init<Client> {
 //         ) = &mut bundle;
 
 //         let mut lookup = super::BevyLookup::new(world, entity_map.inner_mut(), client_id.0);
-        
+
 //         let result = super::system::stage_interaction(&mut lookup, runner, to_server, game_outcome, interaction);
 
 //         world.entity_mut(client_entity)
@@ -90,7 +88,7 @@ impl<Client: super::ClientSSS> prelude::Command for Init<Client> {
 //         } = self;
 
 //         let client_entity = world.run_system_once_with(super::system::find_client::<Client>, (game_id, client_id.clone()))
-//             .expect("System must be valid") 
+//             .expect("System must be valid")
 //             .ok_or("Client not found")?;
 
 //         let mut bundle = world.entity_mut(client_entity)
@@ -115,7 +113,7 @@ impl<Client: super::ClientSSS> prelude::Command for Init<Client> {
 
 //         world.entity_mut(client_entity)
 //             .insert(bundle);
-        
+
 //         Ok(result?)
 //     }
 // }
@@ -140,7 +138,7 @@ impl<Client: super::ClientSSS> prelude::Command for Init<Client> {
 //         } = self;
 
 //         let client_entity = world.run_system_once_with(super::system::find_client::<Client>, (game_id, client_id.clone()))
-//             .expect("System must be valid") 
+//             .expect("System must be valid")
 //             .ok_or("Client not found")?;
 
 //         let mut bundle = world.entity_mut(client_entity)

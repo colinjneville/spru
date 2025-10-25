@@ -5,19 +5,15 @@ edition = "2024"
 
 [features]
 default = []
-smol = ["dep:spru-smol", "dep:smol"]
 bevy = []
 
 [dependencies]
 spru = { path = "../spru" }
 spru-util = { path = "../spru-util" }
-spru-smol = { path = "../spru-smol", optional = true }
 
 telety.workspace = true
 amass.workspace = true
 tagset.workspace = true
-
-smol = { workspace = true, optional = true }
 
 anyhow.workspace = true
 thiserror.workspace = true

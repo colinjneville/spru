@@ -1,7 +1,9 @@
 use std::{fmt, ops};
 
-use crate::{common::error::{AnyError, PsuedoError}, item::lookup};
-
+use crate::{
+    common::error::{AnyError, PsuedoError},
+    item::lookup,
+};
 
 #[derive(Debug)]
 pub struct Error {
@@ -45,12 +47,9 @@ impl<E: Into<AnyError>> From<E> for Error {
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let Self {
-            kind,
-            context,
-        } = self;
+        let Self { kind, context } = self;
 
-        if let Some(context) = context{
+        if let Some(context) = context {
             write!(f, "{context}")?;
         } else {
             write!(f, "Action")?;
@@ -85,9 +84,7 @@ impl Context {
 
 impl fmt::Display for Context {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let Self {
-            action_name,
-        } = self;
+        let Self { action_name } = self;
 
         write!(f, "Action '{action_name}'")?;
 
@@ -111,4 +108,3 @@ impl fmt::Display for Kind {
         }
     }
 }
-

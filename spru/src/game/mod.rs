@@ -3,8 +3,7 @@ use std::fmt;
 
 pub use init::Init;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct Id(uuid::Uuid);
 
 impl Id {

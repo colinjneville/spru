@@ -2,7 +2,6 @@ use derive_where::derive_where;
 
 use crate::{common, interaction, record::Records, transaction};
 
-
 #[derive_where(Debug, Serialize, Deserialize; ToServerInternal<Common>)]
 pub struct ToServer<Common: crate::Common> {
     pub(crate) seq: common::SeqId,
@@ -19,7 +18,6 @@ pub(crate) enum ToServerInternal<Common: crate::Common> {
 pub(crate) struct ApplyInteraction<Common: crate::Common> {
     pub interaction: interaction::Staged<Common::Interaction>,
 }
-
 
 #[derive_where(Debug, Serialize, Deserialize; ToClientInternal<Common>)]
 pub struct ToClient<Common: crate::Common> {
@@ -50,4 +48,3 @@ pub(crate) struct ConfirmedTransaction<Common: crate::Common> {
 pub(crate) struct EndGame<Common: crate::Common> {
     pub game_outcome: Common::GameOutcome,
 }
-

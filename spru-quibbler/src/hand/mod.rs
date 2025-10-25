@@ -6,8 +6,7 @@ use telety::telety;
 
 use crate::data::Card;
 
-#[derive(Debug, Clone)]
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct State {
     cards: Vec<Card>,
 }
@@ -20,33 +19,27 @@ pub struct State {
 #[tagset(reserved(..8))]
 pub struct Actions;
 
-#[derive(Debug, Clone)]
-#[derive(spru::FromInfallible)]
+#[derive(Debug, Clone, spru::FromInfallible)]
 #[amass_telety(crate::hand)]
 pub enum Error {
     RemoveCard(RemoveCardError),
 }
 
-
-#[derive(Debug, Clone)]
-#[derive(serde::Serialize, serde::Deserialize)]
-#[derive(spru::action::Update)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, spru::action::Update)]
 pub struct AddCard {
     card: Card,
 }
 
 impl AddCard {
     pub fn new(card: Card) -> Self {
-        Self {
-            card,
-        }
+        Self { card }
     }
 }
 
 impl spru::action::Update for AddCard {
     type T = State;
     type Undo = RemoveCard;
-    
+
     #[allow(refining_impl_trait)]
     fn update(&self, value: &mut Self::T) -> AnyResult<Self::Undo> {
         value.cards.push(self.card.clone());
@@ -54,25 +47,21 @@ impl spru::action::Update for AddCard {
     }
 }
 
-#[derive(Debug, Clone)]
-#[derive(serde::Serialize, serde::Deserialize)]
-#[derive(spru::action::Update)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, spru::action::Update)]
 pub struct RemoveCard {
     card: Card,
 }
 
 impl RemoveCard {
     pub fn new(card: Card) -> Self {
-        Self {
-            card,
-        }
+        Self { card }
     }
 }
 
 impl spru::action::Update for RemoveCard {
     type T = State;
     type Undo = AddCard;
-    
+
     #[allow(refining_impl_trait)]
     fn update(&self, value: &mut Self::T) -> AnyResult<Option<Self::Undo>> {
         for (i, c) in value.cards.iter().enumerate().rev() {
@@ -81,12 +70,11 @@ impl spru::action::Update for RemoveCard {
                 return Ok(Some(AddCard::new(self.card.clone())));
             }
         }
-        return Err(RemoveCardError::CardDoesNotExist.into());
+        Err(RemoveCardError::CardDoesNotExist.into())
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[derive(thiserror::Error)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, thiserror::Error)]
 pub enum RemoveCardError {
     #[error("Card is not in hand.")]
     CardDoesNotExist,

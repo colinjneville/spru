@@ -2,7 +2,7 @@ use std::mem;
 
 use derive_where::derive_where;
 
-use rand::{seq::IndexedRandom, Rng};
+use rand::{Rng, seq::IndexedRandom};
 use spru::common::error::AnyResult;
 use tagset::tagset;
 use telety::telety;
@@ -24,10 +24,7 @@ impl<Die: self::Die> State<Die> {
 pub fn create<Die: self::Die>(die: Die) -> Create<Die> {
     let mut mock_rng = rand::rngs::mock::StepRng::new(0, 0);
     let current_face = die.roll(&mut mock_rng);
-    verbatim::create(State {
-        die,
-        current_face,
-    })
+    verbatim::create(State { die, current_face })
 }
 
 pub fn roll<Die: self::Die, R: rand::Rng>(state: &State<Die>, rng: &mut R) -> SetFace<Die> {
@@ -36,9 +33,7 @@ pub fn roll<Die: self::Die, R: rand::Rng>(state: &State<Die>, rng: &mut R) -> Se
 }
 
 pub fn set_face<Die: self::Die>(face: Die::Face) -> SetFace<Die> {
-    SetFace {
-        face,
-    }
+    SetFace { face }
 }
 
 pub fn destroy<Die: self::Die>() -> Destroy<Die> {
@@ -54,8 +49,7 @@ pub struct Actions<Die: self::Die>;
 pub type Create<Die> = verbatim::Create<State<Die>>;
 
 #[derive_where(Debug, Clone; Die::Face)]
-#[derive(serde::Serialize, serde::Deserialize)]
-#[derive(spru::action::Update)]
+#[derive(serde::Serialize, serde::Deserialize, spru::action::Update)]
 pub struct SetFace<Die: self::Die> {
     face: Die::Face,
 }
@@ -67,9 +61,7 @@ impl<Die: self::Die<Face: Clone>> spru::action::Update for SetFace<Die> {
     fn update(&self, value: &mut Self::T) -> AnyResult<impl Into<Option<Self::Undo>>> {
         let face = mem::replace(&mut value.current_face, self.face.clone());
 
-        Ok(Self {
-            face,
-        })
+        Ok(Self { face })
     }
 }
 
@@ -81,10 +73,9 @@ pub trait Die {
     fn roll<R: Rng>(&self, rng: &mut R) -> Self::Face;
 }
 
-/// A die with one of the first 'N' natural numbers as the faces, 
+/// A die with one of the first 'N' natural numbers as the faces,
 /// such as the standard 6-sided die, or a d20.
-#[derive(Debug, Clone, Default)]
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct DN<T>(T);
 
 impl<T> DN<T> {
@@ -98,10 +89,8 @@ impl<T> DN<T> {
 }
 
 impl<T> Die for DN<T>
-where T: num_traits::Zero
-    + rand::distr::uniform::SampleUniform 
-    + std::cmp::PartialOrd
-    + Clone
+where
+    T: num_traits::Zero + rand::distr::uniform::SampleUniform + std::cmp::PartialOrd + Clone,
 {
     type Face = T;
 
@@ -111,8 +100,7 @@ where T: num_traits::Zero
 }
 
 /// A die with individually specified faces of type T
-#[derive(Debug, Clone, Default)]
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct Custom<T>(Vec<T>);
 
 impl<T> Custom<T> {

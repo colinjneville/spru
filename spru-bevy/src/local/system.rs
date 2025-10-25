@@ -12,15 +12,14 @@ pub fn propagate_local_queues<Server, Client>(
         &mut crate::client::component::ToServer<Client>,
         &crate::client::component::ClientId,
     )>,
-)
-where 
+) where
     Server: crate::server::ServerSSS,
-    Client: crate::client::ClientSSS<
-        Common = Server::Common,
-    >,
+    Client: crate::client::ClientSSS<Common = Server::Common>,
 {
     for (game_id, mut from_client, mut to_client) in q_server {
-        for (client_game_id, mut from_server, mut to_server, client_player_id) in q_client.reborrow() {
+        for (client_game_id, mut from_server, mut to_server, client_player_id) in
+            q_client.reborrow()
+        {
             if game_id == client_game_id {
                 let mut count = 0;
                 while let Some(signal) = to_client.dequeue(client_player_id.0) {
@@ -28,7 +27,9 @@ where
                     count += 1;
                 }
                 if count > 0 {
-                    prelude::trace!("[{game_id}] Transfered {count} signals to local client {client_player_id}");
+                    prelude::trace!(
+                        "[{game_id}] Transfered {count} signals to local client {client_player_id}"
+                    );
                 }
 
                 let mut count = 0;
@@ -38,32 +39,25 @@ where
                 }
 
                 if count > 0 {
-                    prelude::trace!("[{game_id}] Transfered {count} signals from local client {client_player_id}");
+                    prelude::trace!(
+                        "[{game_id}] Transfered {count} signals from local client {client_player_id}"
+                    );
                 }
             }
         }
     }
 }
 
-pub fn create_local_clients<Server: crate::server::ServerSSS, Client: crate::client::ClientSSS>(
+pub fn create_local_clients<Server, Client>(
     mut commands: prelude::Commands,
-    q_server: prelude::Query<(
-        &mut crate::server::component::PendingClients<Server>,
-    )>,
-)
-where 
+    q_server: prelude::Query<(&mut crate::server::component::PendingClients<Server>,)>,
+) where
     Server: crate::server::ServerSSS,
-    Client: crate::client::ClientSSS<
-        Common = Server::Common,
-    >,
+    Client: crate::client::ClientSSS<Common = Server::Common>,
 {
-    for (mut pending_clients, ) in q_server {
+    for (mut pending_clients,) in q_server {
         while let Some(seed) = pending_clients.dequeue() {
-            
-
-            commands.queue(crate::client::command::Init::<Client> {
-                seed,
-            });
+            commands.queue(crate::client::command::Init::<Client> { seed });
         }
     }
 }

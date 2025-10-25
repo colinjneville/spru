@@ -5,7 +5,6 @@ members = [
 	"spru-bevy",
 	"spru-macro", 
 	"spru-quibbler", 
-	"spru-smol", 
 	"spru-test",
 	"spru-util",
 ]
@@ -46,15 +45,15 @@ futures-io = "0.3.31"
 moro = "0.4.0"
 
 # async (smol ecosystem)
-async-broadcast = "0.7.2"
-async-lazy = "0.1.0"
-async-once-cell = "0.5.3"
-async-task = "4.7.1"
-async-trait = "0.1.81"
-event-listener = "5.3.1"
-futures-lite = "2.3.0"
-onetime = "0.1.2"
-smol = "2.0.0"
+# async-broadcast = "0.7.2"
+# async-lazy = "0.1.0"
+# async-once-cell = "0.5.3"
+# async-task = "4.7.1"
+# async-trait = "0.1.81"
+# event-listener = "5.3.1"
+# futures-lite = "2.3.0"
+# onetime = "0.1.2"
+# smol = "2.0.0"
 
 # macros
 proc-macro2 = "1.0.69"

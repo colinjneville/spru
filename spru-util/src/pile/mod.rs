@@ -4,14 +4,13 @@ use std::{marker::PhantomData, mem, ops};
 
 use amass::amass_telety;
 use derive_where::derive_where;
-use spru::{common::error::AnyResult, Serial};
+use spru::{Serial, common::error::AnyResult};
 use tagset::tagset;
 use telety::telety;
 
-use crate::{verbatim, Strictness};
+use crate::{Strictness, verbatim};
 
-#[derive(Debug, Clone)]
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct State<T> {
     /// front/top -> back/bottom
     items: FakeDeVec<T>,
@@ -124,9 +123,7 @@ pub fn shuffle<T, R: rand::Rng>(rng: &mut R) -> Shuffle<T> {
 }
 
 pub fn push_top<T>(item: T) -> PushTop<T> {
-    PushTop {
-        item,
-    }
+    PushTop { item }
 }
 
 pub fn try_pop_top<T>() -> PopTop<T> {
@@ -148,9 +145,9 @@ pub fn push_bottom<T>(item: T) -> PushBottom<T> {
 }
 
 pub fn try_pop_bottom<T>() -> PopBottom<T> {
-    PopBottom { 
+    PopBottom {
         strictness: Strictness::BestEffort,
-        _p: PhantomData
+        _p: PhantomData,
     }
 }
 
@@ -194,15 +191,11 @@ pub fn try_pop_bottom_many<T>(count: usize) -> PopBottomMany<T> {
 }
 
 pub fn push_bottom_many<T>(elements: Vec<T>) -> PushBottomMany<T> {
-    PushBottomMany {
-        elements,
-    }
+    PushBottomMany { elements }
 }
 
 pub fn push_top_many<T>(elements: Vec<T>) -> PushTopMany<T> {
-    PushTopMany {
-        elements,
-    }
+    PushTopMany { elements }
 }
 
 pub fn remove<T>(index: usize) -> Remove<T> {
@@ -213,9 +206,7 @@ pub fn remove<T>(index: usize) -> Remove<T> {
 }
 
 pub fn clear<T>() -> Clear<T> {
-    Clear {
-        _p: PhantomData,
-    }
+    Clear { _p: PhantomData }
 }
 
 #[telety(crate::pile)]
@@ -237,8 +228,7 @@ pub fn clear<T>() -> Clear<T> {
 #[tagset(reserved(..32))]
 pub struct Actions<T>;
 
-#[derive(Debug, Clone)]
-#[derive(spru::FromInfallible)]
+#[derive(Debug, Clone, spru::FromInfallible)]
 #[amass_telety(crate::pile)]
 pub enum Error {
     Pop(error::Pop),
@@ -252,10 +242,7 @@ pub type Destroy<T> = verbatim::Destroy<State<T>>;
 
 pub type Update<T> = verbatim::Update<State<T>>;
 
-
-#[derive(Debug, Clone)]
-#[derive(serde::Serialize, serde::Deserialize)]
-#[derive(spru::action::Update)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, spru::action::Update)]
 pub struct PushTop<T> {
     item: T,
 }
@@ -274,9 +261,7 @@ where
     }
 }
 
-#[derive(Debug, Clone, Default)]
-#[derive(serde::Serialize, serde::Deserialize)]
-#[derive(spru::action::Update)]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize, spru::action::Update)]
 pub struct PopTop<T> {
     strictness: Strictness,
     _p: PhantomData<fn() -> T>,
@@ -296,14 +281,12 @@ where
             None => match self.strictness {
                 Strictness::BestEffort => None,
                 Strictness::AllOrError => Err(error::Pop::Empty)?,
-            }
+            },
         })
     }
 }
 
-#[derive(Debug, Clone)]
-#[derive(serde::Serialize, serde::Deserialize)]
-#[derive(spru::action::Update)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, spru::action::Update)]
 pub struct PushBottom<T> {
     item: T,
 }
@@ -343,7 +326,8 @@ where
             None => match self.strictness {
                 Strictness::BestEffort => None,
                 Strictness::AllOrError => Err(error::Pop::Empty)?,
-        }})
+            },
+        })
     }
 }
 
@@ -362,9 +346,7 @@ where
     type T = State<T>;
     type Undo = PushTopMany<T>;
 
-    fn update(&self, value: &mut Self::T) 
-        -> AnyResult<impl Into<Option<Self::Undo>>> 
-    {
+    fn update(&self, value: &mut Self::T) -> AnyResult<impl Into<Option<Self::Undo>>> {
         let Self {
             strictness,
             count,
@@ -381,10 +363,8 @@ where
                     elements.push(element);
                 }
             }
-            
-            Ok(PushTopMany {
-                elements,
-            })
+
+            Ok(PushTopMany { elements })
         }
     }
 }
@@ -404,9 +384,7 @@ where
     type T = State<T>;
     type Undo = PushBottomMany<T>;
 
-    fn update(&self, value: &mut Self::T) 
-        -> AnyResult<impl Into<Option<Self::Undo>>> 
-    {
+    fn update(&self, value: &mut Self::T) -> AnyResult<impl Into<Option<Self::Undo>>> {
         let Self {
             strictness,
             count,
@@ -414,7 +392,7 @@ where
         } = *self;
 
         let mut elements = vec![];
-        
+
         if strictness == Strictness::AllOrError && value.items.len() <= count {
             Err(error::Pop::Empty.into())
         } else {
@@ -425,18 +403,14 @@ where
             }
 
             elements.reverse();
-            
-            Ok(PushBottomMany {
-                elements,
-            })
+
+            Ok(PushBottomMany { elements })
         }
     }
 }
 
 #[derive_where(Default)]
-#[derive(Debug, Clone)]
-#[derive(serde::Serialize, serde::Deserialize)]
-#[derive(spru::action::Update)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, spru::action::Update)]
 pub struct PushTopMany<T> {
     elements: Vec<T>,
 }
@@ -448,12 +422,8 @@ where
     type T = State<T>;
     type Undo = PopTopMany<T>;
 
-    fn update(&self, value: &mut Self::T) 
-        -> AnyResult<impl Into<Option<Self::Undo>>> 
-    {
-        let Self {
-            ref elements,
-        } = *self;
+    fn update(&self, value: &mut Self::T) -> AnyResult<impl Into<Option<Self::Undo>>> {
+        let Self { ref elements } = *self;
 
         for element in elements {
             value.items.push_front(element.clone());
@@ -475,11 +445,8 @@ impl<T> ops::Deref for PushTopMany<T> {
     }
 }
 
-
 #[derive_where(Default)]
-#[derive(Debug, Clone)]
-#[derive(serde::Serialize, serde::Deserialize)]
-#[derive(spru::action::Update)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, spru::action::Update)]
 pub struct PushBottomMany<T> {
     elements: Vec<T>,
 }
@@ -491,12 +458,8 @@ where
     type T = State<T>;
     type Undo = PopBottomMany<T>;
 
-    fn update(&self, value: &mut Self::T) 
-        -> AnyResult<impl Into<Option<Self::Undo>>> 
-    {
-        let Self {
-            ref elements,
-        } = *self;
+    fn update(&self, value: &mut Self::T) -> AnyResult<impl Into<Option<Self::Undo>>> {
+        let Self { ref elements } = *self;
 
         for element in elements {
             value.items.push_front(element.clone());
@@ -541,7 +504,7 @@ where
 
         // Based on the soon-to-be-replaced rand 0.85 implementation
         fn gen_index(rng: &mut crate::Rng, ubound: usize) -> usize {
-            if ubound <= (core::u32::MAX as usize) {
+            if ubound <= (u32::MAX as usize) {
                 rng.random_range(0..ubound as u32) as usize
             } else {
                 rng.random_range(0..ubound)
@@ -560,7 +523,7 @@ where
         }
 
         if let Some(deferred) = deferred {
-            for (i, index) in (1..value.items.len()).into_iter().zip(deferred.into_iter().rev()) {
+            for (i, index) in (1..value.items.len()).zip(deferred.into_iter().rev()) {
                 value.items.swap(i, index);
             }
         }
@@ -580,16 +543,14 @@ impl<T> Shuffle<T> {
 
     fn invert(&self) -> Self {
         Self {
-            seed: self.seed, 
-            undo: !self.undo, 
+            seed: self.seed,
+            undo: !self.undo,
             _p: PhantomData,
         }
     }
 }
 
-#[derive(Debug, Clone)]
-#[derive(serde::Serialize, serde::Deserialize)]
-#[derive(spru::action::Update)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, spru::action::Update)]
 pub struct Insert<T> {
     index: usize,
     element: T,
@@ -630,10 +591,7 @@ impl<T> spru::action::Update for Remove<T> {
         let index = self.index;
         if index < value.items.len() {
             let element = value.items.remove(index);
-            Ok(Insert {
-                index,
-                element,
-            })
+            Ok(Insert { index, element })
         } else {
             Err(error::Remove::Index(index, value.items.len()).into())
         }
@@ -667,21 +625,17 @@ mod test {
     #[test]
     fn test_shuffle() {
         let create = create([1, 2, 3, 4, 5, 6, 7, 8]);
-        let (mut pile, _) = create.create()
-            .unwrap();
+        let (mut pile, _) = create.create().unwrap();
 
-        shuffle(&mut rng()).update(&mut pile)
-            .unwrap();
+        shuffle(&mut rng()).update(&mut pile).unwrap();
 
         let orig_order = pile.items.clone();
 
-        let undo = shuffle(&mut rng()).update(&mut pile)
-            .unwrap();
+        let undo = shuffle(&mut rng()).update(&mut pile).unwrap();
 
         assert_ne!(pile.items, orig_order);
 
-        undo.update(&mut pile)
-            .unwrap();
+        undo.update(&mut pile).unwrap();
 
         assert_eq!(pile.items, orig_order);
     }

@@ -3,8 +3,7 @@ use std::collections::VecDeque;
 use bevy::prelude;
 use derive_where::derive_where;
 
-#[derive(Debug)]
-#[derive(prelude::Component)]
+#[derive(Debug, prelude::Component)]
 #[require(FromClient<Server>, ToClient<Server>, FromUser<Server>, PendingClients<Server>)]
 pub struct Runner<Server: super::ServerSSS> {
     pub(crate) server: Server,
@@ -12,13 +11,10 @@ pub struct Runner<Server: super::ServerSSS> {
 
 impl<Server: super::ServerSSS> Runner<Server> {
     pub(crate) fn new(server: Server) -> Self {
-        Self {
-            server,
-        }
+        Self { server }
     }
 
-    pub fn save(&self) 
-        -> Result<spru::server::Save<Server>, spru::server::error::SaveError> 
+    pub fn save(&self) -> Result<spru::server::Save<Server>, spru::server::error::SaveError>
     where
         Server::PlayerInit: Clone,
         Server::Reaction: Clone,
@@ -31,7 +27,10 @@ impl<Server: super::ServerSSS> Runner<Server> {
 #[derive_where(Default)]
 #[derive(prelude::Component)]
 pub struct FromClient<Server: super::ServerSSS> {
-    queues: Vec<(spru::player::Id, VecDeque<spru::common::signal::ToServer<Server::Common>>)>,
+    queues: Vec<(
+        spru::player::Id,
+        VecDeque<spru::common::signal::ToServer<Server::Common>>,
+    )>,
 }
 
 impl<Server: super::ServerSSS> FromClient<Server> {
@@ -48,12 +47,20 @@ impl<Server: super::ServerSSS> FromClient<Server> {
         true
     }
 
-    pub fn enqueue(&mut self, client_id: spru::player::Id, signal: spru::common::signal::ToServer<Server::Common>) {
-        get_queue_mut(client_id, &mut self.queues)
-            .push_back(signal);
+    pub fn enqueue(
+        &mut self,
+        client_id: spru::player::Id,
+        signal: spru::common::signal::ToServer<Server::Common>,
+    ) {
+        get_queue_mut(client_id, &mut self.queues).push_back(signal);
     }
 
-    pub(crate) fn dequeue_any(&mut self) -> Option<(spru::player::Id, spru::common::signal::ToServer<Server::Common>)> {
+    pub(crate) fn dequeue_any(
+        &mut self,
+    ) -> Option<(
+        spru::player::Id,
+        spru::common::signal::ToServer<Server::Common>,
+    )> {
         for (client_id, queue) in &mut self.queues {
             if let Some(signal) = queue.pop_front() {
                 return Some((*client_id, signal));
@@ -67,7 +74,10 @@ impl<Server: super::ServerSSS> FromClient<Server> {
 #[derive_where(Default)]
 #[derive(prelude::Component)]
 pub struct ToClient<Server: super::ServerSSS> {
-    queues: Vec<(spru::player::Id, VecDeque<spru::common::signal::ToClient<Server::Common>>)>,
+    queues: Vec<(
+        spru::player::Id,
+        VecDeque<spru::common::signal::ToClient<Server::Common>>,
+    )>,
 }
 
 impl<Server: super::ServerSSS> ToClient<Server> {
@@ -84,17 +94,27 @@ impl<Server: super::ServerSSS> ToClient<Server> {
         true
     }
 
-    pub(crate) fn enqueue(&mut self, client_id: spru::player::Id, signal: spru::common::signal::ToClient<Server::Common>) {
-        get_queue_mut(client_id, &mut self.queues)
-            .push_back(signal);
+    pub(crate) fn enqueue(
+        &mut self,
+        client_id: spru::player::Id,
+        signal: spru::common::signal::ToClient<Server::Common>,
+    ) {
+        get_queue_mut(client_id, &mut self.queues).push_back(signal);
     }
 
-    pub fn dequeue(&mut self, client_id: spru::player::Id) -> Option<spru::common::signal::ToClient<Server::Common>> {
-        get_queue_mut(client_id, &mut self.queues)
-            .pop_front()
+    pub fn dequeue(
+        &mut self,
+        client_id: spru::player::Id,
+    ) -> Option<spru::common::signal::ToClient<Server::Common>> {
+        get_queue_mut(client_id, &mut self.queues).pop_front()
     }
 
-    pub fn dequeue_any(&mut self) -> Option<(spru::player::Id, spru::common::signal::ToClient<Server::Common>)> {
+    pub fn dequeue_any(
+        &mut self,
+    ) -> Option<(
+        spru::player::Id,
+        spru::common::signal::ToClient<Server::Common>,
+    )> {
         for (client_id, queue) in &mut self.queues {
             if let Some(signal) = queue.pop_front() {
                 return Some((*client_id, signal));
@@ -104,9 +124,12 @@ impl<Server: super::ServerSSS> ToClient<Server> {
     }
 }
 
-fn get_queue_mut<T>(player_id: spru::player::Id, queues: &mut Vec<(spru::player::Id, VecDeque<T>)>) -> &mut VecDeque<T> {
+fn get_queue_mut<T>(
+    player_id: spru::player::Id,
+    queues: &mut Vec<(spru::player::Id, VecDeque<T>)>,
+) -> &mut VecDeque<T> {
     let mut index = None;
-    for (i, (queue_player_id, _queue)) in queues.into_iter().enumerate() {
+    for (i, (queue_player_id, _queue)) in queues.iter_mut().enumerate() {
         if player_id == *queue_player_id {
             index = Some(i);
             break;
@@ -120,7 +143,7 @@ fn get_queue_mut<T>(player_id: spru::player::Id, queues: &mut Vec<(spru::player:
             queues.len() - 1
         }
     };
-    
+
     &mut queues[index].1
 }
 
@@ -148,7 +171,6 @@ impl<Server: super::ServerSSS> PendingClients<Server> {
         self.queue.pop_front()
     }
 }
-
 
 #[derive_where(Debug; UserInput<Server>)]
 #[derive_where(Default)]
@@ -180,7 +202,7 @@ impl<Server: super::ServerSSS> FromUser<Server> {
 }
 
 #[derive_where(Debug; 
-    <Server::PlayerInit as spru::player::Init>::In, 
+    <Server::PlayerInit as spru::player::Init>::In,
     <Server::Reaction as spru::Reaction>::Trigger,
 )]
 pub(crate) enum UserInput<Server: super::ServerSSS> {

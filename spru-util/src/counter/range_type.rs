@@ -2,7 +2,6 @@ use std::ops::{self, RangeBounds as _};
 
 use super::CounterType;
 
-
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum RangeType<T> {
     Full(ops::RangeFull),
@@ -17,8 +16,7 @@ impl<T: CounterType> RangeType<T> {
     pub fn constrain(&self, value: T) -> T {
         let start = match self.start_bound() {
             ops::Bound::Included(start) => Some(start.clone()),
-            ops::Bound::Excluded(_) |
-            ops::Bound::Unbounded => None,
+            ops::Bound::Excluded(_) | ops::Bound::Unbounded => None,
         };
         let end = match self.end_bound() {
             ops::Bound::Included(end) => Some(end.clone()),
@@ -37,7 +35,8 @@ impl<T: CounterType> RangeType<T> {
 impl<T: serde::Serialize> serde::Serialize for RangeType<T> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
-        S: serde::Serializer {
+        S: serde::Serializer,
+    {
         let start = self.start_bound();
         let end = self.end_bound();
         (start, end).serialize(serializer)
@@ -47,19 +46,27 @@ impl<T: serde::Serialize> serde::Serialize for RangeType<T> {
 impl<'de, T: serde::Deserialize<'de>> serde::Deserialize<'de> for RangeType<T> {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
-        D: serde::Deserializer<'de> {
-        let (start, end) = <(ops::Bound::<T>, ops::Bound::<T>)>::deserialize(deserializer)?;
+        D: serde::Deserializer<'de>,
+    {
+        let (start, end) = <(ops::Bound<T>, ops::Bound<T>)>::deserialize(deserializer)?;
         let value = match (start, end) {
             // Technically a fully-iterated `..=` has an `Excluded` end `Bound`,
             // but even if we are given such a range, we don't care about preserving
             // that property
-            (ops::Bound::Included(start), ops::Bound::Included(end)) => Self::Inclusive(start..=end),
+            (ops::Bound::Included(start), ops::Bound::Included(end)) => {
+                Self::Inclusive(start..=end)
+            }
             (ops::Bound::Included(start), ops::Bound::Excluded(end)) => Self::Exclusive(start..end),
             (ops::Bound::Included(start), ops::Bound::Unbounded) => Self::From(start..),
             (ops::Bound::Unbounded, ops::Bound::Included(end)) => Self::ToInclusive(..=end),
             (ops::Bound::Unbounded, ops::Bound::Excluded(end)) => Self::ToExclusive(..end),
             (ops::Bound::Unbounded, ops::Bound::Unbounded) => Self::Full(ops::RangeFull),
-            (ops::Bound::Excluded(_), _) => return Err(<D::Error as serde::de::Error>::invalid_value(serde::de::Unexpected::Other("excluded start bound"), &"included or unbounded start")),
+            (ops::Bound::Excluded(_), _) => {
+                return Err(<D::Error as serde::de::Error>::invalid_value(
+                    serde::de::Unexpected::Other("excluded start bound"),
+                    &"included or unbounded start",
+                ));
+            }
         };
         Ok(value)
     }

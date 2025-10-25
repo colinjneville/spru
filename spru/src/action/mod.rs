@@ -1,9 +1,9 @@
 pub mod error;
 pub use error::Error;
 
-use crate::{action, common::error::AnyResult, item, Item};
+use crate::{Item, action, common::error::AnyResult, item};
 
-pub use spru_macro::{Create, Update, Destroy};
+pub use spru_macro::{Create, Destroy, Update};
 use tagset::tagset_meta;
 
 /// Implemented automatically by the Create/Update/Destroy macros
@@ -12,25 +12,23 @@ pub trait SubAction {
     type Undo;
     type T;
 
-    fn apply<Lookup>(&self, context: Context<'_, Lookup>)
-        -> action::Result<Option<Self::Undo>>
-    where 
+    fn apply<Lookup>(&self, context: Context<'_, Lookup>) -> action::Result<Option<Self::Undo>>
+    where
         Lookup: item::Lookup,
-        Self::T: item::lookup::Lookupable<Lookup::State>,
-    ;
+        Self::T: item::lookup::Lookupable<Lookup::State>;
 
-    fn apply_map<Lookup, Action>(&self, context: Context<'_, Lookup>)
-        -> action::Result<Option<Action>>
-    where 
+    fn apply_map<Lookup, Action>(
+        &self,
+        context: Context<'_, Lookup>,
+    ) -> action::Result<Option<Action>>
+    where
         Lookup: item::Lookup,
         Self::T: item::lookup::Lookupable<Lookup::State>,
         Self::Undo: Into<Action>,
     {
         self.apply(context)
             .map(|o| o.map(Into::into))
-            .map_err(|e| {
-                e.with_context(self)
-            })
+            .map_err(|e| e.with_context(self))
     }
 }
 
@@ -46,7 +44,10 @@ pub trait Action: Sized {
     #[meta(default {
         match_by_value!(self, v => spru::action::SubAction::apply_map(v, context))
     })]
-    fn apply<Lookup: item::Lookup<State = Self::State>>(&self, context: Context<'_, Lookup>) -> action::Result<Option<Self>>;
+    fn apply<Lookup: item::Lookup<State = Self::State>>(
+        &self,
+        context: Context<'_, Lookup>,
+    ) -> action::Result<Option<Self>>;
 }
 
 pub trait Create {
@@ -60,8 +61,7 @@ pub trait Update {
     type T;
     type Undo;
 
-    fn update(&self, value: &mut Self::T) 
-        -> AnyResult<impl Into<Option<Self::Undo>>>;
+    fn update(&self, value: &mut Self::T) -> AnyResult<impl Into<Option<Self::Undo>>>;
 }
 
 pub trait Destroy {
@@ -79,7 +79,11 @@ pub struct Context<'l, Lookup> {
 }
 
 impl<'l, Lookup> Context<'l, Lookup> {
-    pub(crate) fn new(lookup: &'l mut Lookup, id: item::Id, version: item::version::Change) -> Self {
+    pub(crate) fn new(
+        lookup: &'l mut Lookup,
+        id: item::Id,
+        version: item::version::Change,
+    ) -> Self {
         Self {
             lookup,
             id,
@@ -88,23 +92,26 @@ impl<'l, Lookup> Context<'l, Lookup> {
     }
 
     #[doc(hidden)]
-    pub fn create<C>(self, c: &C) -> action::Result<Option<C::Undo>> 
-    where 
+    pub fn create<C>(self, c: &C) -> action::Result<Option<C::Undo>>
+    where
         Lookup: item::Lookup,
         C: Create<T: item::lookup::Lookupable<Lookup::State>>,
     {
-        let Self { 
-            lookup, 
-            id, 
-            version, 
+        let Self {
+            lookup,
+            id,
+            version,
         } = self;
 
         if let Ok(stateful) = lookup.lookup(item::IdT::<C::T>::new(id)) {
-            Err(action::Error::from(item::id::Error::AlreadyExists { id: id.clone(), version: stateful.version() }))
+            Err(action::Error::from(item::id::Error::AlreadyExists {
+                id,
+                version: stateful.version(),
+            }))
         } else {
             let (value, undo) = c.create()?;
 
-            let stateful = Item::new(item::IdT::new(id.clone()), version.after, value);
+            let stateful = Item::new(item::IdT::new(id), version.after, value);
             lookup.create(stateful)?;
 
             Ok(Some(undo))
@@ -112,57 +119,62 @@ impl<'l, Lookup> Context<'l, Lookup> {
     }
 
     #[doc(hidden)]
-    pub fn update<U>(self, u: &U) -> action::Result<Option<U::Undo>> 
-    where 
+    pub fn update<U>(self, u: &U) -> action::Result<Option<U::Undo>>
+    where
         Lookup: item::lookup::Lookup,
         U: Update<T: item::lookup::Lookupable<Lookup::State>>,
     {
         let Self {
-            lookup, 
-            id, 
+            lookup,
+            id,
             version,
         } = self;
 
         let id = item::IdT::<U::T>::new(id);
-        let mut value = lookup.lookup_mut(id)
-            .map_err(|e| e.with_context(id))?;
+        let mut value = lookup.lookup_mut(id).map_err(|e| e.with_context(id))?;
         if version.before == (*value).version() {
-            let undo = u.update(value.get_mut())
-                .map(Into::into)?;
+            let undo = u.update(value.get_mut()).map(Into::into)?;
 
             // Only update the version on the first non-noop update. If this Item
-            // is not modified at all during the transaction we can't bump the version number. 
+            // is not modified at all during the transaction we can't bump the version number.
             if undo.is_some() {
                 (*value).set_version(version.after);
             }
 
             Ok(undo)
         } else {
-            Err(action::Error::from(item::version::Error { item: id.untyped(), expected: version.before, actual: (*value).version() }))
+            Err(action::Error::from(item::version::Error {
+                item: id.untyped(),
+                expected: version.before,
+                actual: (*value).version(),
+            }))
         }
     }
 
     #[doc(hidden)]
-    pub fn destroy<D>(self, d: &D) -> action::Result<Option<D::Undo>> 
-    where 
+    pub fn destroy<D>(self, d: &D) -> action::Result<Option<D::Undo>>
+    where
         Lookup: item::lookup::Lookup,
         D: Destroy<T: item::lookup::Lookupable<Lookup::State>>,
     {
         let Self {
-            lookup, 
-            id, 
+            lookup,
+            id,
             version,
         } = self;
 
         let id = item::IdT::<D::T>::new(id);
-        let item = lookup.lookup(id)
-            .map_err(|e| e.with_context(id))?;
+        let item = lookup.lookup(id).map_err(|e| e.with_context(id))?;
         if version.before == item.version() {
             let item = lookup.destroy(id)?;
             let undo = d.destroy(item.into_value())?;
             Ok(Some(undo))
         } else {
-            Err(action::Error::from(item::version::Error { item: id.untyped(), expected: version.before, actual: item.version() }))
+            Err(action::Error::from(item::version::Error {
+                item: id.untyped(),
+                expected: version.before,
+                actual: item.version(),
+            }))
         }
     }
 }

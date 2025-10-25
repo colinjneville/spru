@@ -1,6 +1,6 @@
 use proc_macro2::TokenStream;
 use quote::quote;
-use syn::{parse2, Item};
+use syn::{Item, parse2};
 
 pub(crate) fn derive_from_infallible(input: TokenStream) -> syn::Result<TokenStream> {
     let item: Item = parse2(input)?;

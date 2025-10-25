@@ -2,9 +2,7 @@ use std::fmt;
 
 use crate::data;
 
-
-#[derive(Debug, Clone, Default)]
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct Play {
     words: Vec<Vec<data::Card>>,
     unused: Vec<data::Card>,
@@ -12,12 +10,9 @@ pub struct Play {
 
 impl Play {
     pub(crate) fn new(words: Vec<Vec<data::Card>>, unused: Vec<data::Card>) -> Self {
-        Self {
-            words,
-            unused,
-        }
+        Self { words, unused }
     }
-    
+
     pub fn is_played(&self) -> bool {
         !(self.words.is_empty() && self.unused.is_empty())
     }
@@ -28,7 +23,7 @@ impl Play {
 
     pub fn base_score(&self) -> u32 {
         let mut score = 0;
-        
+
         for card in self.words.iter().flatten() {
             score += card.face().points();
         }
@@ -41,8 +36,7 @@ impl Play {
     }
 
     pub fn words(&self) -> impl Iterator<Item = &[data::Card]> {
-        self.words.iter()
-            .map(Vec::as_slice)
+        self.words.iter().map(Vec::as_slice)
     }
 
     pub fn word_count(&self) -> usize {
@@ -50,10 +44,7 @@ impl Play {
     }
 
     pub fn max_word_len(&self) -> usize {
-        self.words.iter()
-            .map(Vec::len)
-            .max()
-            .unwrap_or_default()
+        self.words.iter().map(Vec::len).max().unwrap_or_default()
     }
 }
 

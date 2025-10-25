@@ -1,7 +1,11 @@
 use std::{any, fmt, ops};
 
-use crate::{action, common::error::{AnyError, PsuedoError}, game, item::lookup};
-
+use crate::{
+    action,
+    common::error::{AnyError, PsuedoError},
+    game,
+    item::lookup,
+};
 
 #[derive(Debug)]
 pub struct Error {
@@ -18,11 +22,11 @@ impl Error {
     }
 
     /// GameInit is taken by value, so it won't be available once we have the error
-    pub(crate) fn prepare_context<GameInit: game::Init>(game_init: &GameInit)
-        -> impl FnMut(Self) -> Self + 'static
-    {
+    pub(crate) fn prepare_context<GameInit: game::Init>(
+        game_init: &GameInit,
+    ) -> impl FnMut(Self) -> Self + 'static {
         let context = Some(Context::new(game_init));
-        move|mut e| {
+        move |mut e| {
             e.context = context.clone();
             e
         }
@@ -61,10 +65,7 @@ impl<E: std::error::Error + Send + Sync + 'static> From<E> for Error {
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let Self {
-            kind,
-            context,
-        } = self;
+        let Self { kind, context } = self;
 
         if let Some(context) = context {
             write!(f, "{context}")?;
@@ -116,9 +117,7 @@ impl Context {
 
 impl fmt::Display for Context {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let Self {
-            game_init_name,
-        } = self;
+        let Self { game_init_name } = self;
 
         write!(f, "Game Initializer '{game_init_name}'")?;
 

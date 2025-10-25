@@ -3,8 +3,10 @@ use std::collections::HashMap;
 use spru::item::IdT;
 use spru_util::{counter, fsm, pile, player_map, rotating, verbatim};
 
-use crate::{data::{card, Card}, player};
-
+use crate::{
+    data::{Card, card},
+    player,
+};
 
 type Interactor<'l> = spru::game::init::Interactor<'l, crate::State, crate::Actions>;
 
@@ -17,15 +19,13 @@ impl spru::game::Init for Init {
     type State = crate::State;
     type Action = crate::Actions;
     type Root = IdT<Root>;
-    
-    fn initialize(self, interactor: &mut self::Interactor) 
-        -> spru::game::init::Result<Self::Root> 
-    {
+
+    fn initialize(self, interactor: &mut self::Interactor) -> spru::game::init::Result<Self::Root> {
         let deck = interactor.create(pile::create(card::Card::all())).id();
         let discard = interactor.create(pile::create([])).id();
         let round = interactor.create(counter::create(0)).id();
         let round_fsm = interactor.create(fsm::default()).id();
-        
+
         let players = interactor.create(player_map::create()).id();
         let current_turn = interactor.create(rotating::default()).id();
         let current_dealer = interactor.create(rotating::default()).id();
@@ -40,14 +40,13 @@ impl spru::game::Init for Init {
             current_dealer,
             has_started: false,
         };
-        
+
         let root = interactor.create(verbatim::create(root)).id();
         Ok(root)
     }
 }
 
-#[derive(Debug, Clone)]
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Root {
     pub deck: IdT<pile::State<Card>>,
     pub discard: IdT<pile::State<Card>>,

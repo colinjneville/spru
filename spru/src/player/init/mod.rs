@@ -3,7 +3,11 @@ pub use error::Error;
 
 use std::collections::VecDeque;
 
-use crate::{interactor, item::{self}, player};
+use crate::{
+    interactor,
+    item::{self},
+    player,
+};
 
 pub trait Init {
     type In;
@@ -11,13 +15,18 @@ pub trait Init {
     type State;
     type Action;
 
-    fn initialize(&self, interactor: &mut Interactor<Self::State, Self::Action, Self::Root>, input: Self::In) 
-        -> self::Result<()>;
+    fn initialize(
+        &self,
+        interactor: &mut Interactor<Self::State, Self::Action, Self::Root>,
+        input: Self::In,
+    ) -> self::Result<()>;
 }
 
-pub type Interactor<'l, 'r, State, Action, Root> = crate::Interactor<'l, item::lookup::Canonical<State>, Action, Context<'r, Root>, Output>;
+pub type Interactor<'l, 'r, State, Action, Root> =
+    crate::Interactor<'l, item::lookup::Canonical<State>, Action, Context<'r, Root>, Output>;
 
-pub(crate) type Complete<'r, Action, Root> = crate::interactor::Complete<Action, self::Context<'r, Root>, Output>;
+pub(crate) type Complete<'r, Action, Root> =
+    crate::interactor::Complete<Action, self::Context<'r, Root>, Output>;
 
 #[derive(Debug)]
 #[non_exhaustive]
@@ -42,15 +51,13 @@ impl<'r, Root> crate::interactor::GetRoot for Context<'r, Root> {
     type Root = Root;
 
     fn get_root(&self) -> &Self::Root {
-        &self.root
+        self.root
     }
 }
 
 #[derive(Debug, Default)]
 #[doc(hidden)]
-pub struct Output {
-
-}
+pub struct Output {}
 
 impl<Trigger> interactor::TakeTriggers<Trigger> for Output {
     fn take_triggers(&mut self) -> VecDeque<Trigger> {

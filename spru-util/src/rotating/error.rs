@@ -9,6 +9,4 @@ impl fmt::Display for Expected {
     }
 }
 
-impl std::error::Error for Expected {
-    
-}
+impl std::error::Error for Expected {}

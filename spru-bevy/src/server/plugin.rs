@@ -10,12 +10,12 @@ pub struct Plugin<Server: crate::server::ServerSSS> {
 
 impl<Server: crate::server::ServerSSS> prelude::Plugin for Plugin<Server> {
     fn build(&self, app: &mut prelude::App) {
-        let Self {
-            _server,
-        } = self;
+        let Self { _server } = self;
 
-        app.add_systems(prelude::FixedUpdate, (
-            super::system::run_server::<Server>.pipe::<_, _, prelude::Result, _>(crate::common::adapt::map_err),
-        ));
+        app.add_systems(
+            prelude::FixedUpdate,
+            (super::system::run_server::<Server>
+                .pipe::<_, _, prelude::Result, _>(crate::common::adapt::map_err),),
+        );
     }
 }

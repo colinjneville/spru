@@ -26,7 +26,7 @@ impl<'r, Root> crate::interactor::GetRoot for Context<'r, Root> {
     type Root = Root;
 
     fn get_root(&self) -> &Self::Root {
-        &self.root
+        self.root
     }
 }
 
@@ -59,13 +59,9 @@ impl<Trigger, GameOutcome> interactor::TakeGameOutcome<GameOutcome> for Output<T
 
 impl<'r, Root> Context<'r, Root> {
     pub(crate) fn new(root: &'r Root, player: player::Id) -> Self {
-        Self {
-            root,
-            player,
-        }
-    }    
+        Self { root, player }
+    }
 }
-
 
 #[telety(crate::interaction, alias_traits = "always")]
 #[tagset_meta]
@@ -75,27 +71,29 @@ pub trait Interaction {
     type Root;
     type Trigger;
 
-    fn apply<'l, 'r, Lookup>(&self, interactor: &mut Interactor<'l, 'r, Lookup, Self::Action, Self::Root, Self::Trigger>)
-         -> self::Result<()>
-    where 
-        Lookup: item::Lookup<State = Self::State>,
-    ;
+    fn apply<'l, 'r, Lookup>(
+        &self,
+        interactor: &mut Interactor<'l, 'r, Lookup, Self::Action, Self::Root, Self::Trigger>,
+    ) -> self::Result<()>
+    where
+        Lookup: item::Lookup<State = Self::State>;
 }
 
-pub type Interactor<'l, 'r, Lookup, Action, Root, Trigger> = crate::Interactor<'l, Lookup, Action, Context<'r, Root>, Output<Trigger>>;
+pub type Interactor<'l, 'r, Lookup, Action, Root, Trigger> =
+    crate::Interactor<'l, Lookup, Action, Context<'r, Root>, Output<Trigger>>;
 
 pub type Result<T> = std::result::Result<T, self::Error>;
 
-#[derive(Debug, Clone)]
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Staged<Interaction> {
     pub(crate) interaction: Interaction,
     pub(crate) expected_versions: item::version::Expected,
     pub(crate) pending_interaction_id: Pending,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
+)]
 #[repr(transparent)]
 pub struct Pending(u32);
 

@@ -1,13 +1,24 @@
-use std::{cell::RefCell, collections::{HashMap, VecDeque}, mem, ops};
+use std::{
+    cell::RefCell,
+    collections::{HashMap, VecDeque},
+    mem, ops,
+};
 
-use crate::{action, common::error::RecoverableError, interactor, item::{self, lookup, IdT}, player, record::{self, Records}, Item};
+use crate::{
+    Item, action,
+    common::error::RecoverableError,
+    interactor,
+    item::{self, IdT, lookup},
+    player,
+    record::{self, Records},
+};
 
 #[macro_export]
 macro_rules! follow {
     (
         $first_get:ident => $first_next_id:expr
         $(, $get:ident => $next_id:expr)*
-        $(,)? 
+        $(,)?
     ) => {
         'result: {
             let next_id = $first_next_id;
@@ -60,12 +71,11 @@ impl<Action> ItemStatus<Action> {
     }
 
     fn enqueue(&self, action: Action) {
-        self.pending_do.borrow_mut()
-            .push_back(action);
+        self.pending_do.borrow_mut().push_back(action);
     }
 
     fn version_change(&self) -> item::version::Change {
-        // We only need to bump the version number for the first (non-noop) change, 
+        // We only need to bump the version number for the first (non-noop) change,
         // but we need to keep track of the first change to publish expected versions
         if self.flushed_do.is_empty() {
             self.version_change
@@ -74,16 +84,17 @@ impl<Action> ItemStatus<Action> {
         }
     }
 
-    fn update_immediate<'l, Lookup, Update>(&mut self, id: item::Id, lookup: &'l mut Lookup, update: Update)
-        -> action::Result<&'l Update::T>
+    fn update_immediate<'l, Lookup, Update>(
+        &mut self,
+        id: item::Id,
+        lookup: &'l mut Lookup,
+        update: Update,
+    ) -> action::Result<&'l Update::T>
     where
-        Lookup:
-            item::Lookup,
-        Action: 
-            crate::Action<State = Lookup::State>,
-        Update:
-            Into<Action> +
-            action::Update<T: item::lookup::Lookupable<Lookup::State>, Undo: Into<Action>>,
+        Lookup: item::Lookup,
+        Action: crate::Action<State = Lookup::State>,
+        Update: Into<Action>
+            + action::Update<T: item::lookup::Lookupable<Lookup::State>, Undo: Into<Action>>,
     {
         self.flush(id, lookup)?;
 
@@ -94,14 +105,14 @@ impl<Action> ItemStatus<Action> {
             self.flushed_undo.push(undo.into());
         }
 
-        let item = lookup.lookup::<Update::T>(id.force_type())
+        let item = lookup
+            .lookup::<Update::T>(id.force_type())
             .expect("Item must still exist");
         Ok(item.get())
     }
 
-    fn flush<Lookup>(&mut self, id: item::Id, lookup: &mut Lookup) 
-        -> action::Result<()>
-    where 
+    fn flush<Lookup>(&mut self, id: item::Id, lookup: &mut Lookup) -> action::Result<()>
+    where
         Action: crate::Action<State = Lookup::State>,
         Lookup: item::Lookup,
     {
@@ -121,9 +132,8 @@ impl<Action> ItemStatus<Action> {
         self.pending_do.borrow().is_empty()
     }
 
-    fn revert<Lookup>(self, id: item::Id, lookup: &mut Lookup)
-        -> action::Result<()>
-    where 
+    fn revert<Lookup>(self, id: item::Id, lookup: &mut Lookup) -> action::Result<()>
+    where
         Action: crate::Action<State = Lookup::State>,
         Lookup: item::Lookup,
     {
@@ -143,7 +153,10 @@ impl<Action> ItemStatus<Action> {
         self.version_change.before
     }
 
-    fn into_records(self, id: item::Id) -> Option<(record::Packed<Action>, record::Packed<Action>)> {
+    fn into_records(
+        self,
+        id: item::Id,
+    ) -> Option<(record::Packed<Action>, record::Packed<Action>)> {
         if !self.is_flushed() {
             panic!("Interactor must be flushed first");
         }
@@ -151,14 +164,16 @@ impl<Action> ItemStatus<Action> {
         let mut flushed_do = self.flushed_do.into_iter();
         if let Some(first_do) = flushed_do.next() {
             let mut packed_do = record::Packed::new(id, self.version_change, first_do);
-            while let Some(do_action) = flushed_do.next() {
+            for do_action in flushed_do {
                 packed_do.append(do_action);
             }
 
             let mut flushed_undo = self.flushed_undo.into_iter();
-            let first_undo = flushed_undo.next().expect("do and undo must have same length");
+            let first_undo = flushed_undo
+                .next()
+                .expect("do and undo must have same length");
             let mut packed_undo = record::Packed::new(id, self.version_change.undo(), first_undo);
-            while let Some(undo_action) = flushed_undo.next() {
+            for undo_action in flushed_undo {
                 packed_undo.append(undo_action);
             }
 
@@ -177,58 +192,61 @@ struct ItemsStatus<Action> {
 
 impl<Action> ItemsStatus<Action> {
     fn register_read(&self, id: item::Id, version: item::Version) {
-        self.items.borrow_mut()
+        self.items
+            .borrow_mut()
             .entry(id)
             .or_insert(ItemStatus::existing(version));
     }
 
     fn enqueue_create(&self, id: item::Id, action: Action) {
-        self.items.borrow_mut()
+        self.items
+            .borrow_mut()
             .entry(id)
             .or_insert(ItemStatus::pending())
             .enqueue(action);
     }
 
     fn enqueue(&self, id: item::Id, action: Action) {
-        self.items.borrow_mut()
+        self.items
+            .borrow_mut()
             .get_mut(&id)
             .expect("id must be added as read first")
             .enqueue(action);
     }
 
-    fn update_immediate<'l, Lookup, Update>(&mut self, id: item::Id, lookup: &'l mut Lookup, update: Update)
-        -> action::Result<&'l Update::T>
+    fn update_immediate<'l, Lookup, Update>(
+        &mut self,
+        id: item::Id,
+        lookup: &'l mut Lookup,
+        update: Update,
+    ) -> action::Result<&'l Update::T>
     where
-        Lookup:
-            item::Lookup,
-        Action: 
-            crate::Action<State = Lookup::State>,
-        Update:
-            Into<Action> +
-            action::Update<T: item::lookup::Lookupable<Lookup::State>, Undo: Into<Action>>,
+        Lookup: item::Lookup,
+        Action: crate::Action<State = Lookup::State>,
+        Update: Into<Action>
+            + action::Update<T: item::lookup::Lookupable<Lookup::State>, Undo: Into<Action>>,
     {
-        self.items.borrow_mut()
+        self.items
+            .borrow_mut()
             .get_mut(&id)
             .expect("id must be added as read first")
             .update_immediate(id, lookup, update)
     }
 
-    fn flush<Lookup>(&mut self, lookup: &mut Lookup)
-        -> action::Result<()>
-    where 
+    fn flush<Lookup>(&mut self, lookup: &mut Lookup) -> action::Result<()>
+    where
         Action: crate::Action<State = Lookup::State>,
         Lookup: item::Lookup,
     {
         for (&id, item) in self.items.get_mut() {
             item.flush(id, lookup)?;
         }
-        
+
         Ok(())
     }
 
-    fn revert<Lookup>(self, lookup: &mut Lookup)
-        -> action::Result<()>
-    where 
+    fn revert<Lookup>(self, lookup: &mut Lookup) -> action::Result<()>
+    where
         Action: crate::Action<State = Lookup::State>,
         Lookup: item::Lookup,
     {
@@ -270,20 +288,16 @@ struct Inner<'l, Lookup, Action> {
 }
 
 impl<'l, Lookup, Action> Inner<'l, Lookup, Action> {
-    fn get<T>(&self, id: IdT<T>) 
-        -> lookup::Result<Existing<'_, Lookup, Action, T>>
+    fn get<T>(&self, id: IdT<T>) -> lookup::Result<Existing<'_, Lookup, Action, T>>
     where
         Lookup: item::Lookup,
-        T: item::lookup::Lookupable<Lookup::State>
+        T: item::lookup::Lookupable<Lookup::State>,
     {
-        let item = self.lookup.lookup(id)
-            .map_err(|e| e.with_context(id))?;
-        self.items_status.register_read(id.untyped(), item.version());
+        let item = self.lookup.lookup(id).map_err(|e| e.with_context(id))?;
+        self.items_status
+            .register_read(id.untyped(), item.version());
 
-        Ok(Existing {
-            inner: self,
-            item,
-        })
+        Ok(Existing { inner: self, item })
     }
 }
 
@@ -295,9 +309,12 @@ pub struct Interactor<'l, Lookup, Action, Context, Output> {
 }
 
 impl<'l, Lookup, Action, Context, Output> Interactor<'l, Lookup, Action, Context, Output> {
-    pub(crate) fn new(lookup: &'l mut Lookup, reservation: &'l item::id::Reservation, context: Context) 
-        -> Self 
-    where 
+    pub(crate) fn new(
+        lookup: &'l mut Lookup,
+        reservation: &'l item::id::Reservation,
+        context: Context,
+    ) -> Self
+    where
         Output: Default,
     {
         Self {
@@ -307,7 +324,7 @@ impl<'l, Lookup, Action, Context, Output> Interactor<'l, Lookup, Action, Context
                 reservation,
             },
             context,
-            output: RefCell::new(Output::default())
+            output: RefCell::new(Output::default()),
         }
     }
 
@@ -320,16 +337,18 @@ impl<'l, Lookup, Action, Context, Output> Interactor<'l, Lookup, Action, Context
         &mut self.context
     }
 
-    pub fn create<Create>(&self, create: Create)
-        -> Pending<'_, Lookup, Action, Create::T>
-    where 
-        Create:
-            Into<Action> + 
-            action::Create,
+    pub fn create<Create>(&self, create: Create) -> Pending<'_, Lookup, Action, Create::T>
+    where
+        Create: Into<Action> + action::Create,
     {
-        let item_id = self.inner.reservation.claim_id()
+        let item_id = self
+            .inner
+            .reservation
+            .claim_id()
             .unwrap_or_else(|| unimplemented!("Out of ids"));
-        self.inner.items_status.enqueue_create(item_id, create.into());
+        self.inner
+            .items_status
+            .enqueue_create(item_id, create.into());
 
         Pending {
             inner: &self.inner,
@@ -337,72 +356,66 @@ impl<'l, Lookup, Action, Context, Output> Interactor<'l, Lookup, Action, Context
         }
     }
 
-    pub fn get<T>(&self, id: IdT<T>)
-        -> lookup::Result<Existing<'_, Lookup, Action, T>>
+    pub fn get<T>(&self, id: IdT<T>) -> lookup::Result<Existing<'_, Lookup, Action, T>>
     where
         Lookup: item::Lookup,
-        T: item::lookup::Lookupable<Lookup::State>
+        T: item::lookup::Lookupable<Lookup::State>,
     {
         self.inner.get(id)
     }
 
-    pub fn get_root<Root>(&self)
-        -> lookup::Result<Existing<'_, Lookup, Action, Root>>
+    pub fn get_root<Root>(&self) -> lookup::Result<Existing<'_, Lookup, Action, Root>>
     where
         Lookup: item::Lookup,
         Root: item::lookup::Lookupable<Lookup::State>,
-        Context: GetRoot<Root=IdT<Root>>,
+        Context: GetRoot<Root = IdT<Root>>,
     {
         let root_id = *self.context.get_root();
         self.get(root_id)
     }
 
-    pub fn update_immediate<Update>(&mut self, update: WithUpdate<Update::T, Update>)
-        -> action::Result<&Update::T>
+    pub fn update_immediate<Update>(
+        &mut self,
+        update: WithUpdate<Update::T, Update>,
+    ) -> action::Result<&Update::T>
     where
-        Lookup:
-            item::Lookup,
-        Action: 
-            crate::Action<State = Lookup::State>,
-        Update:
-            Into<Action> +
-            action::Update<T: item::lookup::Lookupable<Lookup::State>, Undo: Into<Action>>,
+        Lookup: item::Lookup,
+        Action: crate::Action<State = Lookup::State>,
+        Update: Into<Action>
+            + action::Update<T: item::lookup::Lookupable<Lookup::State>, Undo: Into<Action>>,
     {
-        let WithUpdate {
-            id,
-            update,
-        } = update;
+        let WithUpdate { id, update } = update;
 
         self.flush()?;
-        self.inner.items_status.update_immediate(id.untyped(), self.inner.lookup, update)
+        self.inner
+            .items_status
+            .update_immediate(id.untyped(), self.inner.lookup, update)
     }
 
     pub fn enqueue_trigger(&self, trigger: Output::Trigger)
-    where 
-        Output: EnqueueTrigger
+    where
+        Output: EnqueueTrigger,
     {
         self.output.borrow_mut().enqueue_trigger(trigger);
     }
 
     pub fn set_game_outcome(&self, game_outcome: Output::GameOutcome)
-    where 
-        Output: SetGameOutcome
+    where
+        Output: SetGameOutcome,
     {
         self.output.borrow_mut().set_game_outcome(game_outcome);
     }
 
-    pub fn flush(&mut self)
-        -> action::Result<()>
-    where 
+    pub fn flush(&mut self) -> action::Result<()>
+    where
         Action: crate::Action<State = Lookup::State>,
         Lookup: item::Lookup,
     {
         self.inner.items_status.flush(self.inner.lookup)
     }
 
-    pub(crate) fn revert<E>(self, err: E)
-        -> RecoverableError<E>
-    where 
+    pub(crate) fn revert<E>(self, err: E) -> RecoverableError<E>
+    where
         Action: crate::Action<State = Lookup::State>,
         Lookup: item::Lookup,
     {
@@ -414,16 +427,17 @@ impl<'l, Lookup, Action, Context, Output> Interactor<'l, Lookup, Action, Context
         recoverable_error
     }
 
-    pub(crate) fn complete<E>(mut self, error: Option<E>) 
-        -> Result<interactor::Complete<Action, Context, Output>, RecoverableError<E>> 
-    where 
+    pub(crate) fn complete<E>(
+        mut self,
+        error: Option<E>,
+    ) -> Result<interactor::Complete<Action, Context, Output>, RecoverableError<E>>
+    where
         Action: crate::Action<State = Lookup::State>,
         action::Error: Into<E>,
         Lookup: item::Lookup,
     {
         let result = match error {
-            None => self.flush()
-                .map_err(Into::into),
+            None => self.flush().map_err(Into::into),
             Some(err) => Err(err),
         };
 
@@ -436,11 +450,12 @@ impl<'l, Lookup, Action, Context, Output> Interactor<'l, Lookup, Action, Context
     // Interactor must be flushed before calling `complete`
     fn complete_internal(self) -> Complete<Action, Context, Output> {
         let Self {
-            inner: Inner {
-                lookup: _lookup,
-                items_status,
-                reservation: _reservation,
-            },
+            inner:
+                Inner {
+                    lookup: _lookup,
+                    items_status,
+                    reservation: _reservation,
+                },
             context,
             output,
         } = self;
@@ -510,14 +525,13 @@ impl<'i, Lookup, Action, T> Pending<'i, Lookup, Action, T> {
         self.item_id
     }
 
-    pub fn update<Update>(&self, update: Update) 
-        -> &Self
-    where 
-        Update:
-            Into<Action> + 
-            action::Update<T = T>,
+    pub fn update<Update>(&self, update: Update) -> &Self
+    where
+        Update: Into<Action> + action::Update<T = T>,
     {
-        self.inner.items_status.enqueue(self.item_id.untyped(), update.into());
+        self.inner
+            .items_status
+            .enqueue(self.item_id.untyped(), update.into());
         self
     }
 }
@@ -533,43 +547,38 @@ impl<'i, Lookup, Action, T> Existing<'i, Lookup, Action, T> {
         self.item.id()
     }
 
-    pub fn follow<U>(&self, id: IdT<U>)
-        -> lookup::Result<Existing<'i, Lookup, Action, U>>
+    pub fn follow<U>(&self, id: IdT<U>) -> lookup::Result<Existing<'i, Lookup, Action, U>>
     where
         Lookup: item::Lookup,
-        U: item::lookup::Lookupable<Lookup::State>
+        U: item::lookup::Lookupable<Lookup::State>,
     {
         self.inner.get(id)
     }
 
-    pub fn update<Update>(&self, update: Update) 
-        -> &Self
-    where 
-        Update:
-            Into<Action> + 
-            action::Update<T = T>,
+    pub fn update<Update>(&self, update: Update) -> &Self
+    where
+        Update: Into<Action> + action::Update<T = T>,
     {
-        self.inner.items_status.enqueue(self.item.id().untyped(), update.into());
+        self.inner
+            .items_status
+            .enqueue(self.item.id().untyped(), update.into());
         self
     }
 
-    
-    pub fn update_immediate<Update>(self, update: Update)
-        -> WithUpdate<T, Update>
-    {
+    pub fn update_immediate<Update>(self, update: Update) -> WithUpdate<T, Update> {
         WithUpdate {
             id: self.id(),
             update,
         }
     }
 
-    pub fn destroy<Destroy>(self, destroy: Destroy) 
-    where 
-        Destroy:
-            Into<Action> + 
-            action::Destroy<T = T>,
+    pub fn destroy<Destroy>(self, destroy: Destroy)
+    where
+        Destroy: Into<Action> + action::Destroy<T = T>,
     {
-        self.inner.items_status.enqueue(self.item.id().untyped(), destroy.into());
+        self.inner
+            .items_status
+            .enqueue(self.item.id().untyped(), destroy.into());
     }
 }
 
@@ -587,4 +596,3 @@ pub struct WithUpdate<T, Update> {
     id: IdT<T>,
     update: Update,
 }
-

@@ -1,16 +1,13 @@
 use std::fmt;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct Card {
     face_index: usize,
 }
 
 impl Card {
     fn new(face_index: usize) -> Self {
-        Self {
-            face_index,
-        }
+        Self { face_index }
     }
 
     pub fn face(&self) -> &'static Face {
@@ -68,10 +65,7 @@ pub struct Face {
 
 impl Face {
     const fn new(letters: &'static str, points: u8) -> Self {
-        Self {
-            letters,
-            points,
-        }
+        Self { letters, points }
     }
 
     pub fn points(&self) -> u32 {
@@ -120,7 +114,6 @@ pub static FACES: [FaceCount; 31] = [
     FaceCount::new("X", 12, 2),
     FaceCount::new("Y", 4, 4),
     FaceCount::new("Z", 14, 2),
-
     FaceCount::new("QU", 9, 2),
     FaceCount::new("IN", 7, 2),
     FaceCount::new("ER", 7, 2),

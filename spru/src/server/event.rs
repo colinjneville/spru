@@ -25,7 +25,7 @@ pub struct GameComplete<Server: super::Server> {
 //         }
 //     }
 
-//     fn game_complete(&mut self, event: GameComplete<GameOutcome>) { 
+//     fn game_complete(&mut self, event: GameComplete<GameOutcome>) {
 //         let _ = event;
 //     }
 // }

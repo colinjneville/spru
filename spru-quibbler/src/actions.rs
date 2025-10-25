@@ -23,15 +23,13 @@ use crate::{data, game, hand, player, round};
 #[tagset(include(rotating::Actions<spru::player::Id>))]
 pub struct Actions;
 
-#[derive(Debug, Clone)]
-#[derive(serde::Serialize, serde::Deserialize)]
-#[derive(spru::action::Update)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, spru::action::Update)]
 pub struct InitializeDeck;
 
 impl spru::action::Update for InitializeDeck {
     type T = pile::State<data::Card>;
     type Undo = verbatim::Update<pile::State<data::Card>>;
-    
+
     #[allow(refining_impl_trait)]
     fn update(&self, value: &mut Self::T) -> AnyResult<Self::Undo> {
         use spru::action::Create as _;
@@ -39,7 +37,7 @@ impl spru::action::Update for InitializeDeck {
         let (new_pile, _) = pile::create(data::Card::all())
             .create()
             .expect("Infallible");
-        
+
         let old_pile = std::mem::replace(value, new_pile);
         Ok(verbatim::update(old_pile))
     }

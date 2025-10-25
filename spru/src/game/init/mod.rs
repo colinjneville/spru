@@ -3,24 +3,28 @@ pub use error::Error;
 
 use std::collections::VecDeque;
 
-use crate::{interactor, item::{self}};
+use crate::{
+    interactor,
+    item::{self},
+};
 
 pub trait Init {
     type Root;
     type State;
     type Action;
 
-    fn initialize(self, interactor: &mut Interactor<Self::State, Self::Action>) 
-        -> self::Result<Self::Root>;
+    fn initialize(
+        self,
+        interactor: &mut Interactor<Self::State, Self::Action>,
+    ) -> self::Result<Self::Root>;
 }
 
-pub type Interactor<'l, State, Action> = crate::Interactor<'l, item::lookup::Canonical<State>, Action, Context, Output>;
+pub type Interactor<'l, State, Action> =
+    crate::Interactor<'l, item::lookup::Canonical<State>, Action, Context, Output>;
 
 #[derive(Debug)]
 #[non_exhaustive]
-pub struct Context {
-    
-}
+pub struct Context {}
 
 impl interactor::PlayerContext for Context {
     fn player_context(&self) -> Option<crate::player::Id> {
@@ -30,9 +34,7 @@ impl interactor::PlayerContext for Context {
 
 #[derive(Debug, Default)]
 #[doc(hidden)]
-pub struct Output {
-    
-}
+pub struct Output {}
 
 impl<Trigger> interactor::TakeTriggers<Trigger> for Output {
     fn take_triggers(&mut self) -> VecDeque<Trigger> {

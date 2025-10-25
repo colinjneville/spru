@@ -1,3 +1,6 @@
+#![allow(clippy::type_complexity)]
+#![allow(clippy::too_many_arguments)]
+
 mod actions;
 use std::fmt;
 
@@ -22,24 +25,23 @@ pub use state::State;
 use bevy::{ecs::system::IntoSystem, prelude};
 
 type Client = spru::client::Impl<State, Actions, IdT<game::Root>, Interaction, game::Outcome>;
-type Server = spru::server::Impl<State, Actions, IdT<game::Root>, Interaction, Reaction, player::Init>;
+type Server =
+    spru::server::Impl<State, Actions, IdT<game::Root>, Interaction, Reaction, player::Init>;
 
-fn main() { 
+fn main() {
     use prelude::PluginGroup as _;
 
-    let frame_duration = std::time::Duration::from_secs_f32(1. / 30.);
+    let _frame_duration = std::time::Duration::from_secs_f32(1. / 30.);
 
     bevy::app::App::new()
         .add_plugins((
             // bevy::MinimalPlugins.set(
             //     bevy::app::ScheduleRunnerPlugin::run_loop(frame_duration)
             // ),
-            bevy::DefaultPlugins.set(
-                bevy::log::LogPlugin {
-                    filter: "spru=trace,spru_bevy=info,spru_quibbler=trace".to_string(),
-                    .. Default::default()
-                }
-            ),
+            bevy::DefaultPlugins.set(bevy::log::LogPlugin {
+                filter: "spru=trace,spru_bevy=info,spru_quibbler=trace".to_string(),
+                ..Default::default()
+            }),
             // bevy::log::LogPlugin {
             //     filter: "spru=trace,spru_bevy=trace,spru_quibbler=trace".to_string(),
             //     .. Default::default()
@@ -57,47 +59,45 @@ fn main() {
         .init_resource::<GameId>()
         .init_resource::<ClientIds>()
         .init_resource::<ActiveClientId>()
-        .add_systems(prelude::Startup, (
-            startup,
-        ))
-        .add_systems(prelude::FixedUpdate, (
-            process_input.pipe(error_to_console),
-            print_piles,
-        ))
+        .add_systems(prelude::Startup, (startup,))
+        .add_systems(
+            prelude::FixedUpdate,
+            (process_input.pipe(error_to_console), print_piles),
+        )
         // Server Init
-        .add_observer(|
-            server_init: prelude::On<spru_bevy::server::event::Init<Server>>,
-            mut game_id: prelude::ResMut<GameId>,
-            mut q_server: prelude::Query<(
+        .add_observer(
+            |server_init: prelude::On<spru_bevy::server::event::Init<Server>>,
+             mut game_id: prelude::ResMut<GameId>,
+             mut q_server: prelude::Query<(
                 &spru_bevy::common::component::GameId,
                 &mut spru_bevy::server::component::FromUser<Server>,
-            )>,
-        | -> prelude::Result {
-            let gid = *server_init.result.as_ref()
-                .map_err(ToString::to_string)?;
-            game_id.set(gid);
+            )>|
+             -> prelude::Result {
+                let gid = *server_init.result.as_ref().map_err(ToString::to_string)?;
+                game_id.set(gid);
 
-            let (_, mut from_user) = Server::filter_mut(&mut q_server, gid)
-                .ok_or("Server not found")?;
+                let (_, mut from_user) =
+                    Server::filter_mut(&mut q_server, gid).ok_or("Server not found")?;
 
-            for i in 0..2 {
-                from_user.add_player(player::Input {
-                    username: format!("Player {i}"),
-                });
-            }
+                for i in 0..2 {
+                    from_user.add_player(player::Input {
+                        username: format!("Player {i}"),
+                    });
+                }
 
-            Ok(())
-        })
+                Ok(())
+            },
+        )
         // Client Init
-        .add_observer(|
-            client_init: prelude::On<spru_bevy::client::event::Init<Client>>,
-            mut client_ids: prelude::ResMut<ClientIds>,
-        | -> prelude::Result {
-            let client_id = *client_init.result.as_ref()
-                .map_err(ToString::to_string)?;
-            client_ids.push(client_id);
-            Ok(())
-        })
+        .add_observer(
+            |client_init: prelude::On<spru_bevy::client::event::Init<Client>>,
+             mut client_ids: prelude::ResMut<ClientIds>|
+             -> prelude::Result {
+                let client_id = *client_init.result.as_ref().map_err(ToString::to_string)?;
+                client_ids.push(client_id);
+                Ok(())
+            },
+        )
         .run();
 }
 
@@ -142,8 +142,7 @@ macro_rules! bail {
 }
 pub(crate) use bail;
 
-#[derive(Debug, Default)]
-#[derive(prelude::Resource)]
+#[derive(Debug, Default, prelude::Resource)]
 struct GameId(Option<spru_bevy::common::component::GameId>);
 
 impl GameId {
@@ -156,8 +155,7 @@ impl GameId {
     }
 }
 
-#[derive(Debug, Default)]
-#[derive(prelude::Resource)]
+#[derive(Debug, Default, prelude::Resource)]
 struct ClientIds(Vec<spru_bevy::client::component::ClientId>);
 
 impl ClientIds {
@@ -170,8 +168,7 @@ impl ClientIds {
     }
 }
 
-#[derive(Debug, Default)]
-#[derive(prelude::Resource)]
+#[derive(Debug, Default, prelude::Resource)]
 struct ActiveClientId(Option<spru_bevy::client::component::ClientId>);
 
 impl ActiveClientId {
@@ -184,10 +181,8 @@ impl ActiveClientId {
     }
 }
 
-fn startup(
-    mut commands: prelude::Commands,
-) {
-    commands.spawn(bevy::prelude::Camera2d::default());
+fn startup(mut commands: prelude::Commands) {
+    commands.spawn(bevy::prelude::Camera2d);
     commands.spawn((
         bevy_simple_text_input::TextInput,
         prelude::Node {
@@ -195,7 +190,7 @@ fn startup(
             border: prelude::UiRect::all(prelude::Val::Px(2.0)),
             ..Default::default()
         },
-        prelude::BorderColor::all(prelude::Color::BLACK)
+        prelude::BorderColor::all(prelude::Color::BLACK),
     ));
     commands.queue(spru_bevy::server::command::Init::<Server, _> {
         game_init: game::Init,
@@ -205,12 +200,17 @@ fn startup(
 }
 
 fn print_piles(
-    q_piles: prelude::Query<(
-        &spru_bevy::client::component::ClientId,
-        &spru_bevy::client::component::Item<spru_util::pile::State<data::Card>>,
-    ), (
-        prelude::Changed<spru_bevy::client::component::Item<spru_util::pile::State<data::Card>>>,
-    )>,
+    q_piles: prelude::Query<
+        (
+            &spru_bevy::client::component::ClientId,
+            &spru_bevy::client::component::Item<spru_util::pile::State<data::Card>>,
+        ),
+        (
+            prelude::Changed<
+                spru_bevy::client::component::Item<spru_util::pile::State<data::Card>>,
+            >,
+        ),
+    >,
 ) {
     for (client_id, pile) in q_piles {
         let mut s = String::new();
@@ -244,28 +244,27 @@ fn process_input(
     game_id: prelude::Res<GameId>,
     client_ids: prelude::Res<ClientIds>,
     mut active_client_id: prelude::ResMut<ActiveClientId>,
-) 
-    -> prelude::Result
-{
+) -> prelude::Result {
     for event in events.read() {
         let game_id = game_id.get();
 
         let text = event.value.as_bytes();
         prelude::info!("'{}'", text.escape_ascii());
-        
+
         let mut words = text.split(u8::is_ascii_whitespace);
         if let Some(command) = words.next() {
             // let args: Vec<_> = words.collect();
 
-            let (_, server_runner, mut server_from_user) = Server::filter_mut(&mut q_server, game_id)
-                .ok_or("Server not found")?;
+            let (_, server_runner, mut server_from_user) =
+                Server::filter_mut(&mut q_server, game_id).ok_or("Server not found")?;
 
             let client_id;
             let client_entity_map;
             let client_from_user;
             if let Some(active_client_id) = active_client_id.get() {
-                let (_, _, entity_map, from_user) = Client::filter_mut(&mut q_client, game_id, active_client_id)
-                    .ok_or("Client not found")?;
+                let (_, _, entity_map, from_user) =
+                    Client::filter_mut(&mut q_client, game_id, active_client_id)
+                        .ok_or("Client not found")?;
                 client_id = Ok(active_client_id);
                 client_entity_map = Ok(entity_map);
                 client_from_user = Ok(from_user);
@@ -278,7 +277,8 @@ fn process_input(
             let player_root = 'player_root: {
                 for (&current_client_id, player_root) in q_player_root {
                     if client_id.ok() == Some(current_client_id) {
-                        break 'player_root player_root.get(current_client_id.0)
+                        break 'player_root player_root
+                            .get(current_client_id.0)
                             .map_err(prelude::BevyError::from);
                     }
                 }
@@ -286,55 +286,49 @@ fn process_input(
             };
 
             let hand = 'hand: {
-                if let Ok(player_root) = player_root {
-                    if let Ok(client_entity_map) = client_entity_map {
-                        if let Ok(hand_entity) = client_entity_map.get(player_root.hand) {
-                            if let Ok((hand, )) = q_hand.get(hand_entity) {
-                                break 'hand Some(&**hand);
-                            }
-                        }
-                    }
+                if let Ok(player_root) = player_root
+                    && let Ok(client_entity_map) = client_entity_map
+                    && let Ok(hand_entity) = client_entity_map.get(player_root.hand)
+                    && let Ok((hand,)) = q_hand.get(hand_entity)
+                {
+                    break 'hand Some(&**hand);
                 }
                 None
-            }.ok_or("Hand not found");
+            }
+            .ok_or("Hand not found");
 
             match command {
                 b"add_player" => {
-                    let username = words.next()
-                        .ok_or("Expected username")?;
+                    let username = words.next().ok_or("Expected username")?;
 
-                    let username = String::from_utf8(username.to_vec())
-                        .unwrap();
-                    
-                    server_from_user.add_player(player::Input {
-                        username,
-                    });
-                },
+                    let username = String::from_utf8(username.to_vec()).unwrap();
+
+                    server_from_user.add_player(player::Input { username });
+                }
                 b"start" => {
                     server_from_user.manual_trigger(reaction::Trigger::StartGame);
                 }
                 b"save" => {
                     let save = server_runner.save()?;
-                    let text = ron::ser::to_string_pretty(&save, ron::ser::PrettyConfig::default())?;
-                    arboard::Clipboard::new()?
-                            .set_text(text)?;
+                    let text =
+                        ron::ser::to_string_pretty(&save, ron::ser::PrettyConfig::default())?;
+                    arboard::Clipboard::new()?.set_text(text)?;
                 }
                 b"client" => {
-                    let num = words.next()
-                        .ok_or("Expected ClientId")?;
+                    let num = words.next().ok_or("Expected ClientId")?;
 
-                    let num: usize = str::from_utf8(num).unwrap().parse()
+                    let num: usize = str::from_utf8(num)
+                        .unwrap()
+                        .parse()
                         .map_err(|_| "Invalid ClientId")?;
 
-                    let client_id = *client_ids.get().get(num)
-                        .ok_or("ClientId does not exist")?;
+                    let client_id = *client_ids.get().get(num).ok_or("ClientId does not exist")?;
 
                     active_client_id.set(client_id);
                 }
                 // Client scoped
                 b"draw" => {
-                    let location = words.next()
-                        .ok_or("Invalid arguments")?;
+                    let location = words.next().ok_or("Invalid arguments")?;
 
                     let interaction: Interaction = match location {
                         b"deck" => Ok(interaction::Draw::Deck.into()),
@@ -342,31 +336,25 @@ fn process_input(
                         _ => Err("Invalid location"),
                     }?;
 
-                    client_from_user?
-                        .stage_interaction(interaction);
+                    client_from_user?.stage_interaction(interaction);
                 }
                 b"discard" => {
-                    let card_letters = words.next()
-                        .ok_or("Invalid arguments")?;
+                    let card_letters = words.next().ok_or("Invalid arguments")?;
                     let card_letters = card_letters.to_ascii_uppercase();
-                    let card = data::Card::get(&card_letters)
-                        .ok_or("Invalid card")?;
-                    client_from_user?
-                        .stage_interaction(interaction::Discard::new(card).into());
+                    let card = data::Card::get(&card_letters).ok_or("Invalid card")?;
+                    client_from_user?.stage_interaction(interaction::Discard::new(card).into());
                 }
                 b"play" => {
                     let mut words: Vec<_> = words.collect::<Vec<_>>().join(&b' ');
                     words.make_ascii_uppercase();
-                        
+
                     let interaction = interaction::Play::parsed(hand?, &words)
                         .map_err(|c| format!("No card for character {}", c as char))?;
 
-                    client_from_user?
-                        .stage_interaction(interaction.into());
+                    client_from_user?.stage_interaction(interaction.into());
                 }
                 b"pass" => {
-                    client_from_user?
-                        .stage_interaction(interaction::Play::pass().into());
+                    client_from_user?.stage_interaction(interaction::Play::pass().into());
                 }
                 b"apply" => {
                     client_from_user?.apply_all_interactions();
@@ -382,9 +370,7 @@ fn process_input(
     Ok(())
 }
 
-fn error_to_console(
-    prelude::In(result): prelude::In<prelude::Result>
-) {
+fn error_to_console(prelude::In(result): prelude::In<prelude::Result>) {
     if let Err(err) = result {
         prelude::warn!("{err}");
     }

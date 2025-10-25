@@ -15,4 +15,3 @@ pub struct Save<Server: super::Server> {
     pub(crate) player_manager: player::Manager<Server::PlayerInit>,
     pub(crate) reaction: Server::Reaction,
 }
-

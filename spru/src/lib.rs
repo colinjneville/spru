@@ -1,4 +1,9 @@
 #![deny(missing_debug_implementations)]
+#![allow(clippy::type_complexity)]
+#![allow(
+    clippy::crate_in_macro_def,
+    reason = "'crate' in telety is already translated to this crate"
+)]
 // #![deny(missing_docs)]
 
 pub mod action;
@@ -30,12 +35,12 @@ pub use visibility::Visibility;
 
 pub use spru_macro::FromInfallible;
 
-pub trait Serial: Sized + serde::Serialize + serde::de::DeserializeOwned + 'static { }
+pub trait Serial: Sized + serde::Serialize + serde::de::DeserializeOwned + 'static {}
 
-impl<T: Sized + serde::Serialize + serde::de::DeserializeOwned + 'static> Serial for T { }
+impl<T: Sized + serde::Serialize + serde::de::DeserializeOwned + 'static> Serial for T {}
 
 #[doc(hidden)]
 pub mod __private {
-    pub use telety;
     pub use serde;
+    pub use telety;
 }

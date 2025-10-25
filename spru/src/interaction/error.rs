@@ -1,7 +1,10 @@
 use std::{fmt, ops};
 
-use crate::{action, common::error::{AnyError, PsuedoError}, item::lookup};
-
+use crate::{
+    action,
+    common::error::{AnyError, PsuedoError},
+    item::lookup,
+};
 
 #[derive(Debug)]
 pub struct Error {
@@ -55,10 +58,7 @@ impl<E: std::error::Error + Send + Sync + 'static> From<E> for Error {
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let Self {
-            kind,
-            context,
-        } = self;
+        let Self { kind, context } = self;
 
         if let Some(context) = context {
             write!(f, "{context}")?;
@@ -67,7 +67,7 @@ impl fmt::Display for Error {
         }
 
         write!(f, " failed: {kind}")?;
-        
+
         Ok(())
     }
 }
@@ -97,9 +97,7 @@ impl Context {
 
 impl fmt::Display for Context {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let Self {
-            interaction_name,
-        } = self;
+        let Self { interaction_name } = self;
 
         write!(f, "Interaction '{interaction_name}'")?;
 

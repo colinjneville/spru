@@ -1,11 +1,18 @@
 use std::fmt;
 
 use bevy::prelude;
-use derive_where::derive_where;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[derive(serde::Serialize, serde::Deserialize)]
-#[derive(prelude::Component)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
+    prelude::Component,
+)]
 #[component(immutable)]
 pub struct GameId(pub spru::game::Id);
 

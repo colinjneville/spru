@@ -1,7 +1,6 @@
 use std::{cmp, fmt};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct Id(pub(crate) u32);
 
 impl Id {

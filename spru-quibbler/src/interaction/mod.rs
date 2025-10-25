@@ -7,21 +7,27 @@ pub use play::Play;
 use spru::item::IdT;
 use tagset::tagset;
 
-pub(crate) type Interactor<'l, 'r, Lookup> = spru::interaction::Interactor<'l, 'r, Lookup, crate::Actions, IdT<crate::game::Root>, crate::reaction::Trigger>;
+pub(crate) type Interactor<'l, 'r, Lookup> = spru::interaction::Interactor<
+    'l,
+    'r,
+    Lookup,
+    crate::Actions,
+    IdT<crate::game::Root>,
+    crate::reaction::Trigger,
+>;
 
-#[derive(Debug)]
-#[derive(thiserror::Error)]
+#[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("Out of turn")]
     OutOfTurn,
     #[error("Invalid state")]
-    InvalidState
+    InvalidState,
 }
 
 #[tagset(derive(Debug, Clone))]
 #[tagset(impl spru::Interaction {
     type State = crate::State;
-    type Action = crate::Actions; 
+    type Action = crate::Actions;
     type Root = IdT<crate::game::Root>;
     type Trigger = crate::reaction::Trigger;
 })]

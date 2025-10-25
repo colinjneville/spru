@@ -1,8 +1,25 @@
-use std::{any, fmt, hash::Hash, marker::PhantomData, ops, sync::atomic::{self, AtomicU32}};
+use std::{
+    any, fmt,
+    hash::Hash,
+    marker::PhantomData,
+    ops,
+    sync::atomic::{self, AtomicU32},
+};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[derive(serde::Serialize, serde::Deserialize)]
-#[derive(deku::DekuRead, deku::DekuWrite)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
+    deku::DekuRead,
+    deku::DekuWrite,
+)]
 pub struct Id(u32);
 
 impl Id {
@@ -40,7 +57,7 @@ impl<T> From<IdT<T>> for Id {
 #[repr(transparent)]
 #[serde(transparent)]
 pub struct IdT<T> {
-    id: Id, 
+    id: Id,
     #[serde(skip_serializing)]
     _p: PhantomData<fn() -> T>,
 }
@@ -49,7 +66,7 @@ impl<T> IdT<T> {
     // TODO make public?
     pub(crate) fn new(id: Id) -> Self {
         Self {
-            id, 
+            id,
             _p: PhantomData,
         }
     }
@@ -81,15 +98,18 @@ impl<T> ops::Deref for IdT<T> {
 
 impl<T> Clone for IdT<T> {
     fn clone(&self) -> Self {
-        Self { id: self.id.clone(), _p: PhantomData }
+        *self
     }
 }
 
-impl<T> Copy for IdT<T> { }
+impl<T> Copy for IdT<T> {}
 
 impl<T> fmt::Debug for IdT<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("IdT").field("id", &self.id).field("T", &any::type_name::<T>()).finish()
+        f.debug_struct("IdT")
+            .field("id", &self.id)
+            .field("T", &any::type_name::<T>())
+            .finish()
     }
 }
 
@@ -105,7 +125,7 @@ impl<T> PartialEq<Id> for IdT<T> {
     }
 }
 
-impl<T> Eq for IdT<T> { }
+impl<T> Eq for IdT<T> {}
 
 impl<T> Hash for IdT<T> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
@@ -113,17 +133,14 @@ impl<T> Hash for IdT<T> {
     }
 }
 
-#[derive(Debug, Clone)]
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub(crate) struct Range {
     range: std::ops::Range<u32>,
 }
 
 impl Range {
     pub fn new(range: std::ops::Range<u32>) -> Self {
-        Self {
-            range,
-        }
+        Self { range }
     }
 
     pub(crate) fn contains(&self, id: &Id) -> bool {
@@ -144,9 +161,7 @@ impl fmt::Display for Range {
     }
 }
 
-
-#[derive(Debug)]
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct Reservation {
     next_id: AtomicU32,
     /// Exclusive bound
@@ -172,7 +187,12 @@ impl Reservation {
             if current_value >= self.end_of_id_reservation {
                 return None;
             }
-            if let Ok(current) = self.next_id.compare_exchange(current_value, current_value + 1, atomic::Ordering::AcqRel, atomic::Ordering::Acquire) {
+            if let Ok(current) = self.next_id.compare_exchange(
+                current_value,
+                current_value + 1,
+                atomic::Ordering::AcqRel,
+                atomic::Ordering::Acquire,
+            ) {
                 return Some(Id(current));
             }
         }
@@ -182,10 +202,11 @@ impl Reservation {
         if self.end_of_id_reservation >= new_reservation_count {
             let end_of_id_reservation = self.end_of_id_reservation;
             self.end_of_id_reservation -= new_reservation_count;
-            
-            let next_id = self.end_of_id_reservation
+
+            let next_id = self
+                .end_of_id_reservation
                 .max(self.next_id.load(atomic::Ordering::Acquire));
-                
+
             if next_id < end_of_id_reservation {
                 let range = Range::new(next_id..end_of_id_reservation);
                 let reservation = Self {
@@ -202,11 +223,10 @@ impl Reservation {
     }
 }
 
-#[derive(Debug)]
-#[derive(thiserror::Error)]
+#[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("Instance {id} already exists ({version})")]
     AlreadyExists { id: Id, version: super::Version },
     #[error("Instance {id} has already been destroyed")]
-    IsDestroyed { id: Id, },
+    IsDestroyed { id: Id },
 }

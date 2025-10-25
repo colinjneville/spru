@@ -2,9 +2,20 @@ use core::fmt;
 
 use crate::item;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[derive(serde::Serialize, serde::Deserialize)]
-#[derive(deku::DekuRead, deku::DekuWrite)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
+    deku::DekuRead,
+    deku::DekuWrite,
+)]
 pub struct Version(u32);
 
 impl Version {
@@ -22,8 +33,7 @@ impl fmt::Display for Version {
     }
 }
 
-#[derive(Debug)]
-#[derive(thiserror::Error)]
+#[derive(Debug, thiserror::Error)]
 #[error("Item {item} expected {expected}, found {actual}")]
 pub struct Error {
     pub item: item::Id,
@@ -31,8 +41,7 @@ pub struct Error {
     pub actual: Version,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub(crate) struct Change {
     pub before: Version,
     pub after: Version,
@@ -40,10 +49,7 @@ pub(crate) struct Change {
 
 impl Change {
     pub fn new(before: Version, after: Version) -> Self {
-        Self {
-            before, 
-            after,
-        }
+        Self { before, after }
     }
 
     pub fn noop(version: Version) -> Self {
@@ -75,8 +81,7 @@ impl fmt::Display for Change {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub(crate) struct Expected {
     pub(crate) expected: Vec<(item::Id, Version)>,
 }
@@ -93,7 +98,8 @@ impl Expected {
         // item::version::Error wasn't made for potentially intra-item
         let mut actual_iter = actual.expected.iter().copied();
         for (expected_id, expected_version) in self.expected.iter().copied() {
-            let (actual_id, mut actual_version) = actual_iter.next()
+            let (actual_id, mut actual_version) = actual_iter
+                .next()
                 .unwrap_or((item::Id::INVALID, item::Version::INVALID));
 
             if actual_id != expected_id {
@@ -120,5 +126,3 @@ impl Expected {
         }
     }
 }
-
-

@@ -1,12 +1,20 @@
 use std::collections::HashMap;
 
-use tracing::instrument;
 use spru::{follow, item::IdT};
 use spru_util::{counter, fsm, pile, rotating, verbatim};
+use tracing::instrument;
 
 use crate::round;
 
-pub(crate) type Interactor<'l, 'r> = spru::reaction::Interactor<'l, 'r, crate::State, crate::Actions, IdT<crate::game::Root>, Trigger, crate::game::Outcome>;
+pub(crate) type Interactor<'l, 'r> = spru::reaction::Interactor<
+    'l,
+    'r,
+    crate::State,
+    crate::Actions,
+    IdT<crate::game::Root>,
+    Trigger,
+    crate::game::Outcome,
+>;
 
 #[derive(Debug, Clone)]
 pub enum Trigger {
@@ -20,16 +28,13 @@ pub enum Trigger {
 
 impl Trigger {
     #[instrument(skip_all, ret, err)]
-    fn start_game(interactor: &mut Interactor) 
-        -> spru::action::Result<()> 
-    {
+    fn start_game(interactor: &mut Interactor) -> spru::action::Result<()> {
         let root = interactor.get_root()?;
         let new_root = crate::game::Root {
             has_started: true,
             ..(*root).clone()
         };
-        interactor.get_root()?
-            .update(verbatim::update(new_root));
+        interactor.get_root()?.update(verbatim::update(new_root));
 
         interactor.enqueue_trigger(Trigger::StartRound);
 
@@ -37,9 +42,7 @@ impl Trigger {
     }
 
     #[instrument(skip_all, ret, err)]
-    fn start_round(interactor: &mut Interactor)
-        -> spru::action::Result<()> 
-    {
+    fn start_round(interactor: &mut Interactor) -> spru::action::Result<()> {
         let root = interactor.get_root()?;
 
         let hand_size = *follow!(root => root.round)?.value() as usize + 3;
@@ -64,59 +67,51 @@ impl Trigger {
         for (_player_id, player) in players.iter() {
             let hand = interactor.get(player.hand)?;
 
-            let cards = hand_chunks.next()
+            let cards = hand_chunks
+                .next()
                 .expect("The deck must have enough cards")
                 .to_vec();
-            
-            hand
-                .update(pile::push_top_many(cards));
+
+            hand.update(pile::push_top_many(cards));
         }
 
-        let discarded = hand_chunks.next()
-            .expect("The deck must have enough cards")
-            [0].clone();
-        follow!(root => root.discard)?
-            .update(pile::push_top(discarded));
+        let discarded = hand_chunks.next().expect("The deck must have enough cards")[0].clone();
+        follow!(root => root.discard)?.update(pile::push_top(discarded));
 
         let current_dealer = follow!(root => root.current_dealer)?;
         let current_turn = follow!(root => root.current_turn)?;
 
-        current_turn
-            .update(rotating::set_position(current_dealer.position().unwrap()));
+        current_turn.update(rotating::set_position(current_dealer.position().unwrap()));
 
-        current_dealer
-            .update(rotating::rotate(false));
+        current_dealer.update(rotating::rotate(false));
 
         Ok(())
     }
 
     #[instrument(skip_all, ret, err)]
-    fn draw_from_deck(interactor: &mut Interactor) 
-        -> spru::action::Result<()> 
-    {
-        let player_id = interactor.context().player
+    fn draw_from_deck(interactor: &mut Interactor) -> spru::action::Result<()> {
+        let player_id = interactor
+            .context()
+            .player
             .expect("Must have a player context");
         let root = interactor.get_root()?;
 
         let pile = follow!(root => root.deck)?;
-            
-        let card = pile.top()
-            .expect("Pile cannot be empty");
+
+        let card = pile.top().expect("Pile cannot be empty");
         pile.update(pile::pop_top());
 
         follow!(
             root => root.players,
             players => players.get(player_id)?.hand
         )?
-            .update(pile::push_top(card.clone()));
+        .update(pile::push_top(card.clone()));
 
         Ok(())
     }
 
     #[instrument(skip_all, ret, err)]
-    fn play(interactor: &mut Interactor)
-        -> spru::action::Result<()> 
-    {
+    fn play(interactor: &mut Interactor) -> spru::action::Result<()> {
         let root = interactor.get_root()?;
         let players = follow!(root => root.players)?;
         let round_end = 'round_end: {
@@ -137,9 +132,7 @@ impl Trigger {
     }
 
     #[instrument(skip_all, ret, err)]
-    fn end_round(interactor: &mut Interactor)
-        -> spru::action::Result<()> 
-    {
+    fn end_round(interactor: &mut Interactor) -> spru::action::Result<()> {
         let root = interactor.get_root()?;
         let players = follow!(root => root.players)?;
 
@@ -169,25 +162,22 @@ impl Trigger {
             // Clear played cards
             played.update(verbatim::update_default());
             // Clear hand
-            root.follow(player_root.hand)?
-                .update(pile::clear());
+            root.follow(player_root.hand)?.update(pile::clear());
         }
 
         // Award 10 bonus points to winners of longest word/most words
-        for winner in [max_len_winner, max_words_winner] {
-            if let Some(winner) = winner {
-                follow!(players => players.expect_player(winner).score)?
-                    .update(counter::add_checked(10));
-            }
+        for winner in [max_len_winner, max_words_winner].into_iter().flatten() {
+            follow!(players => players.expect_player(winner).score)?
+                .update(counter::add_checked(10));
         }
 
         // Reset to plays being optional
-        interactor.get(root.round_fsm)?
+        interactor
+            .get(root.round_fsm)?
             .update(fsm::transition(round::machine::Input::Score));
 
         // Clear the discard pile
-        interactor.get(root.discard)?
-            .update(pile::clear());
+        interactor.get(root.discard)?.update(pile::clear());
 
         let round = interactor.get(root.round)?;
         if *round.value() == 7 {
@@ -203,9 +193,7 @@ impl Trigger {
     }
 
     #[instrument(skip_all, ret, err)]
-    fn end_game(interactor: &mut Interactor)
-        -> spru::action::Result<()> 
-    {
+    fn end_game(interactor: &mut Interactor) -> spru::action::Result<()> {
         let root = interactor.get_root()?;
         let players = follow!(root => root.players)?;
 
@@ -226,7 +214,7 @@ impl Trigger {
         }
 
         interactor.set_game_outcome(crate::game::Outcome {
-            winners, 
+            winners,
             final_scores,
         });
 
@@ -234,8 +222,7 @@ impl Trigger {
     }
 }
 
-#[derive(Debug, Clone)]
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Reaction;
 
 impl spru::Reaction for Reaction {
@@ -244,10 +231,12 @@ impl spru::Reaction for Reaction {
     type Root = IdT<crate::game::Root>;
     type Trigger = Trigger;
     type GameOutcome = crate::game::Outcome;
-    
-    fn apply(&self, interactor: &mut self::Interactor, trigger: Self::Trigger) 
-        -> spru::action::Result<()>
-    {
+
+    fn apply(
+        &self,
+        interactor: &mut self::Interactor,
+        trigger: Self::Trigger,
+    ) -> spru::action::Result<()> {
         match trigger {
             Trigger::StartGame => Trigger::start_game(interactor),
             Trigger::StartRound => Trigger::start_round(interactor),

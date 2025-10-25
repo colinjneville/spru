@@ -1,6 +1,9 @@
 use std::{any, fmt, ops};
 
-use crate::{common::error::{AnyError, PsuedoError}, item::{self, IdT}};
+use crate::{
+    common::error::{AnyError, PsuedoError},
+    item::{self, IdT},
+};
 
 #[derive(Debug)]
 pub struct Error {
@@ -35,10 +38,7 @@ impl Error {
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let Self {
-            inner,
-            context,
-        } = self;
+        let Self { inner, context } = self;
 
         write!(f, "Item ")?;
         if let Some(context) = context {
@@ -70,11 +70,8 @@ pub struct Context {
 
 impl fmt::Display for Context {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let Self {
-            id,
-            type_name,
-        } = self;
-        
+        let Self { id, type_name } = self;
+
         write!(f, "{id} ({type_name})")?;
         Ok(())
     }

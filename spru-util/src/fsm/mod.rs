@@ -4,23 +4,21 @@ use std::mem;
 
 use amass::amass_telety;
 use derive_where::derive_where;
-use spru::{common::error::AnyResult, Serial};
 pub use rust_fsm::StateMachineImpl;
+use spru::{Serial, common::error::AnyResult};
 use tagset::tagset;
 use telety::telety;
 
-use crate::{verbatim, Strictness};
+use crate::{Strictness, verbatim};
 
-pub trait StateMachineTy: Clone + StateMachineImpl + 'static { }
+pub trait StateMachineTy: Clone + StateMachineImpl + 'static {}
 
-impl<T: Clone + StateMachineImpl + 'static> StateMachineTy for T { }
+impl<T: Clone + StateMachineImpl + 'static> StateMachineTy for T {}
 
 #[derive_where(Debug, Clone, Serialize, Deserialize; FSM::State)]
 pub struct State<FSM: StateMachineTy>(FSM::State);
 
-impl<FSM: StateMachineTy> State<FSM> {
-    
-}
+impl<FSM: StateMachineTy> State<FSM> {}
 
 pub fn default<FSM: StateMachineTy>() -> Create<FSM> {
     create(FSM::INITIAL_STATE)
@@ -60,8 +58,7 @@ pub fn destroy<FSM: StateMachineTy>() -> Destroy<FSM> {
 #[tagset(reserved(..8))]
 pub struct Actions<FSM: StateMachineTy>;
 
-#[derive(Debug, Clone)]
-#[derive(spru::FromInfallible)]
+#[derive(Debug, Clone, spru::FromInfallible)]
 #[amass_telety(crate::fsm)]
 pub enum Error {
     Transition(error::Transition),
@@ -80,28 +77,28 @@ pub struct Transition<FSM: StateMachineTy> {
 }
 
 impl<FSM> spru::action::Update for Transition<FSM>
-where 
-    FSM: StateMachineTy<
-        State: Serial + Clone, 
-        Input: Serial + Clone
-    >,
-{    
+where
+    FSM: StateMachineTy<State: Serial + Clone, Input: Serial + Clone>,
+{
     type T = State<FSM>;
     type Undo = Set<FSM>;
-    
+
     #[allow(refining_impl_trait)]
     fn update(&self, value: &mut Self::T) -> AnyResult<Option<Self::Undo>> {
         match FSM::transition(&value.0, &self.input) {
             Some(new_state) => {
                 let old_state = mem::replace(&mut value.0, new_state);
-                Ok(Some(Set { new_state: old_state }))
+                Ok(Some(Set {
+                    new_state: old_state,
+                }))
             }
-            None => {
-                match self.strictness {
-                    Strictness::BestEffort => Ok(None),
-                    Strictness::AllOrError => Err(error::Transition::TransitionImpossible(rust_fsm::TransitionImpossibleError).into()),
-                }
-            }
+            None => match self.strictness {
+                Strictness::BestEffort => Ok(None),
+                Strictness::AllOrError => Err(error::Transition::TransitionImpossible(
+                    rust_fsm::TransitionImpossibleError,
+                )
+                .into()),
+            },
         }
     }
 }
@@ -113,16 +110,18 @@ pub struct Set<FSM: StateMachineTy> {
     new_state: FSM::State,
 }
 
-impl<FSM> spru::action::Update for Set<FSM> 
-where 
+impl<FSM> spru::action::Update for Set<FSM>
+where
     FSM: StateMachineTy<State: Serial + Clone>,
 {
     type T = State<FSM>;
     type Undo = Self;
-    
+
     #[allow(refining_impl_trait)]
     fn update(&self, value: &mut Self::T) -> AnyResult<Self::Undo> {
         let old_state = mem::replace(&mut value.0, self.new_state.clone());
-        Ok(Self { new_state: old_state })
+        Ok(Self {
+            new_state: old_state,
+        })
     }
 }

@@ -17,23 +17,19 @@ pub struct State<PlayerState> {
 
 impl<PlayerState> State<PlayerState> {
     pub fn count(&self) -> usize {
-        self.map.iter()
-            .flatten()
-            .count()
+        self.map.iter().flatten().count()
     }
 
     pub fn get(&self, id: player::Id) -> Result<&PlayerState, Error> {
-        self.map.get(id.into_u32() as usize)
-            .map(Option::as_ref)
-            .flatten()
+        self.map
+            .get(id.into_u32() as usize)
+            .and_then(Option::as_ref)
             .map(|(_, state)| state)
             .ok_or(Error::PlayerDoesNotExist(id))
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (player::Id, &PlayerState)> {
-        self.map.iter()
-            .flatten()
-            .map(|(id, state)| (*id, state))
+        self.map.iter().flatten().map(|(id, state)| (*id, state))
     }
 
     pub fn expect_player(&self, id: player::Id) -> &PlayerState {
@@ -44,9 +40,7 @@ impl<PlayerState> State<PlayerState> {
 pub type Create<PlayerState> = verbatim::Create<State<PlayerState>>;
 
 pub fn create<PlayerState>() -> Create<PlayerState> {
-    verbatim::create(State {
-        map: vec![],
-    })
+    verbatim::create(State { map: vec![] })
 }
 
 pub type Destroy<PlayerState> = verbatim::Destroy<State<PlayerState>>;
@@ -55,8 +49,7 @@ pub fn destroy<PlayerState>() -> Destroy<PlayerState> {
     verbatim::destroy()
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-#[derive(spru::action::Update)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, spru::action::Update)]
 pub struct AddPlayer<PlayerState> {
     id: player::Id,
     player_state: PlayerState,
@@ -83,11 +76,11 @@ impl<PlayerState: Clone> spru::action::Update for AddPlayer<PlayerState> {
     }
 }
 
-pub fn add_player<PlayerState>(id: player::Id, player_state: PlayerState) -> AddPlayer<PlayerState> {
-    AddPlayer {
-        id,
-        player_state,
-    }
+pub fn add_player<PlayerState>(
+    id: player::Id,
+    player_state: PlayerState,
+) -> AddPlayer<PlayerState> {
+    AddPlayer { id, player_state }
 }
 
 #[derive_where(Debug, Clone, Serialize, Deserialize)]
@@ -104,10 +97,10 @@ impl<PlayerState> spru::action::Update for RemovePlayer<PlayerState> {
     #[allow(refining_impl_trait)]
     fn update(&self, value: &mut Self::T) -> AnyResult<Self::Undo> {
         let index = self.id.into_u32() as usize;
-        if let Some(player_state) = value.map.get_mut(index) {
-            if let Some((_, player_state)) = player_state.take() {
-                return Ok(add_player(self.id, player_state))
-            }
+        if let Some(player_state) = value.map.get_mut(index)
+            && let Some((_, player_state)) = player_state.take()
+        {
+            return Ok(add_player(self.id, player_state));
         }
 
         Err(Error::PlayerDoesNotExist(self.id).into())

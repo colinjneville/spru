@@ -1,9 +1,8 @@
-use std::{collections::VecDeque};
+use std::collections::VecDeque;
 
 use crate::{action, common::error::RecoverableError, item};
 
-#[derive(Debug, Clone)]
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub(crate) struct Packed<Action> {
     item_id: item::Id,
     version_change: item::version::Change,
@@ -12,7 +11,11 @@ pub(crate) struct Packed<Action> {
 }
 
 impl<Action> Packed<Action> {
-    pub(crate) fn new(item_id: item::Id, version_change: item::version::Change, action: Action) -> Self {
+    pub(crate) fn new(
+        item_id: item::Id,
+        version_change: item::version::Change,
+        action: Action,
+    ) -> Self {
         Self {
             item_id,
             version_change,
@@ -26,8 +29,7 @@ impl<Action> Packed<Action> {
     }
 
     pub(crate) fn expand(&self) -> impl Iterator<Item = Record<'_, Action>> {
-        (0..self.appended_actions.len() + 1).into_iter()
-            .map(|i| Record::new(self, i))
+        (0..self.appended_actions.len() + 1).map(|i| Record::new(self, i))
     }
 }
 
@@ -39,18 +41,19 @@ pub struct Record<'r, Action> {
 
 impl<'r, Action> Record<'r, Action> {
     pub(crate) fn new(packed: &'r Packed<Action>, index: usize) -> Self {
-        Self {
-            packed,
-            index,
-        }
+        Self { packed, index }
     }
 
-    fn apply_internal<Lookup>(&self, lookup: &mut Lookup) -> action::Result<Option<Action>> 
-    where 
+    fn apply_internal<Lookup>(&self, lookup: &mut Lookup) -> action::Result<Option<Action>>
+    where
         Lookup: item::Lookup,
-        Action: crate::Action<State = Lookup::State>,  
+        Action: crate::Action<State = Lookup::State>,
     {
-        let undo = self.action().apply(action::Context::new(lookup, self.item_id().clone(), self.version_change()))?;
+        let undo = self.action().apply(action::Context::new(
+            lookup,
+            self.item_id(),
+            self.version_change(),
+        ))?;
         Ok(undo)
     }
 
@@ -75,8 +78,7 @@ impl<'r, Action> Record<'r, Action> {
     }
 }
 
-#[derive(Debug, Clone)]
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub(crate) struct Records<Action> {
     records: VecDeque<Packed<Action>>,
 }
@@ -95,14 +97,12 @@ impl<Action> Records<Action> {
     }
 
     pub fn iter(&self) -> impl Iterator<Item = Record<'_, Action>> {
-        self.records.iter()
-            .flat_map(Packed::expand)
+        self.records.iter().flat_map(Packed::expand)
     }
 
     pub(crate) fn trim_start(&mut self, count: usize) {
         for _ in 0..count {
-            let _ = self.records.pop_front()
-                .expect("not enough records");
+            let _ = self.records.pop_front().expect("not enough records");
         }
     }
 
@@ -113,42 +113,46 @@ impl<Action> Records<Action> {
 
 impl<Action> Default for Records<Action> {
     fn default() -> Self {
-        Self { records: Default::default() }
+        Self {
+            records: Default::default(),
+        }
     }
 }
 
 impl<Action> Records<Action> {
-    pub fn apply<'l, Lookup>(&self, lookup: &'l mut Lookup) 
-        -> action::Result<Self> 
-    where 
+    pub fn apply<Lookup>(&self, lookup: &mut Lookup) -> action::Result<Self>
+    where
         Lookup: item::Lookup,
-        Action: crate::Action<State = Lookup::State>, 
+        Action: crate::Action<State = Lookup::State>,
     {
-        self.apply_internal(lookup)
-            .map_err(|(_, e)| e)
+        self.apply_internal(lookup).map_err(|(_, e)| e)
     }
 
-    pub fn apply_or_revert<'l, Lookup>(&self, lookup: &'l mut Lookup) 
-        -> Result<Self, RecoverableError<action::Error>> 
-    where 
+    pub fn apply_or_revert<Lookup>(
+        &self,
+        lookup: &mut Lookup,
+    ) -> Result<Self, RecoverableError<action::Error>>
+    where
         Lookup: item::Lookup,
-        Action: crate::Action<State = Lookup::State>, 
+        Action: crate::Action<State = Lookup::State>,
     {
         match self.apply_internal(lookup) {
             Ok(undo) => Ok(undo),
             Err((undo, e)) => {
                 let mut rec_e = RecoverableError::new(e);
                 if let Err(e2) = undo.apply(lookup) {
-                    rec_e.recovery_error = Some(e2);
+                    rec_e.set_recovery_error(e2);
                 }
                 Err(rec_e)
             }
         }
     }
 
-    fn apply_internal<'l, Lookup>(&self, lookup: &'l mut Lookup) 
-        -> std::result::Result<Self, (Self, action::Error)> 
-    where 
+    fn apply_internal<Lookup>(
+        &self,
+        lookup: &mut Lookup,
+    ) -> std::result::Result<Self, (Self, action::Error)>
+    where
         Lookup: item::Lookup,
         Action: crate::Action<State = Lookup::State>,
     {
@@ -165,11 +169,12 @@ impl<Action> Records<Action> {
                         }
 
                         // Otherwise start a new undo record
-                        let packed = Packed::new(r.item_id(), r.version_change().undo(), undo_action);
+                        let packed =
+                            Packed::new(r.item_id(), r.version_change().undo(), undo_action);
                         undo.records.push_back(packed);
                     }
                 }
-                Ok(None) => { }
+                Ok(None) => {}
                 Err(e) => return Err((undo, e)),
             }
         }

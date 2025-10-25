@@ -10,14 +10,13 @@ pub struct Seed<Common: super::Common> {
     pub(crate) snapshot: super::Snapshot<Common::State, Common::Root>,
     pub(crate) transactions: Transactions<Common::Action>,
     pub(crate) reservation: item::id::Reservation,
-    
 }
 
 impl<Common: super::Common> Seed<Common> {
     pub fn game_id(&self) -> game::Id {
         self.game_id
     }
-    
+
     pub fn local_player_id(&self) -> player::Id {
         self.local_player_id
     }

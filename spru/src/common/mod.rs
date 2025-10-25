@@ -22,7 +22,9 @@ pub struct Impl<State, Action, Root, GameOutcome, Interaction> {
     _p: PhantomData<fn() -> (State, Action, Root, GameOutcome, Interaction)>,
 }
 
-impl<State, Action, Root, GameOutcome, Interaction> Common for Impl<State, Action, Root, GameOutcome, Interaction> {
+impl<State, Action, Root, GameOutcome, Interaction> Common
+    for Impl<State, Action, Root, GameOutcome, Interaction>
+{
     type State = State;
     type Action = Action;
     type Root = Root;

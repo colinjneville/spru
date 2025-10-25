@@ -32,15 +32,13 @@ pub fn destroy<T>() -> Destroy<T> {
     Destroy(PhantomData)
 }
 
-#[derive(Debug, Clone, Default)]
-#[derive(serde::Serialize, serde::Deserialize)]
-#[derive(spru::action::Create)]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize, spru::action::Create)]
 #[must_use]
 pub struct Create<T> {
     value: T,
 }
 
-impl<T> spru::action::Create for Create<T> 
+impl<T> spru::action::Create for Create<T>
 where
     T: Clone,
 {
@@ -66,9 +64,7 @@ impl<T> spru::action::Destroy for Destroy<T> {
     }
 }
 
-#[derive(Debug, Clone, Default)]
-#[derive(serde::Serialize, serde::Deserialize)]
-#[derive(spru::action::Update)]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize, spru::action::Update)]
 #[must_use]
 pub struct Update<T> {
     value: T,
@@ -77,12 +73,10 @@ pub struct Update<T> {
 impl<T: Clone> spru::action::Update for Update<T> {
     type T = T;
     type Undo = Self;
-    
+
     #[allow(refining_impl_trait)]
     fn update(&self, value: &mut Self::T) -> AnyResult<Self::Undo> {
         let old = mem::replace(&mut *value, self.value.clone());
-        Ok(Self {
-            value: old
-        })
+        Ok(Self { value: old })
     }
 }

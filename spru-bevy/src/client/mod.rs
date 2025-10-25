@@ -11,7 +11,7 @@ use spru::item;
 use crate::common;
 pub mod system;
 
-pub trait ClientSSS: 
+pub trait ClientSSS:
     spru::client::Client<
         State: Send + Sync + 'static,
         Action: spru::Action<State = Self::State> + Send + Sync + 'static,
@@ -19,83 +19,85 @@ pub trait ClientSSS:
         Interaction: Clone + Send + Sync + 'static,
         Root: Send + Sync + 'static,
         Common: crate::common::CommonSSS,
-    > + Send + Sync + 'static
+    > + Send
+    + Sync
+    + 'static
 {
     /// Filter a query over &[`common::component::GameId`] and &[`component::ClientId`] to
-    /// the specific entity containing a Client with the given ids. Panics if the 
+    /// the specific entity containing a Client with the given ids. Panics if the
     /// [bevy::ecs::query::QueryData] does not contain the id types.
     fn filter<'w, 's, D, F>(
         query: &'w mut bevy::ecs::system::Query<'_, 's, D, F>,
         game_id: common::component::GameId,
         client_id: component::ClientId,
-    ) 
-        -> Option<bevy::ecs::query::ROQueryItem<'w, 's, D>>
-    where 
+    ) -> Option<bevy::ecs::query::ROQueryItem<'w, 's, D>>
+    where
         D: bevy::ecs::query::QueryData,
         F: bevy::ecs::query::QueryFilter,
     {
-        let id_lens: bevy::ecs::system::QueryLens<(
-            prelude::Entity,
-            &common::component::GameId,
-            &component::ClientId,
-        ),
-            prelude::With<component::Runner<Self>>
+        let id_lens: bevy::ecs::system::QueryLens<
+            (
+                prelude::Entity,
+                &common::component::GameId,
+                &component::ClientId,
+            ),
+            prelude::With<component::Runner<Self>>,
         > = query.transmute_lens_filtered();
 
         for (entity, &client_game_id, &client_client_id) in id_lens.query_inner() {
             if client_game_id == game_id && client_client_id == client_id {
-                return query.get(entity)
-                    .ok();
+                return query.get(entity).ok();
             }
         }
         None
     }
 
     /// Filter a query over &[`common::component::GameId`] and &[`component::ClientId`] to
-    /// the specific entity containing a Client with the given ids. Panics if the 
+    /// the specific entity containing a Client with the given ids. Panics if the
     /// [bevy::ecs::query::QueryData] does not contain the id types.
     fn filter_mut<'w, 's, D, F>(
         query: &'w mut bevy::ecs::system::Query<'_, 's, D, F>,
         game_id: common::component::GameId,
         client_id: component::ClientId,
-    ) 
-        -> Option<D::Item<'w, 's>>
-    where 
+    ) -> Option<D::Item<'w, 's>>
+    where
         D: bevy::ecs::query::QueryData,
         F: bevy::ecs::query::QueryFilter,
     {
-        let id_lens: bevy::ecs::system::QueryLens<(
-            prelude::Entity,
-            &common::component::GameId,
-            &component::ClientId,
-        ),
-            prelude::With<component::Runner<Self>>
+        let id_lens: bevy::ecs::system::QueryLens<
+            (
+                prelude::Entity,
+                &common::component::GameId,
+                &component::ClientId,
+            ),
+            prelude::With<component::Runner<Self>>,
         > = query.transmute_lens_filtered();
 
         for (entity, &client_game_id, &client_client_id) in id_lens.query_inner() {
             if client_game_id == game_id && client_client_id == client_id {
-                return query.get_mut(entity)
-                    .ok();
+                return query.get_mut(entity).ok();
             }
         }
         None
     }
 }
 
-impl<Client:
-    spru::client::Client<
-        State: Send + Sync + 'static,
-        Action: spru::Action<State = Self::State> + Send + Sync + 'static,
-        GameOutcome: Send + Sync + 'static,
-        Interaction: Clone + Send + Sync + 'static,
-        Root: Send + Sync + 'static,
-        Common: crate::common::CommonSSS,
-    > + Send + Sync + 'static
-> ClientSSS for Client { }
+impl<
+    Client: spru::client::Client<
+            State: Send + Sync + 'static,
+            Action: spru::Action<State = Self::State> + Send + Sync + 'static,
+            GameOutcome: Send + Sync + 'static,
+            Interaction: Clone + Send + Sync + 'static,
+            Root: Send + Sync + 'static,
+            Common: crate::common::CommonSSS,
+        > + Send
+        + Sync
+        + 'static,
+> ClientSSS for Client
+{
+}
 
-
-#[derive(Debug, Clone)]
-#[derive(thiserror::Error)]
+#[derive(Debug, Clone, thiserror::Error)]
 pub enum BevyError {
     #[error("Item {0} does not exist")]
     IdNotFound(item::Id),
@@ -109,8 +111,7 @@ pub enum BevyError {
 
 pub type BevyResult<T> = std::result::Result<T, BevyError>;
 
-#[derive(Debug)]
-#[derive(thiserror::Error)]
+#[derive(Debug, thiserror::Error)]
 pub enum RunClientError {
     #[error(transparent)]
     Init(spru::common::error::FatalError),

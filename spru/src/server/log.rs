@@ -1,8 +1,19 @@
-#![allow(dead_code, reason = "Core undo functionality is implemented, but not yet exposed")]
+#![allow(
+    dead_code,
+    reason = "Core undo functionality is implemented, but not yet exposed"
+)]
 
-use std::sync::{atomic::{self, AtomicU32}, Arc, Mutex};
+use std::sync::{
+    Arc, Mutex,
+    atomic::{self, AtomicU32},
+};
 
-use crate::{action, common::{self, error::RecoverableError}, item, transaction::{self, Transactions}, Transaction};
+use crate::{
+    Transaction, action,
+    common::{self, error::RecoverableError},
+    item,
+    transaction::{self, Transactions},
+};
 
 #[derive(Debug)]
 pub(crate) struct Log<Action> {
@@ -16,7 +27,6 @@ pub(crate) struct Log<Action> {
 impl<Action> Log<Action> {
     pub(crate) fn new() -> Self {
         Self::new_with_next_id(transaction::Id::ZERO)
-        
     }
 
     pub(crate) fn new_with_next_id(next_id: transaction::Id) -> Self {
@@ -33,26 +43,35 @@ impl<Action> Log<Action> {
 }
 
 impl<Action> Log<Action> {
-    fn apply_or_revert<Lookup>(&mut self, lookup: &mut Lookup, transaction: Transaction<Action>) 
-        -> Result<transaction::Confirmed<Action>, RecoverableError<action::Error>>
-    where 
+    fn apply_or_revert<Lookup>(
+        &mut self,
+        lookup: &mut Lookup,
+        transaction: Transaction<Action>,
+    ) -> Result<transaction::Confirmed<Action>, RecoverableError<action::Error>>
+    where
         Lookup: item::Lookup,
         Action: crate::Action<State = Lookup::State>,
     {
         self.release_undo();
 
         let undo_transaction = transaction.apply_or_revert(lookup)?;
-        
+
         let do_id = self.next_id;
         self.next_id = do_id.next();
-        
+
         let undo_id = self.undo_transactions.push_back(undo_transaction);
 
         debug_assert!(do_id == undo_id);
-        Ok(transaction::Confirmed { id: do_id, transaction })
+        Ok(transaction::Confirmed {
+            id: do_id,
+            transaction,
+        })
     }
 
-    pub(crate) fn register_undo(&mut self, undo_transaction: Transaction<Action>) -> transaction::Id {
+    pub(crate) fn register_undo(
+        &mut self,
+        undo_transaction: Transaction<Action>,
+    ) -> transaction::Id {
         let do_id = self.next_id;
         self.next_id = do_id.next();
         let undo_id = self.undo_transactions.push_back(undo_transaction);
@@ -61,19 +80,27 @@ impl<Action> Log<Action> {
         undo_id
     }
 
-    pub fn undo<Lookup>(&mut self, lookup: &mut Lookup, transaction_id: transaction::Id) 
-        -> Result<transaction::Confirmed<Action>, RecoverableError<common::error::UndoError>>
-    where 
+    pub fn undo<Lookup>(
+        &mut self,
+        lookup: &mut Lookup,
+        transaction_id: transaction::Id,
+    ) -> Result<transaction::Confirmed<Action>, RecoverableError<common::error::UndoError>>
+    where
         Lookup: item::Lookup,
         Action: crate::Action<State = Lookup::State> + Clone,
     {
-        let transaction = self.undo_transactions.get(transaction_id)
-            .ok_or(common::error::UndoError::Invalid(transaction::id::InvalidError(transaction_id)))?
+        let transaction = self
+            .undo_transactions
+            .get(transaction_id)
+            .ok_or(common::error::UndoError::Invalid(
+                transaction::id::InvalidError(transaction_id),
+            ))?
             .clone();
-        
-        let confirmed = self.apply_or_revert(lookup, transaction)
+
+        let confirmed = self
+            .apply_or_revert(lookup, transaction)
             .map_err(|e| e.map_with(Into::into))?;
-        
+
         Ok(confirmed)
     }
 
@@ -122,17 +149,18 @@ pub struct UndoPin {
 
 impl UndoPin {
     fn new(pin_board: Arc<UndoPinBoard>) -> Self {
-        
         let current_pin = if let Ok(mut sorted_pins) = pin_board.sorted_pins.try_lock() {
             let current_pin = match pin_board.min_pin() {
                 Some(p) => p,
                 None => {
                     let p = transaction::Id::ZERO;
-                    pin_board.min_pin.store(p.get() + 1, atomic::Ordering::Release);
+                    pin_board
+                        .min_pin
+                        .store(p.get() + 1, atomic::Ordering::Release);
                     p
-                },
+                }
             };
-            
+
             sorted_pins.push(current_pin);
             current_pin
         } else {
@@ -148,8 +176,11 @@ impl UndoPin {
     pub fn release_before(&mut self, id: transaction::Id) {
         if id > self.current_pin {
             if let Ok(mut sorted_pins) = self.pin_board.sorted_pins.try_lock() {
-                let old_index = sorted_pins.binary_search_by_key(&std::cmp::Reverse(&self.current_pin), std::cmp::Reverse).expect("Pin not found on PinBoard");
-                let (Ok(new_index) | Err(new_index)) = sorted_pins.binary_search_by_key(&std::cmp::Reverse(&id), std::cmp::Reverse);
+                let old_index = sorted_pins
+                    .binary_search_by_key(&std::cmp::Reverse(&self.current_pin), std::cmp::Reverse)
+                    .expect("Pin not found on PinBoard");
+                let (Ok(new_index) | Err(new_index)) =
+                    sorted_pins.binary_search_by_key(&std::cmp::Reverse(&id), std::cmp::Reverse);
 
                 // Move the old pin to the new index (shifting everything between right 1)
                 sorted_pins[new_index..=old_index].rotate_right(1);
@@ -157,7 +188,9 @@ impl UndoPin {
                 sorted_pins[new_index] = id;
 
                 let min_id = sorted_pins.last().copied().unwrap();
-                self.pin_board.min_pin.store(min_id.get() + 1, atomic::Ordering::Release);
+                self.pin_board
+                    .min_pin
+                    .store(min_id.get() + 1, atomic::Ordering::Release);
             }
 
             self.current_pin = id;
@@ -168,7 +201,7 @@ impl UndoPin {
 impl Clone for UndoPin {
     fn clone(&self) -> Self {
         let mut undo_pin = Self::new(self.pin_board.clone());
-        undo_pin.release_before(self.current_pin.clone());
+        undo_pin.release_before(self.current_pin);
         undo_pin
     }
 }
@@ -176,11 +209,19 @@ impl Clone for UndoPin {
 impl Drop for UndoPin {
     fn drop(&mut self) {
         if let Ok(mut sorted_pins) = self.pin_board.sorted_pins.try_lock() {
-            let index = sorted_pins.binary_search_by_key(&std::cmp::Reverse(&self.current_pin), std::cmp::Reverse).expect("Pin not found on PinBoard");
+            let index = sorted_pins
+                .binary_search_by_key(&std::cmp::Reverse(&self.current_pin), std::cmp::Reverse)
+                .expect("Pin not found on PinBoard");
             sorted_pins.remove(index);
 
-            let last_id = sorted_pins.last().copied().map(|id| id.get() + 1).unwrap_or(0);
-            self.pin_board.min_pin.store(last_id, atomic::Ordering::Release);
+            let last_id = sorted_pins
+                .last()
+                .copied()
+                .map(|id| id.get() + 1)
+                .unwrap_or(0);
+            self.pin_board
+                .min_pin
+                .store(last_id, atomic::Ordering::Release);
         }
     }
 }

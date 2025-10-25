@@ -1,5 +1,4 @@
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Strictness {
     #[default]
     BestEffort,

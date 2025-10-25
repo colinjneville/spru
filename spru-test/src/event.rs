@@ -3,19 +3,22 @@ use derive_where::derive_where;
 #[derive_where(Debug; Event<Server, Client>)]
 #[derive_where(Default)]
 pub struct Messaging<Server: spru::Server, Client: spru::Client> {
-    events: Vec<Event<Server, Client>>
+    events: Vec<Event<Server, Client>>,
 }
 
 impl<Server: spru::Server, Client: spru::Client> Messaging<Server, Client> {
     pub fn new() -> Self {
         Self::default()
     }
-    
+
     pub fn record_event<E: Into<Event<Server, Client>>>(&mut self, event: E) {
         self.events.push(event.into());
     }
 
-    pub fn record_events<E: Into<Event<Server, Client>>>(&mut self, events: impl IntoIterator<Item = E>) {
+    pub fn record_events<E: Into<Event<Server, Client>>>(
+        &mut self,
+        events: impl IntoIterator<Item = E>,
+    ) {
         for event in events {
             self.record_event(event);
         }
@@ -41,13 +44,17 @@ pub enum Event<Server: spru::Server, Client: spru::Client> {
     ClientEvent(ClientEvent<Client>),
 }
 
-impl<Server: spru::Server, Client: spru::Client> From<spru::server::Event<Server>> for Event<Server, Client> {
+impl<Server: spru::Server, Client: spru::Client> From<spru::server::Event<Server>>
+    for Event<Server, Client>
+{
     fn from(event: spru::server::Event<Server>) -> Self {
         Self::ServerEvent(ServerEvent { event })
     }
 }
 
-impl<Server: spru::Server, Client: spru::Client> From<(spru::player::Id, spru::client::Event<Client>)> for Event<Server, Client> {
+impl<Server: spru::Server, Client: spru::Client>
+    From<(spru::player::Id, spru::client::Event<Client>)> for Event<Server, Client>
+{
     fn from((player_id, event): (spru::player::Id, spru::client::Event<Client>)) -> Self {
         Self::ClientEvent(ClientEvent { player_id, event })
     }

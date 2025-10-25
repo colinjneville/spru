@@ -1,7 +1,10 @@
 #![allow(dead_code)]
 #![allow(missing_docs)]
 
-use std::{collections::{HashMap, hash_map}, ops};
+use std::{
+    collections::{HashMap, hash_map},
+    ops,
+};
 
 use crate::{item, player};
 
@@ -26,9 +29,12 @@ impl Manager {
 
 impl Manager {
     pub fn show(&mut self, id: &item::Id, specific_player: Option<player::Id>) {
-        if let hash_map::Entry::Occupied(mut oe) = self.partially_visible.entry(id.clone()) {
+        if let hash_map::Entry::Occupied(mut oe) = self.partially_visible.entry(*id) {
             if let Some(specific_player) = specific_player {
-                if oe.get_mut().set_visibility(specific_player, Visibility::Visible) {
+                if oe
+                    .get_mut()
+                    .set_visibility(specific_player, Visibility::Visible)
+                {
                     oe.remove();
                 }
             } else {
@@ -46,7 +52,9 @@ impl ops::Index<item::Id> for Manager {
     type Output = PlayerStatus;
 
     fn index(&self, index: item::Id) -> &Self::Output {
-        self.partially_visible.get(&index).unwrap_or(&DEFAULT_STATUS)
+        self.partially_visible
+            .get(&index)
+            .unwrap_or(&DEFAULT_STATUS)
     }
 }
 
@@ -83,9 +91,14 @@ impl ops::Index<player::Id> for PlayerStatus {
     type Output = Visibility;
 
     fn index(&self, index: player::Id) -> &Self::Output {
-        self.status.get(index.into_u32() as usize).unwrap_or(&DEFAULT_VISIBILITY)
+        self.status
+            .get(index.into_u32() as usize)
+            .unwrap_or(&DEFAULT_VISIBILITY)
     }
 }
 
 static DEFAULT_VISIBILITY: Visibility = Visibility::Visible;
-static DEFAULT_STATUS: PlayerStatus = PlayerStatus { status: Vec::new(), hidden_count: 0 };
+static DEFAULT_STATUS: PlayerStatus = PlayerStatus {
+    status: Vec::new(),
+    hidden_count: 0,
+};
