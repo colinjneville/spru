@@ -7,6 +7,8 @@ use crate::{
     item::lookup,
 };
 
+/// An error encountered during a [game::Init].
+/// [std::ops::Deref] to use as a [std::error::Error].
 #[derive(Debug)]
 pub struct Error {
     kind: Kind,
@@ -32,6 +34,7 @@ impl Error {
         }
     }
 
+    /// The contained inner error
     pub fn kind(&self) -> &Kind {
         &self.kind
     }
@@ -87,9 +90,12 @@ impl PsuedoError for Error {
     }
 }
 
+/// The inner error contained in the [Error]
 #[derive(Debug)]
 pub enum Kind {
+    /// An [action::Error]
     Action(action::Error),
+    /// A user-provided error
     Init(AnyError),
 }
 

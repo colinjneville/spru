@@ -91,7 +91,7 @@ pub struct Add<T: AddSigned> {
 
 impl<T> Add<T>
 where
-    T: CounterType + Ord + AddSigned<Signed: spru::Serial> + spru::Serial,
+    T: CounterType + Ord + AddSigned<Signed: crate::Serial> + crate::Serial,
 {
     fn sum(&self, value: &State<T>) -> Result<T, self::Error<T>> {
         match self.strictness {
@@ -112,7 +112,7 @@ where
 
 impl<T> spru::action::Update for Add<T>
 where
-    T: CounterType + Ord + AddSigned<Signed: spru::Serial> + spru::Serial,
+    T: CounterType + Ord + AddSigned<Signed: crate::Serial> + crate::Serial,
 {
     type T = State<T>;
     type Undo = Self;
@@ -137,7 +137,7 @@ where
 
 pub type Destroy<T> = verbatim::Destroy<State<T>>;
 
-#[derive(Debug, Clone, spru::FromInfallible, thiserror::Error)]
+#[derive(Debug, Clone, crate::FromInfallible, thiserror::Error)]
 pub enum Error<T: AddSigned> {
     #[error("Could not modify value of {value} by {modifier}")]
     InvalidModifier { value: T, modifier: T::Signed },

@@ -2,7 +2,7 @@ use spru::common::error::AnyResult;
 use spru_util::{counter, fsm, pile, player_map, rotating, verbatim};
 use tagset::tagset;
 
-use crate::{data, game, hand, player, round};
+use crate::{data, game, player, round};
 
 #[tagset(impl spru::Action {
     type State = crate::State;
@@ -17,7 +17,6 @@ use crate::{data, game, hand, player, round};
 #[tagset(include(fsm::Actions<round::machine::Impl>))]
 #[tagset(include(pile::Actions<data::Card>))]
 #[tagset(InitializeDeck)]
-#[tagset(include(hand::Actions))]
 #[tagset(include(counter::Actions<u32>))]
 #[tagset(include(player_map::Actions<player::Root>))]
 #[tagset(include(rotating::Actions<spru::player::Id>))]

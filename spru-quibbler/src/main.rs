@@ -7,7 +7,6 @@ use std::fmt;
 pub use actions::Actions;
 pub mod data;
 pub mod game;
-pub mod hand;
 pub mod interaction;
 pub use interaction::Interaction;
 pub mod round;

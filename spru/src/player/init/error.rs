@@ -6,6 +6,8 @@ use crate::{
     item, player,
 };
 
+/// An error encountered during a [player::Init].
+/// [std::ops::Deref] to use as a [std::error::Error].
 #[derive(Debug)]
 pub struct Error {
     kind: Kind,
@@ -36,6 +38,7 @@ impl Error {
         self
     }
 
+    /// The contained inner error
     pub fn kind(&self) -> &Kind {
         &self.kind
     }
@@ -43,13 +46,13 @@ impl Error {
 
 impl From<action::Error> for Error {
     fn from(value: action::Error) -> Self {
-        Self::new(Kind::Record(value))
+        Self::new(Kind::Action(value))
     }
 }
 
 impl From<item::lookup::Error> for Error {
     fn from(value: item::lookup::Error) -> Self {
-        Self::new(Kind::Record(value.into()))
+        Self::new(Kind::Action(value.into()))
     }
 }
 
@@ -77,22 +80,25 @@ impl fmt::Display for Error {
 impl PsuedoError for Error {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match &self.kind {
-            Kind::Record(e) => std::error::Error::source(e.as_error()),
+            Kind::Action(e) => std::error::Error::source(e.as_error()),
             Kind::Init(e) => std::error::Error::source(e.as_error()),
         }
     }
 }
 
+/// The inner error contained in the [Error]
 #[derive(Debug)]
 pub enum Kind {
-    Record(action::Error),
+    /// An [action::Error]
+    Action(action::Error),
+    /// A user-provided error
     Init(AnyError),
 }
 
 impl fmt::Display for Kind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Kind::Record(e) => fmt::Display::fmt(e, f),
+            Kind::Action(e) => fmt::Display::fmt(e, f),
             Kind::Init(e) => fmt::Display::fmt(e, f),
         }
     }

@@ -33,7 +33,7 @@ pub struct State;
 #[tagset(include(player_map::Actions<PlayerData>))]
 pub struct Actions;
 
-#[derive(Debug, spru::FromInfallible, thiserror::Error)]
+#[derive(Debug, spru_util::FromInfallible, thiserror::Error)]
 #[error("{0}")]
 pub struct Error(anyhow::Error);
 

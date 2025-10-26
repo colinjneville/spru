@@ -6,6 +6,8 @@ use crate::{
     item::lookup,
 };
 
+/// An error encountered during an [crate::Interaction].
+/// [std::ops::Deref] to use as a [std::error::Error].
 #[derive(Debug)]
 pub struct Error {
     kind: Kind,
@@ -25,6 +27,7 @@ impl Error {
         self
     }
 
+    /// The contained inner error
     pub fn kind(&self) -> &Kind {
         &self.kind
     }
@@ -46,7 +49,7 @@ impl From<lookup::Error> for Error {
 
 impl From<action::Error> for Error {
     fn from(value: action::Error) -> Self {
-        Self::new(Kind::Record(value))
+        Self::new(Kind::Action(value))
     }
 }
 
@@ -76,7 +79,7 @@ impl PsuedoError for Error {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match &self.kind {
             Kind::Lookup(e) => std::error::Error::source(e.as_error()),
-            Kind::Record(e) => std::error::Error::source(e.as_error()),
+            Kind::Action(e) => std::error::Error::source(e.as_error()),
             Kind::Interaction(e) => std::error::Error::source(e.as_error()),
         }
     }
@@ -105,10 +108,14 @@ impl fmt::Display for Context {
     }
 }
 
+/// The inner error contained in the [Error]
 #[derive(Debug)]
 pub enum Kind {
+    /// A [lookup::Error]
     Lookup(lookup::Error),
-    Record(action::Error),
+    /// An [action::Error]
+    Action(action::Error),
+    /// A user-provided error
     Interaction(AnyError),
 }
 
@@ -116,7 +123,7 @@ impl fmt::Display for Kind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Lookup(e) => fmt::Display::fmt(e, f),
-            Self::Record(e) => fmt::Display::fmt(e, f),
+            Self::Action(e) => fmt::Display::fmt(e, f),
             Self::Interaction(e) => fmt::Display::fmt(e, f),
         }
     }

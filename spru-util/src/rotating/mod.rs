@@ -123,7 +123,7 @@ pub struct Rotate<T> {
 
 impl<T> spru::action::Update for Rotate<T>
 where
-    Self: Clone + spru::Serial,
+    Self: Clone + crate::Serial,
 {
     type T = State<T>;
     type Undo = Self;
@@ -170,7 +170,7 @@ pub struct SetPosition<T> {
 
 impl<T> spru::action::Update for SetPosition<T>
 where
-    Self: Clone + spru::Serial,
+    Self: Clone + crate::Serial,
 {
     type T = State<T>;
     type Undo = Self;
@@ -201,7 +201,7 @@ pub struct Insert<T> {
 
 impl<T> spru::action::Update for Insert<T>
 where
-    Self: Clone + spru::Serial,
+    Self: Clone + crate::Serial,
     T: Clone,
 {
     type T = State<T>;
@@ -247,7 +247,7 @@ pub struct Remove<T> {
 
 impl<T> spru::action::Update for Remove<T>
 where
-    Self: Clone + spru::Serial,
+    Self: Clone + crate::Serial,
 {
     type T = State<T>;
     type Undo = Insert<T>;
@@ -276,7 +276,7 @@ where
     }
 }
 
-#[derive(Debug, Clone, spru::FromInfallible, thiserror::Error)]
+#[derive(Debug, Clone, crate::FromInfallible, thiserror::Error)]
 #[non_exhaustive]
 pub enum Error {
     #[error("Invalid position {0}, len() is {1}")]

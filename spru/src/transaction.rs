@@ -36,10 +36,6 @@ impl<Action> Transactions<Action> {
             })
     }
 
-    pub fn start_id(&self) -> transaction::Id {
-        self.start_id
-    }
-
     pub fn next_id(&self) -> transaction::Id {
         transaction::Id::new(self.start_id.0 + self.transactions.len() as u32)
     }
@@ -67,7 +63,7 @@ impl<Action> Transactions<Action> {
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct Transaction<Action> {
+pub(crate) struct Transaction<Action> {
     records: Records<Action>,
 }
 
@@ -112,17 +108,18 @@ impl<Action> Transaction<Action> {
     }
 }
 
+/// Uniquely identifies a confirmed [Transaction]
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]
-pub struct Id(u32);
+pub(crate) struct Id(u32);
 
 impl Id {
     pub(crate) fn new(index: u32) -> Self {
         Self(index)
     }
 
-    pub const ZERO: Self = Self(0);
+    pub(crate) const ZERO: Self = Self(0);
 
     pub(crate) fn get(&self) -> u32 {
         self.0
@@ -147,16 +144,16 @@ impl fmt::Display for Id {
     }
 }
 
-pub mod id {
+pub(crate) mod id {
     #[derive(Debug, thiserror::Error)]
     #[error("Transaction {0} does not exist")]
-    pub struct InvalidError(pub super::Id);
+    pub(crate) struct InvalidError(pub(crate) super::Id);
 
     #[derive(Debug, thiserror::Error)]
     #[error("Expected transaction {expected} but received {actual}")]
-    pub struct MismatchError {
-        pub expected: super::Id,
-        pub actual: super::Id,
+    pub(crate) struct MismatchError {
+        pub(crate) expected: super::Id,
+        pub(crate) actual: super::Id,
     }
 }
 

@@ -1,7 +1,6 @@
 pub mod error;
 mod save;
 pub use save::Save;
-pub mod load;
 mod log;
 use log::Log;
 pub mod event;
@@ -25,10 +24,20 @@ use crate::{
     visibility,
 };
 
+/// Outputs of [Server] functions.
+/// Notably, you are responsible for delivering all signals in [Output::outbound] to
+/// the appropriate [crate::Client] in the order they are generated!
 #[derive_where(Debug; common::signal::ToClient<Server::Common>, Event<Server>, Ret)]
+#[must_use]
 pub struct Output<Server: self::Server, Ret> {
+    /// Signals generated from the function call. These must be delivered to the indicated client.
+    /// Signals to the same client must be delivered in order (in iteration order, and before any
+    /// signals generated for that client in subsequent function calls). Signals between different
+    /// clients are independent, and can be delivered in any order relative to each other.
     pub outbound: Vec<(player::Id, common::signal::ToClient<Server::Common>)>,
+    /// Events which occurred during the function call. Any handling of these is optional.
     pub events: Vec<Event<Server>>,
+    /// The main return value of the function.
     pub ret: Ret,
 }
 
@@ -76,24 +85,43 @@ impl<Server: self::Server> Messaging<Server> {
     }
 }
 
+/// The public interface for a server
 pub trait Server: Sized {
+    /// The set of item types known by this server. See [crate::State].
     type State: crate::State;
+
+    /// The set of action types known by this server. See [crate::Action].
     type Action: crate::Action<State = Self::State> + Clone;
+
+    /// The context created during game initialization and provided to all game interactions.
+    /// Usually, you will want this to be a type containing [crate::item::IdT]s of items
+    /// created during game initialization, or an IdT of an item if you need it to be mutable.
+    /// Mutating a Root item should be minimized, since it will interrupt any other actions other players
+    /// are in the middle of.
     type Root: Clone;
+
+    /// A type describing any initialization done for a new player. See [crate::player::Init].
     type PlayerInit: crate::player::Init<State = Self::State, Action = Self::Action, Root = Self::Root>;
-    type Interaction: crate::Interaction<
+
+    /// A type describing all kinds of moves a player can make. See [crate::Interaction].
+    type Interaction:
+        crate::Interaction<
             State = Self::State,
             Action = Self::Action,
             Root = Self::Root,
             Trigger = <Self::Reaction as crate::Reaction>::Trigger,
         > + Clone;
-    type Reaction: crate::Reaction<
+
+    /// A type describing all possible server-side processing. See [crate::Reaction].
+    type Reaction:
+        crate::Reaction<
             State = Self::State,
             Action = Self::Action,
             Root = Self::Root,
             GameOutcome: Clone,
         >;
 
+    /// The common types shared between a connected [crate::Client] and [crate::Server].
     type Common: crate::Common<
             State = Self::State,
             Action = Self::Action,
@@ -102,6 +130,9 @@ pub trait Server: Sized {
             Interaction = Self::Interaction,
         >;
 
+    /// Create a new server hosting a new game.
+    /// `game_init` describes how to initialize the game. If game initialization fails,
+    /// this method will return the error.
     fn init<GameInit>(
         game_init: GameInit,
         player_init: Self::PlayerInit,
@@ -110,32 +141,52 @@ pub trait Server: Sized {
     where
         GameInit: game::Init<State = Self::State, Action = Self::Action, Root = Self::Root>;
 
+    /// Create a new server from a loaded [Save].
+    /// NOTE: this is not yet implemented!
     fn load(save: Save<Self>) -> Result<Self, error::LoadError>;
 
+    /// Apply a signal from a [crate::Client].
+    /// Signals are how the client and server communicate. Signals between a client-server
+    /// pair must be applied in the same order they are created.
     fn apply_signal(
         &mut self,
         sender: player::Id,
         signal: common::signal::ToServer<Self::Common>,
     ) -> Result<Output<Self, ()>, error::SignalError>;
 
+    /// Start a Reaction with a trigger as if it had been created by an [crate::Interaction].
+    /// This allows manual modification of the game state without client intervention.
+    /// Most server-driven updates should be triggered by interactions, but this could
+    /// be used for implementing real-time timers, server-ops tools, or tests.
     fn manual_trigger(
         &mut self,
         trigger: <Self::Reaction as crate::Reaction>::Trigger,
     ) -> Result<Output<Self, ()>, error::ManualTriggerError>;
 
+    /// Attempt to add a player to the game.
+    /// The input to this function is determined by the server's [player::Init]. If player
+    /// initialization succeeds, this function returns a [common::Seed] which is used to
+    /// initialize a new [crate::Client].
     fn add_player(
         &mut self,
         init_input: <Self::PlayerInit as crate::player::Init>::In,
     ) -> Result<Output<Self, common::Seed<Self::Common>>, error::AddPlayerError>;
 
+    /// Save the current game state.
+    /// [Server::load] can use this [Save] can create a new server instance at this
+    /// point in the game.
+    /// NOTE: [Server::load] is not yet implemented!
     fn save(&self) -> Result<Save<Self>, error::SaveError>
     where
         Self::PlayerInit: Clone,
         Self::Reaction: Clone;
 
+    /// A unique identifier for this game. This is persisted through [Server::save] and [Server::load],
+    /// so it is possible for multiple servers to have the same [game::Id].
     fn game_id(&self) -> game::Id;
 }
 
+/// A [Server] implementation for the given [crate::Interaction], [crate::Reaction], and [crate::player::Init]
 pub type ServerImpl<Interaction, Reaction, PlayerInit> =
     Impl<
         <<Interaction as crate::Interaction>::State as tagset::TagSet>::Repr,
@@ -151,7 +202,6 @@ impl<Interaction, Reaction, PlayerInit> Server
     for Impl<<Interaction::State as tagset::TagSet>::Repr, Interaction::State, Interaction::Action, Interaction::Root, Interaction, Reaction, PlayerInit>
 where
     Interaction: crate::Interaction<
-            // State: crate::State,
             Action: Clone,
             Root: Clone,
         > + Clone,
@@ -448,6 +498,7 @@ where
     }
 }
 
+#[doc(hidden)]
 #[derive(Debug)]
 pub struct Impl<Repr, State, Action, Root, Interaction, Reaction, PlayerInit> {
     inner: ImplInner<Repr, State, Action, Root, Interaction, Reaction, PlayerInit>,

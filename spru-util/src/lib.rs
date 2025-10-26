@@ -11,6 +11,12 @@ pub mod verbatim;
 
 pub(crate) type Rng = rand_chacha::ChaCha8Rng;
 
+pub use spru_macro::FromInfallible;
+
+pub trait Serial: Sized + serde::Serialize + serde::de::DeserializeOwned + 'static {}
+
+impl<T: Sized + serde::Serialize + serde::de::DeserializeOwned + 'static> Serial for T {}
+
 pub trait AddSigned: Sized + Send + Sync + Copy + std::fmt::Debug + std::fmt::Display {
     type Signed: Sized
         + Send

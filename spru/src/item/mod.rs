@@ -9,8 +9,6 @@ use std::ops;
 
 use crate::common;
 
-pub type Index = u32;
-
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct Item<T> {
     id: IdT<T>,

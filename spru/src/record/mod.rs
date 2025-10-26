@@ -34,7 +34,7 @@ impl<Action> Packed<Action> {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct Record<'r, Action> {
+pub(crate) struct Record<'r, Action> {
     packed: &'r Packed<Action>,
     index: usize,
 }

@@ -5,6 +5,8 @@ use crate::{
     item::lookup,
 };
 
+/// An error encountered during an [super::Action].
+/// [std::ops::Deref] to use as a [std::error::Error].
 #[derive(Debug)]
 pub struct Error {
     kind: Kind,
@@ -22,6 +24,11 @@ impl Error {
     pub(crate) fn with_context<Action: ?Sized>(mut self, action: &Action) -> Self {
         self.context = Some(Context::new(action));
         self
+    }
+
+    /// The contained inner error
+    pub fn kind(&self) -> &Kind {
+        &self.kind
     }
 }
 
@@ -92,11 +99,12 @@ impl fmt::Display for Context {
     }
 }
 
+/// The inner error contained in the [Error]
 #[derive(Debug)]
 pub enum Kind {
-    /// An error occurred during [crate::Item] []
+    /// A [lookup::Error]
     Lookup(lookup::Error),
-    /// An
+    /// A user-provided error
     Action(AnyError),
 }
 

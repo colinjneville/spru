@@ -4,7 +4,7 @@ use std::{marker::PhantomData, mem, ops};
 
 use amass::amass_telety;
 use derive_where::derive_where;
-use spru::{Serial, common::error::AnyResult};
+use spru::common::error::AnyResult;
 use tagset::tagset;
 use telety::telety;
 
@@ -228,7 +228,7 @@ pub fn clear<T>() -> Clear<T> {
 #[tagset(reserved(..32))]
 pub struct Actions<T>;
 
-#[derive(Debug, Clone, spru::FromInfallible)]
+#[derive(Debug, Clone, crate::FromInfallible)]
 #[amass_telety(crate::pile)]
 pub enum Error {
     Pop(error::Pop),
@@ -249,7 +249,7 @@ pub struct PushTop<T> {
 
 impl<T> spru::action::Update for PushTop<T>
 where
-    T: Clone + Serial,
+    T: Clone + crate::Serial,
 {
     type T = State<T>;
     type Undo = PopTop<T>;
@@ -269,7 +269,7 @@ pub struct PopTop<T> {
 
 impl<T> spru::action::Update for PopTop<T>
 where
-    T: Clone + Serial,
+    T: Clone + crate::Serial,
 {
     type T = State<T>;
     type Undo = PushTop<T>;
@@ -293,7 +293,7 @@ pub struct PushBottom<T> {
 
 impl<T> spru::action::Update for PushBottom<T>
 where
-    T: Clone + Serial,
+    T: Clone + crate::Serial,
 {
     type T = State<T>;
     type Undo = PopBottom<T>;
@@ -314,7 +314,7 @@ pub struct PopBottom<T> {
 
 impl<T> spru::action::Update for PopBottom<T>
 where
-    T: Clone + Serial,
+    T: Clone + crate::Serial,
 {
     type T = State<T>;
     type Undo = PushBottom<T>;
@@ -341,7 +341,7 @@ pub struct PopTopMany<T> {
 
 impl<T> spru::action::Update for PopTopMany<T>
 where
-    T: Clone + Serial,
+    T: Clone + crate::Serial,
 {
     type T = State<T>;
     type Undo = PushTopMany<T>;
@@ -379,7 +379,7 @@ pub struct PopBottomMany<T> {
 
 impl<T> spru::action::Update for PopBottomMany<T>
 where
-    T: Clone + Serial,
+    T: Clone + crate::Serial,
 {
     type T = State<T>;
     type Undo = PushBottomMany<T>;
@@ -417,7 +417,7 @@ pub struct PushTopMany<T> {
 
 impl<T> spru::action::Update for PushTopMany<T>
 where
-    T: Clone + Serial,
+    T: Clone + crate::Serial,
 {
     type T = State<T>;
     type Undo = PopTopMany<T>;
@@ -453,7 +453,7 @@ pub struct PushBottomMany<T> {
 
 impl<T> spru::action::Update for PushBottomMany<T>
 where
-    T: Clone + Serial,
+    T: Clone + crate::Serial,
 {
     type T = State<T>;
     type Undo = PopBottomMany<T>;
@@ -491,7 +491,7 @@ pub struct Shuffle<T> {
 
 impl<T> spru::action::Update for Shuffle<T>
 where
-    T: Clone + Serial,
+    T: Clone + crate::Serial,
 {
     type T = State<T>;
     type Undo = Self;

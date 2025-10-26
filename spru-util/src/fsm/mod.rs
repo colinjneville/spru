@@ -5,7 +5,7 @@ use std::mem;
 use amass::amass_telety;
 use derive_where::derive_where;
 pub use rust_fsm::StateMachineImpl;
-use spru::{Serial, common::error::AnyResult};
+use spru::common::error::AnyResult;
 use tagset::tagset;
 use telety::telety;
 
@@ -58,7 +58,7 @@ pub fn destroy<FSM: StateMachineTy>() -> Destroy<FSM> {
 #[tagset(reserved(..8))]
 pub struct Actions<FSM: StateMachineTy>;
 
-#[derive(Debug, Clone, spru::FromInfallible)]
+#[derive(Debug, Clone, crate::FromInfallible)]
 #[amass_telety(crate::fsm)]
 pub enum Error {
     Transition(error::Transition),
@@ -78,7 +78,7 @@ pub struct Transition<FSM: StateMachineTy> {
 
 impl<FSM> spru::action::Update for Transition<FSM>
 where
-    FSM: StateMachineTy<State: Serial + Clone, Input: Serial + Clone>,
+    FSM: StateMachineTy<State: crate::Serial + Clone, Input: crate::Serial + Clone>,
 {
     type T = State<FSM>;
     type Undo = Set<FSM>;
@@ -112,7 +112,7 @@ pub struct Set<FSM: StateMachineTy> {
 
 impl<FSM> spru::action::Update for Set<FSM>
 where
-    FSM: StateMachineTy<State: Serial + Clone>,
+    FSM: StateMachineTy<State: Clone>,
 {
     type T = State<FSM>;
     type Undo = Self;

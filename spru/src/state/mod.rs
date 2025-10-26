@@ -2,8 +2,28 @@ use tagset::tagset_meta;
 
 use crate::{common, item};
 
-pub type Index = u32;
-
+/// A set of all the possible types an [crate::Item] could contain for a game.
+/// Implement [State] using [tagset::tagset]:
+/// ```rust,ignore
+/// # use tagset::tagset;
+///
+/// #[derive(serde::Serialize, serde::Deserialize)]
+/// struct Counter(i32);
+/// #[derive(serde::Serialize, serde::Deserialize)]
+/// struct Whiteboard(String);
+///
+/// #[tagset(impl tagset::proxy::serde::Serialize)]
+/// #[tagset(impl<'de> tagset::serde::DeserializeFromDiscriminant<'de>)]
+/// #[tagset(impl<'de> tagset::proxy::serde::Deserialize<'de>)]
+/// #[tagset(impl spru::State)]
+/// #[tagset(Counter)]
+/// #[tagset(Whiteboard)]
+/// struct MyState;
+///
+/// # fn main() { }
+/// ```
+/// Here `Counter` and `Whiteboard` are included in `MyState` and can be used as items tracked by spru.
+/// For generic types, you must specify each monomorphized type you want to use, e.g. `Counter<u8> and `Counter<i32>`.
 #[telety::telety(crate::state, alias_traits = "always")]
 #[tagset_meta]
 #[meta(bounds(for<VAR> Self: tagset::TagSetDiscriminant<VAR>))]

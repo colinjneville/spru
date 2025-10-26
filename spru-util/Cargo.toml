@@ -8,6 +8,7 @@ spru = { path = "../spru", features = ["test-util"] }
 
 [dependencies]
 spru = { path = "../spru" }
+spru-macro = { path = "../spru-macro" }
 
 tagset.workspace = true
 telety.workspace = true

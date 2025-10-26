@@ -46,7 +46,7 @@ pub enum SignalError {
 #[error(
     "The pending transaction {transaction} does not exist, or has already been applied or reverted"
 )]
-pub struct InvalidPendingTransactionError {
+pub(crate) struct InvalidPendingTransactionError {
     pub transaction: interaction::Pending,
 }
 
@@ -57,7 +57,7 @@ impl InvalidPendingTransactionError {
 }
 
 #[derive(Debug, thiserror::Error)]
-pub enum TransactionConfirmationError {
+pub(crate) enum TransactionConfirmationError {
     #[error("{0}")]
     Action(#[from] action::Error),
     #[error("{0}")]

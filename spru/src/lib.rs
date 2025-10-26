@@ -4,7 +4,8 @@
     clippy::crate_in_macro_def,
     reason = "'crate' in telety is already translated to this crate"
 )]
-// #![deny(missing_docs)]
+#![warn(missing_docs)]
+//! spru
 
 pub mod action;
 pub use action::Action;
@@ -24,20 +25,14 @@ pub use interaction::Interaction;
 pub mod player;
 pub mod reaction;
 pub use reaction::Reaction;
-pub mod record;
-pub use record::Record;
+pub(crate) mod record;
+pub(crate) use record::Record;
 pub mod server;
 pub use server::Server;
-pub mod transaction;
-pub use transaction::Transaction;
+pub(crate) mod transaction;
+pub(crate) use transaction::Transaction;
 mod visibility;
 pub use visibility::Visibility;
-
-pub use spru_macro::FromInfallible;
-
-pub trait Serial: Sized + serde::Serialize + serde::de::DeserializeOwned + 'static {}
-
-impl<T: Sized + serde::Serialize + serde::de::DeserializeOwned + 'static> Serial for T {}
 
 #[doc(hidden)]
 pub mod __private {
