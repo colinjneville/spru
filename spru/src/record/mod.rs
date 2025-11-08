@@ -44,13 +44,13 @@ impl<'r, Action> Record<'r, Action> {
         Self { packed, index }
     }
 
-    fn apply_internal<Lookup>(&self, lookup: &mut Lookup) -> action::Result<Option<Action>>
+    fn apply_internal<Storage>(&self, storage: &mut Storage) -> action::Result<Option<Action>>
     where
-        Lookup: item::Lookup,
-        Action: crate::Action<State = Lookup::State>,
+        Storage: item::Storage,
+        Action: crate::Action<State = Storage::State>,
     {
         let undo = self.action().apply(action::Context::new(
-            lookup,
+            storage,
             self.item_id(),
             self.version_change(),
         ))?;
@@ -120,27 +120,27 @@ impl<Action> Default for Records<Action> {
 }
 
 impl<Action> Records<Action> {
-    pub fn apply<Lookup>(&self, lookup: &mut Lookup) -> action::Result<Self>
+    pub fn apply<Storage>(&self, storage: &mut Storage) -> action::Result<Self>
     where
-        Lookup: item::Lookup,
-        Action: crate::Action<State = Lookup::State>,
+        Storage: item::Storage,
+        Action: crate::Action<State = Storage::State>,
     {
-        self.apply_internal(lookup).map_err(|(_, e)| e)
+        self.apply_internal(storage).map_err(|(_, e)| e)
     }
 
-    pub fn apply_or_revert<Lookup>(
+    pub fn apply_or_revert<Storage>(
         &self,
-        lookup: &mut Lookup,
+        storage: &mut Storage,
     ) -> Result<Self, RecoverableError<action::Error>>
     where
-        Lookup: item::Lookup,
-        Action: crate::Action<State = Lookup::State>,
+        Storage: item::Storage,
+        Action: crate::Action<State = Storage::State>,
     {
-        match self.apply_internal(lookup) {
+        match self.apply_internal(storage) {
             Ok(undo) => Ok(undo),
             Err((undo, e)) => {
                 let mut rec_e = RecoverableError::new(e);
-                if let Err(e2) = undo.apply(lookup) {
+                if let Err(e2) = undo.apply(storage) {
                     rec_e.set_recovery_error(e2);
                 }
                 Err(rec_e)
@@ -148,18 +148,18 @@ impl<Action> Records<Action> {
         }
     }
 
-    fn apply_internal<Lookup>(
+    fn apply_internal<Storage>(
         &self,
-        lookup: &mut Lookup,
+        storage: &mut Storage,
     ) -> std::result::Result<Self, (Self, action::Error)>
     where
-        Lookup: item::Lookup,
-        Action: crate::Action<State = Lookup::State>,
+        Storage: item::Storage,
+        Action: crate::Action<State = Storage::State>,
     {
         let mut undo = Self::default();
 
         for r in self.iter() {
-            match r.apply_internal(lookup) {
+            match r.apply_internal(storage) {
                 Ok(Some(undo_action)) => {
                     if let Some(back) = undo.records.back_mut() {
                         // Pack the undo records if the original record was packed

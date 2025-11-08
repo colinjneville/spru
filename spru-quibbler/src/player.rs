@@ -1,6 +1,8 @@
+use std::fmt;
+
 use rust_fsm::state_machine;
-use spru::{follow, item::IdT};
-use spru_util::{counter, fsm, pile, player_map, rotating, verbatim};
+use spru::{common::error::PsuedoError as _, interactor::with, item::IdT};
+use spru_util::{cloned, counter, fsm, pile, player_map, rotating};
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Input {
@@ -30,26 +32,31 @@ impl spru::player::Init for Init {
     ) -> spru::player::init::Result<()> {
         let root = interactor.get_root()?;
         if root.has_started {
-            // TODO Need a simpler path for string literal -> try-able error
-            let e: spru::common::error::AnyError = spru::common::error::AnyError::new_boxed(
-                "Players can't join after the game has started".into(),
-            );
-            return Err(spru::common::error::PsuedoError::into_error(e).into());
+            return Err(spru::common::error::AnyError::from_string(
+                "cannot add player to started game",
+            )
+            .into_error()
+            .into());
         }
 
         let score = interactor.create(counter::create(0)).id();
         let hand = interactor.create(pile::default()).id();
         let fsm = interactor.create(fsm::default()).id();
-        let played = interactor.create(verbatim::default()).id();
+        let played = interactor.create(cloned::default()).id();
 
         let player_id = interactor.context().player;
-        let root = interactor.get_root()?;
-        let current_turn = follow!(root => root.current_turn)?;
+
+        with! { interactor =>
+            let root = interactor.get_root()?;
+            let current_turn = ~[root.current_turn]?;
+            let current_dealer = ~[root.current_dealer]?;
+            let players = ~[root.players]?;
+        };
+
         current_turn.update(rotating::insert(current_turn.len(), player_id));
-        let current_dealer = follow!(root => root.current_dealer)?;
         current_dealer.update(rotating::insert(current_dealer.len(), player_id));
 
-        follow!(root => root.players)?.update(player_map::add_player(
+        players.update(player_map::add_player(
             player_id,
             Root {
                 data: input,
@@ -67,9 +74,9 @@ impl spru::player::Init for Init {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Root {
     pub data: Input,
-    pub hand: IdT<pile::State<data::Card>>,
-    pub score: IdT<counter::State<u32>>,
-    pub fsm: IdT<fsm::State<machine::Impl>>,
+    pub hand: IdT<pile::Pile<data::Card>>,
+    pub score: IdT<counter::Counter<u32>>,
+    pub fsm: IdT<fsm::Fsm<machine::Impl>>,
     pub played: IdT<crate::Play>,
 }
 
@@ -83,6 +90,16 @@ state_machine! {
     ToPlay => {
         Play => ToDraw,
         Pass => ToDraw,
+    }
+}
+
+impl fmt::Display for machine::State {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            machine::State::ToDiscard => write!(f, "Discard"),
+            machine::State::ToDraw => write!(f, "Draw"),
+            machine::State::ToPlay => write!(f, "Play"),
+        }
     }
 }
 

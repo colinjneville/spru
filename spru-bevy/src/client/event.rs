@@ -41,7 +41,7 @@ pub struct RevertInteractions<Client: super::ClientSSS> {
     pub game_id: common::component::GameId,
     pub client_id: super::component::ClientId,
     pub pending_interaction_id: Option<spru::interaction::Pending>,
-    pub result: Result<(), spru::client::error::RevertInteractionError>,
+    pub result: Result<usize, spru::client::error::RevertInteractionError>,
     pub(crate) _client: PhantomData<fn() -> Client>,
 }
 
@@ -52,7 +52,7 @@ pub struct ApplyInteractions<Client: super::ClientSSS> {
     pub game_id: common::component::GameId,
     pub client_id: super::component::ClientId,
     pub pending_interaction_id: Option<spru::interaction::Pending>,
-    pub result: Result<(), spru::client::error::ApplyInteractionError>,
+    pub result: Result<usize, spru::client::error::ApplyInteractionError>,
     pub(crate) _client: PhantomData<fn() -> Client>,
 }
 

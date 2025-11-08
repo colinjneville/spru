@@ -22,7 +22,7 @@ pub fn propagate_local_queues<Server, Client>(
         {
             if game_id == client_game_id {
                 let mut count = 0;
-                while let Some(signal) = to_client.dequeue(client_player_id.0) {
+                while let Some(signal) = to_client.dequeue(**client_player_id) {
                     from_server.enqueue(signal);
                     count += 1;
                 }
@@ -34,7 +34,7 @@ pub fn propagate_local_queues<Server, Client>(
 
                 let mut count = 0;
                 while let Some(signal) = to_server.dequeue() {
-                    from_client.enqueue(client_player_id.0, signal);
+                    from_client.enqueue(**client_player_id, signal);
                     count += 1;
                 }
 
@@ -56,7 +56,8 @@ pub fn create_local_clients<Server, Client>(
     Client: crate::client::ClientSSS<Common = Server::Common>,
 {
     for (mut pending_clients,) in q_server {
-        while let Some(seed) = pending_clients.dequeue() {
+        while let Some(pending_client) = pending_clients.dequeue() {
+            let seed = pending_client.seed;
             commands.queue(crate::client::command::Init::<Client> { seed });
         }
     }

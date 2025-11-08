@@ -1,0 +1,9 @@
+Quibbler is a word-making card game played over 8 rounds. Each round, an increasing number of cards are dealt to each player. Each card has 1 or 2 letters, and is worth a point value.
+A player's turn has 3 steps:
+    1. Draw the top card from either the discard (face-up) or deck.
+    2. Discard one card from hand.
+    3. Play words using cards from hand, or pass.
+        If anyone has played words this round already, you cannot pass.
+If you are the first player to play words in the round, you must use all your cards to do so. You may play any number of words, as long as each word contains at least 2 cards, and no cards are used more than once.
+The round ends when all players have played words. Each player gains the points listed on the cards they used to spell words, minus the points on each card they did not use. Additionally, the player(s) with the longest word (letters) and most words get an additional 10 points. No bonus points are awarded in case of a tie.
+The player with the most points after 8 rounds wins.

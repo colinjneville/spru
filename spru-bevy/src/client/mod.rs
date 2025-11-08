@@ -1,9 +1,9 @@
 pub mod command;
 pub mod component;
 pub mod event;
-mod lookup;
+mod storage;
 use bevy::prelude;
-pub(crate) use lookup::BevyLookup;
+pub(crate) use storage::BevyStorage;
 mod plugin;
 pub use plugin::Plugin;
 use spru::item;
@@ -23,7 +23,7 @@ pub trait ClientSSS:
     + Sync
     + 'static
 {
-    /// Filter a query over &[`common::component::GameId`] and &[`component::ClientId`] to
+    /// Filter a query over &[common::component::GameId] and &[component::ClientId] to
     /// the specific entity containing a Client with the given ids. Panics if the
     /// [bevy::ecs::query::QueryData] does not contain the id types.
     fn filter<'w, 's, D, F>(
@@ -52,7 +52,7 @@ pub trait ClientSSS:
         None
     }
 
-    /// Filter a query over &[`common::component::GameId`] and &[`component::ClientId`] to
+    /// Filter a query over &[common::component::GameId] and &[component::ClientId] to
     /// the specific entity containing a Client with the given ids. Panics if the
     /// [bevy::ecs::query::QueryData] does not contain the id types.
     fn filter_mut<'w, 's, D, F>(
@@ -112,16 +112,12 @@ pub enum BevyError {
 pub type BevyResult<T> = std::result::Result<T, BevyError>;
 
 #[derive(Debug, thiserror::Error)]
+#[error("An error occurred while running a Client: {0}")]
 pub enum RunClientError {
-    #[error(transparent)]
     Init(spru::common::error::FatalError),
-    #[error(transparent)]
     StageInteraction(#[from] spru::client::error::StageInteractionError),
-    #[error(transparent)]
     ApplyInteraction(#[from] spru::client::error::ApplyInteractionError),
-    #[error(transparent)]
     RevertInteraction(#[from] spru::client::error::RevertInteractionError),
-    #[error(transparent)]
     Signal(spru::common::error::FatalError),
 }
 

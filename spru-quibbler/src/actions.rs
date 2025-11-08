@@ -1,5 +1,5 @@
 use spru::common::error::AnyResult;
-use spru_util::{counter, fsm, pile, player_map, rotating, verbatim};
+use spru_util::{cloned, counter, fsm, pile, player_map, rotating};
 use tagset::tagset;
 
 use crate::{data, game, player, round};
@@ -11,8 +11,8 @@ use crate::{data, game, player, round};
 #[tagset(impl<'de> tagset::serde::DeserializeFromDiscriminant<'de>)]
 #[tagset(impl<'de> tagset::proxy::serde::Deserialize<'de>)]
 #[tagset(derive(Debug, Clone))]
-#[tagset(include(verbatim::Actions<game::Root>))]
-#[tagset(include(verbatim::Actions<crate::Play>))]
+#[tagset(include(cloned::Actions<game::Root>))]
+#[tagset(include(cloned::Actions<crate::Play>))]
 #[tagset(include(fsm::Actions<player::machine::Impl>))]
 #[tagset(include(fsm::Actions<round::machine::Impl>))]
 #[tagset(include(pile::Actions<data::Card>))]
@@ -26,8 +26,8 @@ pub struct Actions;
 pub struct InitializeDeck;
 
 impl spru::action::Update for InitializeDeck {
-    type T = pile::State<data::Card>;
-    type Undo = verbatim::Update<pile::State<data::Card>>;
+    type T = pile::Pile<data::Card>;
+    type Undo = cloned::Update<pile::Pile<data::Card>>;
 
     #[allow(refining_impl_trait)]
     fn update(&self, value: &mut Self::T) -> AnyResult<Self::Undo> {
@@ -38,6 +38,6 @@ impl spru::action::Update for InitializeDeck {
             .expect("Infallible");
 
         let old_pile = std::mem::replace(value, new_pile);
-        Ok(verbatim::update(old_pile))
+        Ok(cloned::update(old_pile))
     }
 }

@@ -3,10 +3,10 @@ use std::{fmt, ops};
 use crate::{
     action,
     common::error::{AnyError, PsuedoError},
-    item::lookup,
+    item::{self, storage},
 };
 
-/// An error encountered during an [crate::Interaction].
+/// An error encountered during an [Interaction](trait@crate::Interaction).
 /// [std::ops::Deref] to use as a [std::error::Error].
 #[derive(Debug)]
 pub struct Error {
@@ -27,6 +27,10 @@ impl Error {
         self
     }
 
+    pub(crate) fn new_validation_error(error: item::Error) -> Self {
+        Self::new(Kind::Validation(error))
+    }
+
     /// The contained inner error
     pub fn kind(&self) -> &Kind {
         &self.kind
@@ -41,9 +45,9 @@ impl ops::Deref for Error {
     }
 }
 
-impl From<lookup::Error> for Error {
-    fn from(value: lookup::Error) -> Self {
-        Self::new(Kind::Lookup(value))
+impl From<storage::Error> for Error {
+    fn from(value: storage::Error) -> Self {
+        Self::new(Kind::Storage(value))
     }
 }
 
@@ -78,8 +82,9 @@ impl fmt::Display for Error {
 impl PsuedoError for Error {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match &self.kind {
-            Kind::Lookup(e) => std::error::Error::source(e.as_error()),
+            Kind::Storage(e) => std::error::Error::source(e.as_error()),
             Kind::Action(e) => std::error::Error::source(e.as_error()),
+            Kind::Validation(e) => std::error::Error::source(e),
             Kind::Interaction(e) => std::error::Error::source(e.as_error()),
         }
     }
@@ -111,10 +116,12 @@ impl fmt::Display for Context {
 /// The inner error contained in the [Error]
 #[derive(Debug)]
 pub enum Kind {
-    /// A [lookup::Error]
-    Lookup(lookup::Error),
+    /// A [storage::Error]
+    Storage(storage::Error),
     /// An [action::Error]
     Action(action::Error),
+    /// Server-side validation of the [Interaction](trait@crate::Interaction) failed
+    Validation(item::Error),
     /// A user-provided error
     Interaction(AnyError),
 }
@@ -122,8 +129,9 @@ pub enum Kind {
 impl fmt::Display for Kind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Lookup(e) => fmt::Display::fmt(e, f),
+            Self::Storage(e) => fmt::Display::fmt(e, f),
             Self::Action(e) => fmt::Display::fmt(e, f),
+            Self::Validation(e) => fmt::Display::fmt(e, f),
             Self::Interaction(e) => fmt::Display::fmt(e, f),
         }
     }

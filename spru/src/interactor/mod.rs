@@ -8,40 +8,32 @@ use crate::{
     Item, action,
     common::error::RecoverableError,
     interactor,
-    item::{self, IdT, lookup},
+    item::{self, IdT, storage},
     player,
     record::{self, Records},
 };
 
-#[macro_export]
-macro_rules! follow {
-    (
-        $first_get:ident => $first_next_id:expr
-        $(, $get:ident => $next_id:expr)*
-        $(,)?
-    ) => {
-        'result: {
-            let next_id = $first_next_id;
-            let mut get = match $first_get.follow(next_id) {
-                Ok(get) => get,
-                Err(e) => break 'result Err(e),
-            };
-
-            $(
-                let $get = get;
-                let next_id = $next_id;
-
-                let get = match $get.follow(next_id) {
-                    Ok(get) => get,
-                    Err(e) => break 'result Err(e),
-                };
-            )*
-            Ok(get)
-        }
-    };
-}
 use derive_where::derive_where;
-pub use follow;
+
+/// A macro to more conveniently convert [`IdT<T>`]s to `&T`.  
+/// ```ignore
+/// with! { <interactor-ident> =>
+///     <statements>
+/// };
+/// ```
+/// Within `<statements>`, you can use `~[<idt-expression>]` as an
+/// operator to convert an [IdT] to a [`storage::Result<Existing>`]:
+/// ```rust,ignore
+/// with! { interactor =>
+///     let root = interactor.get_root()?;
+///     let deck = ~[root.deck]?;
+///     let player0 = ~[~[root.players]?.first()]?
+/// };
+/// ```
+/// Note: this macro is likely to change in the future to improve
+/// ergonomics, LSP-friendliness, and versitility.
+#[doc(inline)]
+pub use spru_macro::with;
 
 #[derive(Debug)]
 struct ItemStatus<Action> {
@@ -84,40 +76,40 @@ impl<Action> ItemStatus<Action> {
         }
     }
 
-    fn update_immediate<'l, Lookup, Update>(
+    fn update_immediate<'l, Storage, Update>(
         &mut self,
         id: item::Id,
-        lookup: &'l mut Lookup,
+        storage: &'l mut Storage,
         update: Update,
     ) -> action::Result<&'l Update::T>
     where
-        Lookup: item::Lookup,
-        Action: crate::Action<State = Lookup::State>,
+        Storage: item::Storage,
+        Action: crate::Action<State = Storage::State>,
         Update: Into<Action>
-            + action::Update<T: item::lookup::Lookupable<Lookup::State>, Undo: Into<Action>>,
+            + action::Update<T: item::storage::Storable<Storage::State>, Undo: Into<Action>>,
     {
-        self.flush(id, lookup)?;
+        self.flush(id, storage)?;
 
-        let context = action::Context::new(lookup, id, self.version_change());
+        let context = action::Context::new(storage, id, self.version_change());
         let undo = context.update(&update)?;
         if let Some(undo) = undo {
             self.flushed_do.push(update.into());
             self.flushed_undo.push(undo.into());
         }
 
-        let item = lookup
-            .lookup::<Update::T>(id.force_type())
+        let item = storage
+            .get::<Update::T>(id.force_type())
             .expect("Item must still exist");
         Ok(item.get())
     }
 
-    fn flush<Lookup>(&mut self, id: item::Id, lookup: &mut Lookup) -> action::Result<()>
+    fn flush<Storage>(&mut self, id: item::Id, storage: &mut Storage) -> action::Result<()>
     where
-        Action: crate::Action<State = Lookup::State>,
-        Lookup: item::Lookup,
+        Action: crate::Action<State = Storage::State>,
+        Storage: item::Storage,
     {
         for pending_do in mem::take(self.pending_do.get_mut()) {
-            let context = action::Context::new(lookup, id, self.version_change());
+            let context = action::Context::new(storage, id, self.version_change());
             let undo = pending_do.apply(context)?;
             if let Some(undo) = undo {
                 self.flushed_do.push(pending_do);
@@ -132,15 +124,15 @@ impl<Action> ItemStatus<Action> {
         self.pending_do.borrow().is_empty()
     }
 
-    fn revert<Lookup>(self, id: item::Id, lookup: &mut Lookup) -> action::Result<()>
+    fn revert<Storage>(self, id: item::Id, storage: &mut Storage) -> action::Result<()>
     where
-        Action: crate::Action<State = Lookup::State>,
-        Lookup: item::Lookup,
+        Action: crate::Action<State = Storage::State>,
+        Storage: item::Storage,
     {
         // Only undo the version with the first change if there are multiple
         let mut version_change = self.version_change.undo();
         for undo in self.flushed_undo.into_iter().rev() {
-            let context = action::Context::new(lookup, id, version_change);
+            let context = action::Context::new(storage, id, version_change);
             let _redo = undo.apply(context)?;
 
             version_change = version_change.into_noop();
@@ -214,44 +206,44 @@ impl<Action> ItemsStatus<Action> {
             .enqueue(action);
     }
 
-    fn update_immediate<'l, Lookup, Update>(
+    fn update_immediate<'l, Storage, Update>(
         &mut self,
         id: item::Id,
-        lookup: &'l mut Lookup,
+        storage: &'l mut Storage,
         update: Update,
     ) -> action::Result<&'l Update::T>
     where
-        Lookup: item::Lookup,
-        Action: crate::Action<State = Lookup::State>,
+        Storage: item::Storage,
+        Action: crate::Action<State = Storage::State>,
         Update: Into<Action>
-            + action::Update<T: item::lookup::Lookupable<Lookup::State>, Undo: Into<Action>>,
+            + action::Update<T: item::storage::Storable<Storage::State>, Undo: Into<Action>>,
     {
         self.items
             .borrow_mut()
             .get_mut(&id)
             .expect("id must be added as read first")
-            .update_immediate(id, lookup, update)
+            .update_immediate(id, storage, update)
     }
 
-    fn flush<Lookup>(&mut self, lookup: &mut Lookup) -> action::Result<()>
+    fn flush<Storage>(&mut self, storage: &mut Storage) -> action::Result<()>
     where
-        Action: crate::Action<State = Lookup::State>,
-        Lookup: item::Lookup,
+        Action: crate::Action<State = Storage::State>,
+        Storage: item::Storage,
     {
         for (&id, item) in self.items.get_mut() {
-            item.flush(id, lookup)?;
+            item.flush(id, storage)?;
         }
 
         Ok(())
     }
 
-    fn revert<Lookup>(self, lookup: &mut Lookup) -> action::Result<()>
+    fn revert<Storage>(self, storage: &mut Storage) -> action::Result<()>
     where
-        Action: crate::Action<State = Lookup::State>,
-        Lookup: item::Lookup,
+        Action: crate::Action<State = Storage::State>,
+        Storage: item::Storage,
     {
         for (id, item) in self.items.into_inner() {
-            item.revert(id, lookup)?;
+            item.revert(id, storage)?;
         }
 
         Ok(())
@@ -281,19 +273,19 @@ impl<Action> ItemsStatus<Action> {
 }
 
 #[derive(Debug)]
-struct Inner<'l, Lookup, Action> {
-    lookup: &'l mut Lookup,
+struct Inner<'l, Storage, Action> {
+    storage: &'l mut Storage,
     items_status: ItemsStatus<Action>,
     reservation: &'l item::id::Reservation,
 }
 
-impl<'l, Lookup, Action> Inner<'l, Lookup, Action> {
-    fn get<T>(&self, id: IdT<T>) -> lookup::Result<Existing<'_, Lookup, Action, T>>
+impl<'l, Storage, Action> Inner<'l, Storage, Action> {
+    fn get<T>(&self, id: IdT<T>) -> storage::Result<Existing<'_, Storage, Action, T>>
     where
-        Lookup: item::Lookup,
-        T: item::lookup::Lookupable<Lookup::State>,
+        Storage: item::Storage,
+        T: item::storage::Storable<Storage::State>,
     {
-        let item = self.lookup.lookup(id).map_err(|e| e.with_context(id))?;
+        let item = self.storage.get(id).map_err(|e| e.with_context(id))?;
         self.items_status
             .register_read(id.untyped(), item.version());
 
@@ -301,16 +293,42 @@ impl<'l, Lookup, Action> Inner<'l, Lookup, Action> {
     }
 }
 
+/// The interface all modifications of the game state go through.  
+///
+/// Game state modification is deferred by default. Each change in queued until the end of the
+/// function, or [Interactor::flush] is called. This means all reads will not see any changes made
+/// after the last flush, if any. Multiple changes can be queued to the same item between flush points,
+/// and they will be applied in the order they were queued.  
+///
+/// Use [Interactor::create] to create new items, and [Interactor::get] to storage existing items. You
+/// can queue updates in either case using [Pending::update] or [Existing::update], respectively. With
+/// an [Existing] item, you can read the state of the item by dereferencing it, and use [Existing::destroy]
+/// to destroy it.  
+///
+/// Interactors are used in [game::Init](crate::game::Init), [player::Init],
+/// [Interaction](trait@crate::Interaction), and [Reaction](trait@crate::Reaction). Depending on the usage,
+/// an Interactor will have different `Context` available. For example, in
+/// most cases, the `Context` will contain the game [Root](crate::Common::Root), but in game::Init,
+/// it does not, as the Root has not yet been created.  
+///
+/// Interactors may also have additional optional outputs, depending on the kind. Interactions and
+/// Reactions may use [Interactor::enqueue_trigger] to enqueue [Reaction::Trigger](crate::Reaction::Trigger)s,
+/// which will start a new Reaction on the server once dequeued. Reactions can also end the game by
+/// [Interactor::set_game_outcome].  
+///
+/// All changes made with an Interactor are transactional: if an error occurs, there is no need to undo
+/// any changes you made (even if flushed), just return an error. The changes from that Interactor and
+/// all the preceding triggering Interactors will be reverted automatically.
 #[derive(Debug)]
-pub struct Interactor<'l, Lookup, Action, Context, Output> {
-    inner: Inner<'l, Lookup, Action>,
+pub struct Interactor<'l, Storage, Action, Context, Output> {
+    inner: Inner<'l, Storage, Action>,
     context: Context,
     output: RefCell<Output>,
 }
 
-impl<'l, Lookup, Action, Context, Output> Interactor<'l, Lookup, Action, Context, Output> {
+impl<'l, Storage, Action, Context, Output> Interactor<'l, Storage, Action, Context, Output> {
     pub(crate) fn new(
-        lookup: &'l mut Lookup,
+        storage: &'l mut Storage,
         reservation: &'l item::id::Reservation,
         context: Context,
     ) -> Self
@@ -319,7 +337,7 @@ impl<'l, Lookup, Action, Context, Output> Interactor<'l, Lookup, Action, Context
     {
         Self {
             inner: Inner {
-                lookup,
+                storage,
                 items_status: ItemsStatus::default(),
                 reservation,
             },
@@ -328,6 +346,7 @@ impl<'l, Lookup, Action, Context, Output> Interactor<'l, Lookup, Action, Context
         }
     }
 
+    /// Extra context available to this Interactor
     pub fn context(&self) -> &Context {
         &self.context
     }
@@ -337,7 +356,11 @@ impl<'l, Lookup, Action, Context, Output> Interactor<'l, Lookup, Action, Context
         &mut self.context
     }
 
-    pub fn create<Create>(&self, create: Create) -> Pending<'_, Lookup, Action, Create::T>
+    /// Create a new item. See [action::Create].  
+    ///
+    /// As changes are deferred, this method returns a [Pending] item, which can make updates,
+    /// but cannot read the item state, as it does not exist until [Interactor::flush] is called.  
+    pub fn create<Create>(&self, create: Create) -> Pending<'_, Storage, Action, Create::T>
     where
         Create: Into<Action> + action::Create,
     {
@@ -356,42 +379,63 @@ impl<'l, Lookup, Action, Context, Output> Interactor<'l, Lookup, Action, Context
         }
     }
 
-    pub fn get<T>(&self, id: IdT<T>) -> lookup::Result<Existing<'_, Lookup, Action, T>>
+    /// Storage an existing item by id. Returns an error if the item does not exist.  
+    pub fn get<T>(&self, id: IdT<T>) -> storage::Result<Existing<'_, Storage, Action, T>>
     where
-        Lookup: item::Lookup,
-        T: item::lookup::Lookupable<Lookup::State>,
+        Storage: item::Storage,
+        T: item::storage::Storable<Storage::State>,
     {
         self.inner.get(id)
     }
 
-    pub fn get_root<Root>(&self) -> lookup::Result<Existing<'_, Lookup, Action, Root>>
+    /// Gets the [Common::Root](crate::Common::Root) object.
+    pub fn root(&self) -> &Context::Root
     where
-        Lookup: item::Lookup,
-        Root: item::lookup::Lookupable<Lookup::State>,
+        Context: GetRoot,
+    {
+        self.context.get_root()
+    }
+
+    /// If the [Common::Root](crate::Common::Root) object is an [IdT], gets that item.  
+    /// Equivalent to `self.get(self.root())`.
+    pub fn get_root<Root>(&self) -> storage::Result<Existing<'_, Storage, Action, Root>>
+    where
+        Storage: item::Storage,
+        Root: item::storage::Storable<Storage::State>,
         Context: GetRoot<Root = IdT<Root>>,
     {
         let root_id = *self.context.get_root();
         self.get(root_id)
     }
 
+    // TODO this isn't well-tested yet
+    #[doc(hidden)]
     pub fn update_immediate<Update>(
         &mut self,
         update: WithUpdate<Update::T, Update>,
     ) -> action::Result<&Update::T>
     where
-        Lookup: item::Lookup,
-        Action: crate::Action<State = Lookup::State>,
+        Storage: item::Storage,
+        Action: crate::Action<State = Storage::State>,
         Update: Into<Action>
-            + action::Update<T: item::lookup::Lookupable<Lookup::State>, Undo: Into<Action>>,
+            + action::Update<T: item::storage::Storable<Storage::State>, Undo: Into<Action>>,
     {
         let WithUpdate { id, update } = update;
 
         self.flush()?;
         self.inner
             .items_status
-            .update_immediate(id.untyped(), self.inner.lookup, update)
+            .update_immediate(id.untyped(), self.inner.storage, update)
     }
 
+    /// Enqueues a [Reaction](trait@crate::Reaction) with the given [Reaction::Trigger](crate::Reaction::Trigger).  
+    ///
+    /// Triggers are processed FIFO, after an [Interaction](trait@crate::Interaction) or [Reaction](trait@crate::Reaction) completes,
+    /// until the queue is emptied. This means infinite loops are possible if Reactions keep enqueuing more Reactions.  
+    ///
+    /// Triggers are only executed server-side, and are ignored on the client. If the Reactions are successful, the
+    /// clients will be updated with the outcomes of the Reactions. If a Reaction errors, all Reactions and the
+    /// initial Interaction (if any) will be reverted, and the resulting game state will be as if they never happened.
     pub fn enqueue_trigger(&self, trigger: Output::Trigger)
     where
         Output: EnqueueTrigger,
@@ -399,6 +443,9 @@ impl<'l, Lookup, Action, Context, Output> Interactor<'l, Lookup, Action, Context
         self.output.borrow_mut().enqueue_trigger(trigger);
     }
 
+    /// Sets the game outcome. Once [Reaction](trait@crate::Reaction)s complete successfully, the game will end,
+    /// and clients will be notified of the outcome. If this is called multiple times, the last outcome set will be used.
+    /// If the transaction fails, the game will not end.
     pub fn set_game_outcome(&self, game_outcome: Output::GameOutcome)
     where
         Output: SetGameOutcome,
@@ -406,21 +453,31 @@ impl<'l, Lookup, Action, Context, Output> Interactor<'l, Lookup, Action, Context
         self.output.borrow_mut().set_game_outcome(game_outcome);
     }
 
+    /// Flushes all pending changes to the game state.  
+    ///
+    /// Avoid calling this method unless necessary, as it requires exclusive access to the Interactor
+    /// and is only needed when the updated state of an item needs to be read. It is not necessary to
+    /// flush at the end of the function, this will be done automatically.  
+    ///
+    /// Flush will direct all operations to the [item::Storage] implementation, which means this may
+    /// have side effects such as engine events (e.g. entity creation) being triggered. As the
+    /// Interactor could still fail, this could result in spurious events as the changes are done
+    /// and undone.
     pub fn flush(&mut self) -> action::Result<()>
     where
-        Action: crate::Action<State = Lookup::State>,
-        Lookup: item::Lookup,
+        Action: crate::Action<State = Storage::State>,
+        Storage: item::Storage,
     {
-        self.inner.items_status.flush(self.inner.lookup)
+        self.inner.items_status.flush(self.inner.storage)
     }
 
     pub(crate) fn revert<E>(self, err: E) -> RecoverableError<E>
     where
-        Action: crate::Action<State = Lookup::State>,
-        Lookup: item::Lookup,
+        Action: crate::Action<State = Storage::State>,
+        Storage: item::Storage,
     {
         let mut recoverable_error = RecoverableError::new(err);
-        if let Err(recovery_err) = self.inner.items_status.revert(self.inner.lookup) {
+        if let Err(recovery_err) = self.inner.items_status.revert(self.inner.storage) {
             recoverable_error.set_recovery_error(recovery_err);
         }
 
@@ -432,9 +489,9 @@ impl<'l, Lookup, Action, Context, Output> Interactor<'l, Lookup, Action, Context
         error: Option<E>,
     ) -> Result<interactor::Complete<Action, Context, Output>, RecoverableError<E>>
     where
-        Action: crate::Action<State = Lookup::State>,
+        Action: crate::Action<State = Storage::State>,
         action::Error: Into<E>,
-        Lookup: item::Lookup,
+        Storage: item::Storage,
     {
         let result = match error {
             None => self.flush().map_err(Into::into),
@@ -452,7 +509,7 @@ impl<'l, Lookup, Action, Context, Output> Interactor<'l, Lookup, Action, Context
         let Self {
             inner:
                 Inner {
-                    lookup: _lookup,
+                    storage: _st,
                     items_status,
                     reservation: _reservation,
                 },
@@ -514,17 +571,23 @@ pub trait GetRoot {
     fn get_root(&self) -> &Self::Root;
 }
 
+/// An item queued for creation.  
+///
+/// You can schedule additional updates, but the item does not exist to read until
+/// [Interactor::flush] is called.
 #[derive(Debug)]
-pub struct Pending<'i, Lookup, Action, T> {
-    inner: &'i Inner<'i, Lookup, Action>,
+pub struct Pending<'i, Storage, Action, T> {
+    inner: &'i Inner<'i, Storage, Action>,
     item_id: IdT<T>,
 }
 
-impl<'i, Lookup, Action, T> Pending<'i, Lookup, Action, T> {
+impl<'i, Storage, Action, T> Pending<'i, Storage, Action, T> {
+    /// The id of the item to be created
     pub fn id(&self) -> IdT<T> {
         self.item_id
     }
 
+    /// Schedule an update to the item
     pub fn update<Update>(&self, update: Update) -> &Self
     where
         Update: Into<Action> + action::Update<T = T>,
@@ -536,25 +599,20 @@ impl<'i, Lookup, Action, T> Pending<'i, Lookup, Action, T> {
     }
 }
 
+/// An existing item.  
 #[derive(Debug)]
-pub struct Existing<'i, Lookup, Action, T> {
-    inner: &'i Inner<'i, Lookup, Action>,
+pub struct Existing<'i, Storage, Action, T> {
+    inner: &'i Inner<'i, Storage, Action>,
     item: &'i Item<T>,
 }
 
-impl<'i, Lookup, Action, T> Existing<'i, Lookup, Action, T> {
+impl<'i, Storage, Action, T> Existing<'i, Storage, Action, T> {
+    /// The id of the item
     pub fn id(&self) -> IdT<T> {
         self.item.id()
     }
 
-    pub fn follow<U>(&self, id: IdT<U>) -> lookup::Result<Existing<'i, Lookup, Action, U>>
-    where
-        Lookup: item::Lookup,
-        U: item::lookup::Lookupable<Lookup::State>,
-    {
-        self.inner.get(id)
-    }
-
+    /// Update the item. See [action::Update].
     pub fn update<Update>(&self, update: Update) -> &Self
     where
         Update: Into<Action> + action::Update<T = T>,
@@ -565,6 +623,8 @@ impl<'i, Lookup, Action, T> Existing<'i, Lookup, Action, T> {
         self
     }
 
+    // TODO this isn't well-tested yet
+    #[doc(hidden)]
     pub fn update_immediate<Update>(self, update: Update) -> WithUpdate<T, Update> {
         WithUpdate {
             id: self.id(),
@@ -572,6 +632,7 @@ impl<'i, Lookup, Action, T> Existing<'i, Lookup, Action, T> {
         }
     }
 
+    /// Destroy the item. See [action::Destroy].
     pub fn destroy<Destroy>(self, destroy: Destroy)
     where
         Destroy: Into<Action> + action::Destroy<T = T>,
@@ -582,7 +643,7 @@ impl<'i, Lookup, Action, T> Existing<'i, Lookup, Action, T> {
     }
 }
 
-impl<'i, Lookup, Action, T> ops::Deref for Existing<'i, Lookup, Action, T> {
+impl<'i, Storage, Action, T> ops::Deref for Existing<'i, Storage, Action, T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -590,6 +651,8 @@ impl<'i, Lookup, Action, T> ops::Deref for Existing<'i, Lookup, Action, T> {
     }
 }
 
+// TODO this isn't well-tested yet
+#[doc(hidden)]
 #[must_use]
 #[derive(Debug)]
 pub struct WithUpdate<T, Update> {

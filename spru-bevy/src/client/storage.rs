@@ -7,7 +7,7 @@ use crate::{client::component, common};
 
 #[doc(hidden)]
 #[derive(Debug)]
-pub struct BevyLookup<'l, State> {
+pub struct BevyStorage<'l, State> {
     world: &'l mut prelude::World,
     entity_map: &'l mut super::component::EntityMap,
     game_id: spru::game::Id,
@@ -15,7 +15,7 @@ pub struct BevyLookup<'l, State> {
     _state: PhantomData<fn() -> State>,
 }
 
-impl<'l, State> BevyLookup<'l, State> {
+impl<'l, State> BevyStorage<'l, State> {
     pub(crate) fn new(
         world: &'l mut prelude::World,
         entity_map: &'l mut super::component::EntityMap,
@@ -32,12 +32,12 @@ impl<'l, State> BevyLookup<'l, State> {
     }
 }
 
-impl<'l, State: spru::State> spru::item::Lookup for BevyLookup<'l, State> {
+impl<'l, State: spru::State> spru::item::Storage for BevyStorage<'l, State> {
     type State = State;
 
-    fn lookup<T>(&self, id: item::IdT<T>) -> spru::item::lookup::Result<&spru::Item<T>>
+    fn get<T>(&self, id: item::IdT<T>) -> spru::item::storage::Result<&spru::Item<T>>
     where
-        T: spru::item::lookup::Lookupable<Self::State>,
+        T: spru::item::storage::Storable<Self::State>,
     {
         let id = id.untyped();
         let entity = self.entity_map.get(id)?;
@@ -53,12 +53,12 @@ impl<'l, State: spru::State> spru::item::Lookup for BevyLookup<'l, State> {
     }
 
     #[allow(refining_impl_trait)]
-    fn lookup_mut<T>(
+    fn get_mut<T>(
         &mut self,
         id: item::IdT<T>,
-    ) -> spru::item::lookup::Result<bevy::prelude::Mut<'_, spru::Item<T>>>
+    ) -> spru::item::storage::Result<bevy::prelude::Mut<'_, spru::Item<T>>>
     where
-        T: spru::item::lookup::Lookupable<Self::State>,
+        T: spru::item::storage::Storable<Self::State>,
     {
         let id = id.untyped();
         let entity = self.entity_map.get(id)?;
@@ -73,9 +73,9 @@ impl<'l, State: spru::State> spru::item::Lookup for BevyLookup<'l, State> {
             .map_unchanged(|sc| sc.item_mut()))
     }
 
-    fn create<T>(&mut self, value: spru::Item<T>) -> spru::item::lookup::Result<()>
+    fn create<T>(&mut self, value: spru::Item<T>) -> spru::item::storage::Result<()>
     where
-        T: spru::item::lookup::Lookupable<Self::State>,
+        T: spru::item::storage::Storable<Self::State>,
     {
         let id = value.id().untyped();
         self.entity_map.insert_as(id, || {
@@ -89,17 +89,17 @@ impl<'l, State: spru::State> spru::item::Lookup for BevyLookup<'l, State> {
                         any::type_name::<T>()
                     )),
                     component::Item::new(value),
-                    common::component::GameId(self.game_id),
-                    super::component::ClientId(self.client_id),
+                    common::component::GameId::new(self.game_id),
+                    super::component::ClientId::new(self.client_id),
                 ))
                 .id())
         })?;
         Ok(())
     }
 
-    fn destroy<T>(&mut self, id: item::IdT<T>) -> spru::item::lookup::Result<spru::Item<T>>
+    fn destroy<T>(&mut self, id: item::IdT<T>) -> spru::item::storage::Result<spru::Item<T>>
     where
-        T: spru::item::lookup::Lookupable<Self::State>,
+        T: spru::item::storage::Storable<Self::State>,
     {
         let id = id.untyped();
         self.entity_map

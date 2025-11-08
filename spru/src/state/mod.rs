@@ -2,8 +2,8 @@ use tagset::tagset_meta;
 
 use crate::{common, item};
 
-/// A set of all the possible types an [crate::Item] could contain for a game.
-/// Implement [State] using [tagset::tagset]:
+/// A set of all the possible types an [Item](crate::Item) could contain for a game.
+/// Implement [trait@State] using [tagset::tagset]:
 /// ```rust,ignore
 /// # use tagset::tagset;
 ///
@@ -23,20 +23,20 @@ use crate::{common, item};
 /// # fn main() { }
 /// ```
 /// Here `Counter` and `Whiteboard` are included in `MyState` and can be used as items tracked by spru.
-/// For generic types, you must specify each monomorphized type you want to use, e.g. `Counter<u8> and `Counter<i32>`.
+/// For generic types, you must specify each monomorphized type you want to use, e.g. `Counter<u8>` and `Counter<i32>`.
 #[telety::telety(crate::state, alias_traits = "always")]
 #[tagset_meta]
 #[meta(bounds(for<VAR> Self: tagset::TagSetDiscriminant<VAR>))]
 pub trait State: tagset::TagSet<Repr: Clone + Eq + std::hash::Hash> + Sized {
     #[doc(hidden)]
     #[meta(default {
-        match_by_discriminant!(index, T => item.cast::<Lookup, T>(lookup))
+        match_by_discriminant!(index, T => item.cast::<Storage, T>(storage))
     })]
-    fn apply_state<Lookup>(
+    fn apply_state<Storage>(
         index: Self::Repr,
         item: &item::Erased,
-        lookup: &mut Lookup,
+        storage: &mut Storage,
     ) -> Result<(), common::error::Load>
     where
-        Lookup: item::Lookup<State = Self>;
+        Storage: item::Storage<State = Self>;
 }

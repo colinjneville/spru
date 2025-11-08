@@ -18,7 +18,7 @@ use crate::{
     },
     game, interaction,
     interactor::{self, TakeGameOutcome, TakeTriggers},
-    item::{self, lookup::Canonical},
+    item::{self, storage::Canonical},
     player, reaction,
     transaction::{self, Transactions},
     visibility,
@@ -26,7 +26,7 @@ use crate::{
 
 /// Outputs of [Server] functions.
 /// Notably, you are responsible for delivering all signals in [Output::outbound] to
-/// the appropriate [crate::Client] in the order they are generated!
+/// the appropriate [Client](crate::Client) in the order they are generated!
 #[derive_where(Debug; common::signal::ToClient<Server::Common>, Event<Server>, Ret)]
 #[must_use]
 pub struct Output<Server: self::Server, Ret> {
@@ -85,43 +85,41 @@ impl<Server: self::Server> Messaging<Server> {
     }
 }
 
-/// The public interface for a server
-pub trait Server: Sized {
-    /// The set of item types known by this server. See [crate::State].
+/// The public interface for a server [Impl]
+pub trait Server: crate::sealed::Sealed + Sized {
+    /// The set of item types known by this server. See [trait@crate::State].
     type State: crate::State;
 
-    /// The set of action types known by this server. See [crate::Action].
+    /// The set of action types known by this server. See [trait@crate::Action].
     type Action: crate::Action<State = Self::State> + Clone;
 
     /// The context created during game initialization and provided to all game interactions.
-    /// Usually, you will want this to be a type containing [crate::item::IdT]s of items
+    /// Usually, you will want this to be a type containing [IdT](crate::item::IdT)s of items
     /// created during game initialization, or an IdT of an item if you need it to be mutable.
     /// Mutating a Root item should be minimized, since it will interrupt any other actions other players
     /// are in the middle of.
     type Root: Clone;
 
-    /// A type describing any initialization done for a new player. See [crate::player::Init].
+    /// A type describing any initialization done for a new player. See [player::Init].
     type PlayerInit: crate::player::Init<State = Self::State, Action = Self::Action, Root = Self::Root>;
 
-    /// A type describing all kinds of moves a player can make. See [crate::Interaction].
-    type Interaction:
-        crate::Interaction<
+    /// A type describing all kinds of moves a player can make. See [Interaction](trait@crate::Interaction).
+    type Interaction: crate::Interaction<
             State = Self::State,
             Action = Self::Action,
             Root = Self::Root,
             Trigger = <Self::Reaction as crate::Reaction>::Trigger,
         > + Clone;
 
-    /// A type describing all possible server-side processing. See [crate::Reaction].
-    type Reaction:
-        crate::Reaction<
+    /// A type describing all possible server-side processing. See [Reaction](trait@crate::Reaction).
+    type Reaction: crate::Reaction<
             State = Self::State,
             Action = Self::Action,
             Root = Self::Root,
             GameOutcome: Clone,
         >;
 
-    /// The common types shared between a connected [crate::Client] and [crate::Server].
+    /// The common types shared between a connected [Client](crate::Client) and [Server].
     type Common: crate::Common<
             State = Self::State,
             Action = Self::Action,
@@ -145,16 +143,16 @@ pub trait Server: Sized {
     /// NOTE: this is not yet implemented!
     fn load(save: Save<Self>) -> Result<Self, error::LoadError>;
 
-    /// Apply a signal from a [crate::Client].
+    /// Apply a signal from a [Client](crate::Client).
     /// Signals are how the client and server communicate. Signals between a client-server
     /// pair must be applied in the same order they are created.
-    fn apply_signal(
+    fn signal(
         &mut self,
         sender: player::Id,
         signal: common::signal::ToServer<Self::Common>,
     ) -> Result<Output<Self, ()>, error::SignalError>;
 
-    /// Start a Reaction with a trigger as if it had been created by an [crate::Interaction].
+    /// Start a Reaction with a trigger as if it had been created by an [Interaction](trait@crate::Interaction).
     /// This allows manual modification of the game state without client intervention.
     /// Most server-driven updates should be triggered by interactions, but this could
     /// be used for implementing real-time timers, server-ops tools, or tests.
@@ -165,8 +163,8 @@ pub trait Server: Sized {
 
     /// Attempt to add a player to the game.
     /// The input to this function is determined by the server's [player::Init]. If player
-    /// initialization succeeds, this function returns a [common::Seed] which is used to
-    /// initialize a new [crate::Client].
+    /// initialization succeeds, this function returns a [Seed](common::Seed) which is used to
+    /// initialize a new [Client](crate::Client).
     fn add_player(
         &mut self,
         init_input: <Self::PlayerInit as crate::player::Init>::In,
@@ -184,29 +182,45 @@ pub trait Server: Sized {
     /// A unique identifier for this game. This is persisted through [Server::save] and [Server::load],
     /// so it is possible for multiple servers to have the same [game::Id].
     fn game_id(&self) -> game::Id;
+
+    /// The game [Root](Server::Root)
+    fn root(&self) -> &Self::Root;
+
+    /// Read-only access to the authoritative game state [Storage](item::Storage)
+    fn storage(&self) -> &Canonical<<Self::State as tagset::TagSet>::Repr, Self::State>;
 }
 
-/// A [Server] implementation for the given [crate::Interaction], [crate::Reaction], and [crate::player::Init]
-pub type ServerImpl<Interaction, Reaction, PlayerInit> =
-    Impl<
-        <<Interaction as crate::Interaction>::State as tagset::TagSet>::Repr,
-        <Interaction as crate::Interaction>::State,
-        <Interaction as crate::Interaction>::Action,
-        <Interaction as crate::Interaction>::Root,
-        Interaction,
-        Reaction,
-        PlayerInit
-    >;
+/// A [Server] implementation for the given [Interaction](trait@crate::Interaction), [Reaction](trait@crate::Reaction), and [player::Init]
+pub type Impl<Interaction, Reaction, PlayerInit> = ServerImpl<
+    <<Interaction as crate::Interaction>::State as tagset::TagSet>::Repr,
+    <Interaction as crate::Interaction>::State,
+    <Interaction as crate::Interaction>::Action,
+    <Interaction as crate::Interaction>::Root,
+    Interaction,
+    Reaction,
+    PlayerInit,
+>;
 
-impl<Interaction, Reaction, PlayerInit> Server
-    for Impl<<Interaction::State as tagset::TagSet>::Repr, Interaction::State, Interaction::Action, Interaction::Root, Interaction, Reaction, PlayerInit>
+impl<Repr, State, Action, Root, Interaction, Reaction, PlayerInit> crate::sealed::Sealed
+    for ServerImpl<Repr, State, Action, Root, Interaction, Reaction, PlayerInit>
+{
+}
+
+impl<Interaction, Reaction, PlayerInit> Server for Impl<Interaction, Reaction, PlayerInit>
 where
-    Interaction: crate::Interaction<
-            Action: Clone,
-            Root: Clone,
-        > + Clone,
-    Reaction: crate::Reaction<State = Interaction::State, Action = Interaction::Action, Root = Interaction::Root, Trigger = Interaction::Trigger, GameOutcome: Clone>,
-    PlayerInit: crate::player::Init<State = Interaction::State, Action = Interaction::Action, Root = Interaction::Root>,
+    Interaction: crate::Interaction<Action: Clone, Root: Clone> + Clone,
+    Reaction: crate::Reaction<
+            State = Interaction::State,
+            Action = Interaction::Action,
+            Root = Interaction::Root,
+            Trigger = Interaction::Trigger,
+            GameOutcome: Clone,
+        >,
+    PlayerInit: crate::player::Init<
+            State = Interaction::State,
+            Action = Interaction::Action,
+            Root = Interaction::Root,
+        >,
 {
     type State = Interaction::State;
     type Action = Interaction::Action;
@@ -219,8 +233,8 @@ where
         Self::State,
         Self::Action,
         Self::Root,
-        <Self::Reaction as crate::Reaction>::GameOutcome,
         Self::Interaction,
+        <Self::Reaction as crate::Reaction>::GameOutcome,
     >;
 
     #[instrument(err, skip_all)]
@@ -236,14 +250,14 @@ where
 
         let reservation = item::id::Reservation::all();
 
-        let mut lookup = Canonical::new();
+        let mut storage = Canonical::new();
 
         let context = game::init::Context {};
 
         let mut game_init_context = game::init::Error::prepare_context(&game_init);
 
         // If we fail at any point, there is no need to attempt undo since we scrapping the server anyway
-        let mut interactor = Interactor::new(&mut lookup, &reservation, context);
+        let mut interactor = Interactor::new(&mut storage, &reservation, context);
         let root = game_init
             .initialize(&mut interactor)
             .map_err(&mut game_init_context)?;
@@ -257,7 +271,7 @@ where
 
         let mut inner = ImplInner {
             game_id: game::Id::new(),
-            lookup,
+            storage,
             player_manager,
             visibility: visibility::Manager::new(),
             log,
@@ -293,10 +307,10 @@ where
 
         let reservation = reservation.reservation();
 
-        let mut lookup = Canonical::new();
+        let mut storage = Canonical::new();
 
         let root = snapshot.root().clone();
-        snapshot.apply(&mut lookup)?;
+        snapshot.apply(&mut storage)?;
 
         let log = log::Log::new_with_next_id(next_transaction_id);
 
@@ -304,7 +318,7 @@ where
             root,
             inner: ImplInner {
                 game_id,
-                lookup,
+                storage,
                 player_manager,
                 visibility: visibility::Manager::new(),
                 log,
@@ -320,7 +334,7 @@ where
     }
 
     #[instrument(err, skip_all, fields(sender = sender.into_u32()))]
-    fn apply_signal(
+    fn signal(
         &mut self,
         sender: player::Id,
         arg: common::signal::ToServer<Self::Common>,
@@ -420,7 +434,7 @@ where
             // To be overwritten in player::Manager::add
             player: player::Id::ZERO,
         };
-        let interactor = Interactor::new(&mut self.inner.lookup, &self.inner.reservation, context);
+        let interactor = Interactor::new(&mut self.inner.storage, &self.inner.reservation, context);
 
         let result = match self
             .inner
@@ -496,11 +510,19 @@ where
     fn game_id(&self) -> game::Id {
         self.inner.game_id
     }
+
+    fn root(&self) -> &Self::Root {
+        &self.root
+    }
+
+    fn storage(&self) -> &Canonical<<Self::State as tagset::TagSet>::Repr, Self::State> {
+        &self.inner.storage
+    }
 }
 
 #[doc(hidden)]
 #[derive(Debug)]
-pub struct Impl<Repr, State, Action, Root, Interaction, Reaction, PlayerInit> {
+pub struct ServerImpl<Repr, State, Action, Root, Interaction, Reaction, PlayerInit> {
     inner: ImplInner<Repr, State, Action, Root, Interaction, Reaction, PlayerInit>,
     root: Root,
 }
@@ -509,7 +531,7 @@ pub struct Impl<Repr, State, Action, Root, Interaction, Reaction, PlayerInit> {
 #[derive_where(Debug; Repr, Action, Reaction, PlayerInit)]
 struct ImplInner<Repr, State, Action, Root, Interaction, Reaction, PlayerInit> {
     game_id: game::Id,
-    lookup: item::lookup::Canonical<Repr, State>,
+    storage: item::storage::Canonical<Repr, State>,
     player_manager: player::Manager<PlayerInit>,
     log: Log<Action>,
     visibility: visibility::Manager,
@@ -539,10 +561,12 @@ where
     fn apply_interaction(
         &mut self,
         root: &Root,
-        messaging: &mut Messaging<Impl<Repr, State, Action, Root, Interaction, Reaction, PlayerInit>>,
+        messaging: &mut Messaging<
+            ServerImpl<Repr, State, Action, Root, Interaction, Reaction, PlayerInit>,
+        >,
         sender: player::Id,
         apply_interaction: common::signal::ApplyInteraction<
-            <Impl<Repr, State, Action, Root, Interaction, Reaction, PlayerInit> as Server>::Common,
+            <ServerImpl<Repr, State, Action, Root, Interaction, Reaction, PlayerInit> as Server>::Common,
         >,
     ) -> action::Result<()> {
         let common::signal::ApplyInteraction {
@@ -568,7 +592,7 @@ where
             }
 
             let context = interaction::Context::new(root, sender);
-            let mut interactor = Interactor::new(&mut self.lookup, &self.reservation, context);
+            let mut interactor = Interactor::new(&mut self.storage, &self.reservation, context);
             let interaction_error = interaction
                 .apply(&mut interactor)
                 .map_err(|e| e.with_context(&interaction))
@@ -582,7 +606,9 @@ where
                 Err(err) => {
                     tracing::event!(name: "interaction_version_conflict", tracing::Level::INFO, { });
 
-                    Err(RecoverableError::<interaction::Error>::new(err.into()))
+                    Err(RecoverableError::new(
+                        interaction::Error::new_validation_error(err),
+                    ))
                 }
             }
         })();
@@ -617,7 +643,9 @@ where
     fn build_transaction<Context, Output>(
         &mut self,
         root: &Root,
-        messaging: &mut Messaging<Impl<Repr, State, Action, Root, Interaction, Reaction, PlayerInit>>,
+        messaging: &mut Messaging<
+            ServerImpl<Repr, State, Action, Root, Interaction, Reaction, PlayerInit>,
+        >,
         // This is a bit of a kludge to special case Interactions where a Client already has some of the transaction
         // applied locally and only needs log generated from Server Reactions
         pending_interaction: Option<interaction::Pending>,
@@ -715,7 +743,7 @@ where
     {
         let Self {
             game_id: _id,
-            lookup,
+            storage,
             player_manager: _player_manager,
             log,
             visibility: _visibility_manager,
@@ -743,7 +771,7 @@ where
         let mut game_outcome = None;
 
         while let Some(trigger) = triggers.pop_front() {
-            let mut interactor = Interactor::new(lookup, reservation, reaction_context);
+            let mut interactor = Interactor::new(storage, reservation, reaction_context);
             if let Some(go) = game_outcome.take() {
                 interactor.set_game_outcome(go);
             }
@@ -771,7 +799,7 @@ where
                 Err(mut err) => {
                     // Only bother with undo if we haven't hit an unrecoverable error already
                     if err.is_recovered()
-                        && let Err(undo_error) = all_undo_records.apply(lookup)
+                        && let Err(undo_error) = all_undo_records.apply(storage)
                     {
                         // Undo failed, state is inconsistent
                         err.set_recovery_error(undo_error);
@@ -802,6 +830,6 @@ where
     where
         Root: Clone,
     {
-        common::Snapshot::new(root.clone(), &self.lookup)
+        common::Snapshot::new(root.clone(), &self.storage)
     }
 }

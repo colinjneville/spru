@@ -1,9 +1,12 @@
+//! Proc macros for spru. Not intended for public use.
+
 use syn::spanned::Spanned as _;
 
 mod create;
 mod destroy;
 mod from_infallible;
 mod update;
+mod with;
 
 pub(crate) struct ActionImpl<'i> {
     pub ident: &'i syn::Ident,
@@ -66,11 +69,11 @@ impl<'i> quote::ToTokens for ActionImpl<'i> {
                 type Undo = <Self as #trait_path>::Undo;
                 type T = <Self as #trait_path>::T;
 
-                fn apply<Lookup>(&self, context: ::spru::action::Context<'_, Lookup>)
+                fn apply<Storage>(&self, context: ::spru::action::Context<'_, Storage>)
                     -> ::spru::action::Result<Option<Self::Undo>>
                 where
-                    Lookup: ::spru::item::Lookup,
-                    Self::T: spru::item::lookup::Lookupable<Lookup::State>,
+                    Storage: ::spru::item::Storage,
+                    Self::T: spru::item::storage::Storable<Storage::State>,
                 {
                     context.#func_ident(self)
                 }
@@ -82,20 +85,22 @@ impl<'i> quote::ToTokens for ActionImpl<'i> {
 
 #[proc_macro_derive(Create)]
 pub fn create(item: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    let (Ok(ts) | Err(ts)) = create::fn_create(item.into()).map_err(syn::Error::into_compile_error);
+    let (Ok(ts) | Err(ts)) =
+        create::derive_create(item.into()).map_err(syn::Error::into_compile_error);
     ts.into()
 }
 
 #[proc_macro_derive(Destroy)]
 pub fn destroy(item: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let (Ok(ts) | Err(ts)) =
-        destroy::fn_destroy(item.into()).map_err(syn::Error::into_compile_error);
+        destroy::derive_destroy(item.into()).map_err(syn::Error::into_compile_error);
     ts.into()
 }
 
 #[proc_macro_derive(Update)]
 pub fn update(item: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    let (Ok(ts) | Err(ts)) = update::fn_update(item.into()).map_err(syn::Error::into_compile_error);
+    let (Ok(ts) | Err(ts)) =
+        update::derive_update(item.into()).map_err(syn::Error::into_compile_error);
     ts.into()
 }
 
@@ -103,5 +108,11 @@ pub fn update(item: proc_macro::TokenStream) -> proc_macro::TokenStream {
 pub fn from_infallible(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let (Ok(ts) | Err(ts)) = from_infallible::derive_from_infallible(input.into())
         .map_err(syn::Error::into_compile_error);
+    ts.into()
+}
+
+#[proc_macro]
+pub fn with(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let (Ok(ts) | Err(ts)) = with::fn_with(input.into()).map_err(syn::Error::into_compile_error);
     ts.into()
 }

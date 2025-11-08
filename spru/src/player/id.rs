@@ -1,6 +1,6 @@
 use std::{cmp, fmt};
 
-/// Uniquely identifies a player within a game. Since each [crate::Client] is aassociated
+/// Uniquely identifies a player within a game. Since each [Client](crate::Client) is aassociated
 /// with a single player, it also identifies that client. Note that `player` also includes
 /// non-interactive participants, such as spectators.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
@@ -21,7 +21,7 @@ impl cmp::PartialEq<u32> for Id {
 }
 
 #[cfg(feature = "test-util")]
-#[allow(dead_code)]
+#[allow(missing_docs)]
 impl Id {
     pub fn test_new(id: u32) -> Self {
         Self(id)

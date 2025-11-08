@@ -19,7 +19,7 @@ impl Details {
     ) -> action::Result<()> {
         for &(id, version) in &expected_versions.expected {
             // Only check item creation (i.e. before version is 0). Any client can modify any item
-            // if the sever OKs it, we just don't want id conflicts on created items.
+            // if the server OKs it, we just don't want id conflicts on created items.
             if version == item::Version::ZERO && !self.reservation_range.contains(&id) {
                 return Err(NotInRangeError {
                     range: self.reservation_range.clone(),
@@ -52,9 +52,13 @@ impl<PlayerInit> Manager<PlayerInit> {
         mut interactor: player::init::Interactor<'_, 'r, PlayerInit>,
         reservation_range: item::id::Range,
         input: PlayerInit::In,
-    ) -> Result<player::init::Complete<'r, PlayerInit::Action, PlayerInit::Root>, RecoverableError<player::init::Error>>
+    ) -> Result<
+        player::init::Complete<'r, PlayerInit::Action, PlayerInit::Root>,
+        RecoverableError<player::init::Error>,
+    >
     where
-        PlayerInit: player::Init<State: crate::State, Action: crate::Action<State = PlayerInit::State>>,
+        PlayerInit:
+            player::Init<State: crate::State, Action: crate::Action<State = PlayerInit::State>>,
     {
         let id = player::Id(self.player_details.len() as u32);
         interactor.context_mut().player = id;

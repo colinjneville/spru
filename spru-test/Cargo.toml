@@ -3,6 +3,9 @@ name = "spru-test"
 version = "0.1.0"
 edition = "2024"
 
+[lib]
+crate-type = ["cdylib", "rlib"]
+
 [features]
 default = []
 bevy = []
@@ -12,7 +15,6 @@ spru = { path = "../spru" }
 spru-util = { path = "../spru-util" }
 
 telety.workspace = true
-amass.workspace = true
 tagset.workspace = true
 
 anyhow.workspace = true
@@ -27,3 +29,10 @@ serde.workspace = true
 [dev-dependencies]
 tracing.workspace = true
 tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
+
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+getrandom = { version = "0.3", features = ["wasm_js"] }
+uuid = { workspace = true, features = ["rng-getrandom"] }
+wasm-bindgen = { version = "0.2" }
+wasm-bindgen-test = "0.3.55"
+web-sys = { version = "0.3", features = ["Window"] }

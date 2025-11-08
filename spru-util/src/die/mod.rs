@@ -7,55 +7,57 @@ use spru::common::error::AnyResult;
 use tagset::tagset;
 use telety::telety;
 
-use crate::verbatim;
+use crate::cloned;
 
 #[derive(Debug)]
-pub struct State<Die: self::Die> {
-    die: Die,
-    current_face: Die::Face,
+pub struct Die<D: self::DieKind> {
+    die: D,
+    current_face: D::Face,
 }
 
-impl<Die: self::Die> State<Die> {
-    pub fn current_face(&self) -> &Die::Face {
+impl<D: self::DieKind> Die<D> {
+    pub fn current_face(&self) -> &D::Face {
         &self.current_face
     }
 }
 
-pub fn create<Die: self::Die>(die: Die) -> Create<Die> {
+pub fn create<D: self::DieKind>(die: D) -> Create<D> {
     let mut mock_rng = rand::rngs::mock::StepRng::new(0, 0);
     let current_face = die.roll(&mut mock_rng);
-    verbatim::create(State { die, current_face })
+    cloned::create(Die { die, current_face })
 }
 
-pub fn roll<Die: self::Die, R: rand::Rng>(state: &State<Die>, rng: &mut R) -> SetFace<Die> {
+/// Sets the die to a random face. Should not be used in interactions, as the interaction
+/// will be rejected if the outcome does not match on the server.
+pub fn roll<D: self::DieKind, R: rand::Rng>(state: &Die<D>, rng: &mut R) -> SetFace<D> {
     let face = state.die.roll(rng);
     set_face(face)
 }
 
-pub fn set_face<Die: self::Die>(face: Die::Face) -> SetFace<Die> {
+pub fn set_face<D: self::DieKind>(face: D::Face) -> SetFace<D> {
     SetFace { face }
 }
 
-pub fn destroy<Die: self::Die>() -> Destroy<Die> {
-    verbatim::destroy()
+pub fn destroy<D: self::DieKind>() -> Destroy<D> {
+    cloned::destroy()
 }
 
 #[telety(crate::die)]
-#[tagset(Create<Die>)]
-#[tagset(SetFace<Die>)]
-#[tagset(Destroy<Die>)]
-pub struct Actions<Die: self::Die>;
+#[tagset(Create<D>)]
+#[tagset(SetFace<D>)]
+#[tagset(Destroy<D>)]
+pub struct Actions<D: self::DieKind>;
 
-pub type Create<Die> = verbatim::Create<State<Die>>;
+pub type Create<D> = cloned::Create<Die<D>>;
 
-#[derive_where(Debug, Clone; Die::Face)]
+#[derive_where(Debug, Clone; D::Face)]
 #[derive(serde::Serialize, serde::Deserialize, spru::action::Update)]
-pub struct SetFace<Die: self::Die> {
-    face: Die::Face,
+pub struct SetFace<D: self::DieKind> {
+    face: D::Face,
 }
 
-impl<Die: self::Die<Face: Clone>> spru::action::Update for SetFace<Die> {
-    type T = State<Die>;
+impl<D: self::DieKind<Face: Clone>> spru::action::Update for SetFace<D> {
+    type T = Die<D>;
     type Undo = Self;
 
     fn update(&self, value: &mut Self::T) -> AnyResult<impl Into<Option<Self::Undo>>> {
@@ -65,9 +67,9 @@ impl<Die: self::Die<Face: Clone>> spru::action::Update for SetFace<Die> {
     }
 }
 
-pub type Destroy<Die> = verbatim::Destroy<State<Die>>;
+pub type Destroy<D> = cloned::Destroy<Die<D>>;
 
-pub trait Die {
+pub trait DieKind {
     type Face;
 
     fn roll<R: Rng>(&self, rng: &mut R) -> Self::Face;
@@ -88,7 +90,7 @@ impl<T> DN<T> {
     }
 }
 
-impl<T> Die for DN<T>
+impl<T> DieKind for DN<T>
 where
     T: num_traits::Zero + rand::distr::uniform::SampleUniform + std::cmp::PartialOrd + Clone,
 {
@@ -110,7 +112,7 @@ impl<T> Custom<T> {
     }
 }
 
-impl<T: Clone> Die for Custom<T> {
+impl<T: Clone> DieKind for Custom<T> {
     type Face = T;
 
     fn roll<R: Rng>(&self, rng: &mut R) -> Self::Face {

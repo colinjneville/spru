@@ -14,7 +14,21 @@ use spru::item;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, prelude::Component)]
 #[component(storage = "SparseSet")]
 #[component(immutable)]
-pub struct ClientId(pub spru::player::Id);
+pub struct ClientId(spru::player::Id);
+
+impl ClientId {
+    pub(crate) fn new(id: spru::player::Id) -> Self {
+        Self(id)
+    }
+}
+
+impl ops::Deref for ClientId {
+    type Target = spru::player::Id;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
 
 impl fmt::Display for ClientId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -215,5 +229,13 @@ impl EntityMap {
             }
             hash_map::Entry::Vacant(_) => Err(super::BevyError::IdNotFound(id)),
         }
+    }
+}
+
+impl<ID: Into<item::Id>> ops::Index<ID> for EntityMap {
+    type Output = prelude::Entity;
+
+    fn index(&self, index: ID) -> &Self::Output {
+        &self.map[&index.into()]
     }
 }

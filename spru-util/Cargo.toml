@@ -12,13 +12,11 @@ spru-macro = { path = "../spru-macro" }
 
 tagset.workspace = true
 telety.workspace = true
-amass.workspace = true
 
 derive-where.workspace = true
 num-traits.workspace = true
 rand.workspace = true
 rand_chacha.workspace = true
-spaghetto.workspace = true
 thiserror.workspace = true
 
 tracing.workspace = true

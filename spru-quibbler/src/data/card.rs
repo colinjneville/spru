@@ -23,6 +23,8 @@ impl Card {
         }
         cards
     }
+
+    #[allow(dead_code)]
     pub(crate) fn get(letters: &[u8]) -> Option<Self> {
         match letters {
             b"QU" => Some(Card::new(26)),
@@ -53,23 +55,27 @@ impl Card {
 
 impl fmt::Display for Card {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.face().letters)
+        write!(f, "{}", str::from_utf8(self.face().letters).unwrap())
     }
 }
 
 #[derive(Debug)]
 pub struct Face {
-    pub letters: &'static str,
+    pub letters: &'static [u8],
     pub points: u8,
 }
 
 impl Face {
-    const fn new(letters: &'static str, points: u8) -> Self {
+    const fn new(letters: &'static [u8], points: u8) -> Self {
         Self { letters, points }
     }
 
     pub fn points(&self) -> u32 {
         self.points as u32
+    }
+
+    pub fn letters_str(&self) -> &'static str {
+        str::from_utf8(self.letters).unwrap()
     }
 }
 
@@ -79,7 +85,7 @@ pub struct FaceCount {
 }
 
 impl FaceCount {
-    const fn new(letters: &'static str, points: u8, count: u8) -> Self {
+    const fn new(letters: &'static [u8], points: u8, count: u8) -> Self {
         Self {
             face: Face::new(letters, points),
             count,
@@ -88,35 +94,35 @@ impl FaceCount {
 }
 
 pub static FACES: [FaceCount; 31] = [
-    FaceCount::new("A", 2, 10),
-    FaceCount::new("B", 8, 2),
-    FaceCount::new("C", 8, 2),
-    FaceCount::new("D", 5, 4),
-    FaceCount::new("E", 2, 12),
-    FaceCount::new("F", 6, 2),
-    FaceCount::new("G", 6, 4),
-    FaceCount::new("H", 7, 2),
-    FaceCount::new("I", 2, 8),
-    FaceCount::new("J", 13, 2),
-    FaceCount::new("K", 8, 2),
-    FaceCount::new("L", 3, 4),
-    FaceCount::new("M", 5, 2),
-    FaceCount::new("N", 5, 6),
-    FaceCount::new("O", 2, 8),
-    FaceCount::new("P", 6, 2),
-    FaceCount::new("Q", 15, 2),
-    FaceCount::new("R", 5, 6),
-    FaceCount::new("S", 3, 4),
-    FaceCount::new("T", 3, 6),
-    FaceCount::new("U", 4, 6),
-    FaceCount::new("V", 11, 2),
-    FaceCount::new("W", 10, 2),
-    FaceCount::new("X", 12, 2),
-    FaceCount::new("Y", 4, 4),
-    FaceCount::new("Z", 14, 2),
-    FaceCount::new("QU", 9, 2),
-    FaceCount::new("IN", 7, 2),
-    FaceCount::new("ER", 7, 2),
-    FaceCount::new("CL", 10, 2),
-    FaceCount::new("TH", 9, 2),
+    FaceCount::new(b"A", 2, 10),
+    FaceCount::new(b"B", 8, 2),
+    FaceCount::new(b"C", 8, 2),
+    FaceCount::new(b"D", 5, 4),
+    FaceCount::new(b"E", 2, 12),
+    FaceCount::new(b"F", 6, 2),
+    FaceCount::new(b"G", 6, 4),
+    FaceCount::new(b"H", 7, 2),
+    FaceCount::new(b"I", 2, 8),
+    FaceCount::new(b"J", 13, 2),
+    FaceCount::new(b"K", 8, 2),
+    FaceCount::new(b"L", 3, 4),
+    FaceCount::new(b"M", 5, 2),
+    FaceCount::new(b"N", 5, 6),
+    FaceCount::new(b"O", 2, 8),
+    FaceCount::new(b"P", 6, 2),
+    FaceCount::new(b"Q", 15, 2),
+    FaceCount::new(b"R", 5, 6),
+    FaceCount::new(b"S", 3, 4),
+    FaceCount::new(b"T", 3, 6),
+    FaceCount::new(b"U", 4, 6),
+    FaceCount::new(b"V", 11, 2),
+    FaceCount::new(b"W", 10, 2),
+    FaceCount::new(b"X", 12, 2),
+    FaceCount::new(b"Y", 4, 4),
+    FaceCount::new(b"Z", 14, 2),
+    FaceCount::new(b"QU", 9, 2),
+    FaceCount::new(b"IN", 7, 2),
+    FaceCount::new(b"ER", 7, 2),
+    FaceCount::new(b"CL", 10, 2),
+    FaceCount::new(b"TH", 9, 2),
 ];

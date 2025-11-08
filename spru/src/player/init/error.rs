@@ -50,8 +50,8 @@ impl From<action::Error> for Error {
     }
 }
 
-impl From<item::lookup::Error> for Error {
-    fn from(value: item::lookup::Error) -> Self {
+impl From<item::storage::Error> for Error {
+    fn from(value: item::storage::Error) -> Self {
         Self::new(Kind::Action(value.into()))
     }
 }

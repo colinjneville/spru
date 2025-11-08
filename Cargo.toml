@@ -10,16 +10,15 @@ members = [
 ]
 
 [workspace.dependencies]
-telety = "0.3"
-amass = "0.1.1"
-tagset = "0.1.1"
+telety = "0.4"
+tagset = "0.1.2"
 
 halfbrown = { version = "0.3.0", features = ["serde"] }
 thiserror = "2.0.12"
 anyhow = "1.0.100"
 
 derive_more = "1.0.0"
-derive-where = { version = "1.5.0", features = ["serde"] }
+derive-where = { version = "1.6.0", features = ["serde"] }
 num-traits = "0.2.17"
 
 implied-bounds = "0.1.0"
@@ -29,10 +28,6 @@ rand_chacha = "0.9.0"
 
 rust-fsm = "0.8.0"
 
-
-
-spaghetto = { version = "0.0.3", features = ["serde"] }
-
 uuid = { version = "1.18.1", features = [ "v4", "serde" ] }
 
 # logging
@@ -40,9 +35,9 @@ tracing = "0.1.41"
 tracing-core = "0.1.34"
 
 # async
-atomicell = "0.2.0"
-futures-io = "0.3.31"
-moro = "0.4.0"
+# atomicell = "0.2.0"
+# futures-io = "0.3.31"
+# moro = "0.4.0"
 
 # async (smol ecosystem)
 # async-broadcast = "0.7.2"
@@ -58,11 +53,10 @@ moro = "0.4.0"
 # macros
 proc-macro2 = "1.0.69"
 quote = "1.0.33"
-syn = "2.0.38"
+syn = { version = "2.0.38", features = ["full"] }
 
 # serialization
 rmp-serde = "=1.3.0"
-erased-serde = "0.4.5"
 deku = "0.18.1"
 ron = "0.11.0"
 serde_bytes = "0.11.19"
@@ -81,13 +75,3 @@ default-features = false
 features = [
     "bevy_log",
 ]
-
-[patch.crates-io]
-telety = { path = "D:/Projects/telety-ws/telety" } 
-telety-macro = { path = "D:/Projects/telety-ws/telety-macro" } 
-telety-impl = { path = "D:/Projects/telety-ws/telety-impl" } 
-amass = { path = "D:/Projects/amass/amass" } 
-#tagset = { git = "https://github.com/colinjneville/tagset.git" }
-tagset = { path = "D:/Projects/tagit/tagset" }
-#tagset-macro = { git = "https://github.com/colinjneville/tagset.git" }
-tagset-macro = { path = "D:/Projects/tagit/tagset-macro" }

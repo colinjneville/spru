@@ -47,21 +47,21 @@ impl<Action, Interaction> Log<Action, Interaction> {
     }
 
     #[instrument(err, skip_all, fields(transaction_id = transaction.id.get()))]
-    pub(crate) fn apply_confirmed<Lookup>(
+    pub(crate) fn apply_confirmed<Storage>(
         &mut self,
-        lookup: &mut Lookup,
+        storage: &mut Storage,
         transaction: transaction::Confirmed<Action>,
     ) -> Result<(), RecoverableError<super::error::TransactionConfirmationError>>
     where
-        Lookup: item::Lookup,
-        Action: crate::Action<State = Lookup::State>,
+        Storage: item::Storage,
+        Action: crate::Action<State = Storage::State>,
     {
         if self.next_confirmed_id == transaction.id {
             tracing::event!(name: "external_transaction", tracing::Level::DEBUG, transaction_len = transaction.transaction.records().len());
 
             self.next_confirmed_id = self.next_confirmed_id.next();
 
-            self.apply_server_records(lookup, transaction.transaction.records())
+            self.apply_server_records(storage, transaction.transaction.records())
                 .map_err(|e| e.map_with(super::error::TransactionConfirmationError::Action))
         } else {
             tracing::event!(name: "external_transaction_invalid", tracing::Level::ERROR, expected_transaction_id = self.next_confirmed_id.get());
@@ -76,26 +76,26 @@ impl<Action, Interaction> Log<Action, Interaction> {
         }
     }
 
-    fn apply_server_records<Lookup>(
+    fn apply_server_records<Storage>(
         &mut self,
-        lookup: &mut Lookup,
+        storage: &mut Storage,
         records: &Records<Action>,
     ) -> Result<(), RecoverableError<action::Error>>
     where
-        Lookup: item::Lookup,
-        Action: crate::Action<State = Lookup::State>,
+        Storage: item::Storage,
+        Action: crate::Action<State = Storage::State>,
     {
-        match records.apply_or_revert(lookup) {
+        match records.apply_or_revert(storage) {
             Ok(_) => Ok(()),
             Err(mut re) => {
                 if re.is_recovered() {
                     // Log apply failed, discard our local pending changes...
                     // TODO we could instead look for the earliest incompatible transaction
                     // and only rollback until there
-                    match self.revert_pending(lookup, None, true) {
-                        Ok(()) => {
+                    match self.revert_pending(storage, None, true) {
+                        Ok(_count) => {
                             // Then try one more time on what should be a clean slate
-                            records.apply(lookup).map(|_| ()).map_err(Into::into)
+                            records.apply(storage).map(|_| ()).map_err(Into::into)
                         }
                         Err(e) => {
                             re.set_recovery_error(e);
@@ -138,7 +138,7 @@ impl<Action, Interaction> Log<Action, Interaction> {
     pub fn apply_pending(
         &mut self,
         pending_interaction_id: Option<interaction::Pending>,
-    ) -> Result<Vec<interaction::Staged<Interaction>>, super::error::InvalidPendingTransactionError>
+    ) -> Result<Vec<interaction::Staged<Interaction>>, super::error::InvalidInteractionPendingError>
     {
         let index = if let Some(pending_interaction_id) = pending_interaction_id {
             self.pending_undo_transactions
@@ -165,28 +165,28 @@ impl<Action, Interaction> Log<Action, Interaction> {
                 Ok(output)
             }
             // transaction not found (invalid, reverted, or commited)
-            Err(_) => Err(super::error::InvalidPendingTransactionError::new(
+            Err(_) => Err(super::error::InvalidInteractionPendingError::new(
                 pending_interaction_id.unwrap(),
             )),
         }
     }
 
-    pub fn confirm_pending<Lookup>(
+    pub fn confirm_pending<Storage>(
         &mut self,
-        lookup: &mut Lookup,
+        storage: &mut Storage,
         pending_interaction_id: interaction::Pending,
         confirmed_transaction_id: transaction::Id,
         reaction_records: &Records<Action>,
     ) -> Result<(), super::error::ConfirmPendingError>
     where
-        Lookup: item::Lookup,
-        Action: crate::Action<State = Lookup::State>,
+        Storage: item::Storage,
+        Action: crate::Action<State = Storage::State>,
     {
         match self.pending_undo_transactions.front() {
             Some(pending) => {
                 if pending.id == pending_interaction_id {
                     if self.next_confirmed_id == confirmed_transaction_id {
-                        self.apply_server_records(lookup, reaction_records)?;
+                        self.apply_server_records(storage, reaction_records)?;
 
                         self.next_confirmed_id = self.next_confirmed_id.next();
                         self.pending_undo_transactions.pop_front();
@@ -217,16 +217,18 @@ impl<Action, Interaction> Log<Action, Interaction> {
         }
     }
 
-    pub(crate) fn revert_pending<Lookup>(
+    pub(crate) fn revert_pending<Storage>(
         &mut self,
-        lookup: &mut Lookup,
+        storage: &mut Storage,
         until: Option<interaction::Pending>,
         from_server: bool,
-    ) -> Result<(), action::Error>
+    ) -> Result<usize, action::Error>
     where
-        Lookup: item::Lookup,
-        Action: crate::Action<State = Lookup::State>,
+        Storage: item::Storage,
+        Action: crate::Action<State = Storage::State>,
     {
+        let mut count = 0;
+
         // pop_back_if: https://github.com/rust-lang/rust/issues/135889
         while let Some(pending) = self.pending_undo_transactions.pop_back() {
             if Some(pending.id) < until {
@@ -237,7 +239,8 @@ impl<Action, Interaction> Log<Action, Interaction> {
                 // If we have not attempted to apply this interaction yet, or the server
                 // has explicitly rejected it, we can revert
                 if pending.interaction.is_some() || from_server {
-                    pending.undo_transaction.apply(lookup)?;
+                    count += 1;
+                    pending.undo_transaction.apply(storage)?;
                 } else {
                     // We've already told the server to confirm the interaction, but have not yet
                     // recieved a response. It's no longer our choice to revert.
@@ -257,6 +260,14 @@ impl<Action, Interaction> Log<Action, Interaction> {
             }
         }
 
-        Ok(())
+        Ok(count)
+    }
+
+    pub(crate) fn pending_interactions(&self) -> impl Iterator<Item = interaction::Pending> {
+        self.pending_undo_transactions
+            .iter()
+            // Only report unapplied pending
+            .filter(|i| i.interaction.is_some())
+            .map(|i| i.id)
     }
 }

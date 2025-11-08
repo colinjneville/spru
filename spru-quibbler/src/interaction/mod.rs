@@ -7,10 +7,10 @@ pub use play::Play;
 use spru::item::IdT;
 use tagset::tagset;
 
-// pub(crate) type Interactor<'l, 'r, Lookup> = spru::interaction::Interactor<
+// pub(crate) type Interactor<'l, 'r, Storage> = spru::interaction::Interactor<
 //     'l,
 //     'r,
-//     Lookup,
+//     Storage,
 //     crate::Actions,
 //     IdT<crate::game::Root>,
 //     crate::reaction::Trigger,

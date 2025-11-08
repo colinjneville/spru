@@ -1,7 +1,7 @@
-use spru::item::IdT;
+use spru::{interactor::with, item::IdT};
 use tagset::tagset;
 
-use spru_util::{player_map, verbatim};
+use spru_util::{cloned, player_map};
 
 #[derive(Debug)]
 pub struct LobbyInfo;
@@ -18,7 +18,7 @@ pub struct GameOutcome(pub spru::player::Id);
 #[tagset(impl crate::proxy::std::fmt::Debug)]
 #[tagset(impl spru::State)]
 #[tagset(GameRoot)]
-#[tagset(player_map::State<PlayerData>)]
+#[tagset(player_map::PlayerMap<PlayerData>)]
 pub struct State;
 
 #[tagset(derive(Clone))]
@@ -29,7 +29,7 @@ pub struct State;
 #[tagset(impl tagset::proxy::serde::Serialize)]
 #[tagset(impl<'de> tagset::serde::DeserializeFromDiscriminant<'de>)]
 #[tagset(impl<'de> tagset::proxy::serde::Deserialize<'de>)]
-#[tagset(include(verbatim::Actions<GameRoot>))]
+#[tagset(include(cloned::Actions<GameRoot>))]
 #[tagset(include(player_map::Actions<PlayerData>))]
 pub struct Actions;
 
@@ -93,10 +93,16 @@ impl spru::player::Init for PlayerInit {
         input: Self::In,
     ) -> spru::player::init::Result<()> {
         let player_id = interactor.context().player;
-        let root = interactor.get_root()?;
 
-        spru::follow!(root => root.players)?
-            .update(player_map::add_player(player_id, PlayerData { color: input }));
+        with! { interactor =>
+            let root = interactor.get_root()?;
+            let players = ~[root.players]?;
+        };
+
+        players.update(player_map::add_player(
+            player_id,
+            PlayerData { color: input },
+        ));
 
         Ok(())
     }
@@ -109,7 +115,7 @@ pub struct PlayerData {
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct GameRoot {
-    players: IdT<player_map::State<PlayerData>>,
+    players: IdT<player_map::PlayerMap<PlayerData>>,
 }
 
 pub struct GameInit(pub LobbyInfo);
@@ -124,7 +130,7 @@ impl spru::game::Init for GameInit {
         interactor: &mut spru::game::init::Interactor<Self>,
     ) -> spru::game::init::Result<Self::Root> {
         let players = interactor.create(player_map::create()).id();
-        let root = interactor.create(spru_util::verbatim::create(GameRoot { players }));
+        let root = interactor.create(spru_util::cloned::create(GameRoot { players }));
 
         Ok(root.id())
     }
@@ -138,12 +144,12 @@ impl spru::Interaction for Interaction {
     type Root = IdT<GameRoot>;
     type Trigger = Trigger;
 
-    fn apply<Lookup>(
+    fn apply<Storage>(
         &self,
-        interactor: &mut spru::interaction::Interactor<Lookup, Self>,
+        interactor: &mut spru::interaction::Interactor<Storage, Self>,
     ) -> spru::interaction::Result<()>
     where
-        Lookup: spru::item::Lookup<State = Self::State>,
+        Storage: spru::item::Storage<State = Self::State>,
     {
         let _root = interactor.get_root()?;
         interactor.enqueue_trigger(Trigger(interactor.context().player));
@@ -151,9 +157,8 @@ impl spru::Interaction for Interaction {
     }
 }
 
-pub type Server =
-    spru::server::ServerImpl<Interaction, Reaction, PlayerInit>;
+pub type Server = spru::server::Impl<Interaction, Reaction, PlayerInit>;
 
-pub type Client = spru::client::ClientImpl<Interaction, GameOutcome>;
+pub type Client = spru::client::Impl<Interaction, GameOutcome>;
 
 pub type Common = <Server as spru::Server>::Common;

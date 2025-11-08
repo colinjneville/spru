@@ -7,22 +7,24 @@ use spru::common::error::AnyResult;
 use tagset::tagset;
 use telety::telety;
 
-use crate::verbatim;
+use crate::cloned;
 
+/// A 'wheel' of values which loops around at both ends. Can represent turn order, round phases,
 #[telety(crate::rotating)]
 #[derive(Debug, Clone)]
 #[derive_where(Default)]
 #[derive(serde::Serialize, serde::Deserialize)]
-pub struct State<T> {
+pub struct Rotating<T> {
     items: Vec<T>,
     position: usize,
 }
 
-impl<T> State<T> {
+impl<T> Rotating<T> {
     pub fn as_slice(&self) -> &[T] {
         self.items.as_slice()
     }
 
+    /// The index of the selected value. [None] if this item has no elements.
     pub fn position(&self) -> Option<usize> {
         if self.items.is_empty() {
             None
@@ -31,6 +33,7 @@ impl<T> State<T> {
         }
     }
 
+    /// The current selected value. [None] if this item has no elements.
     pub fn current(&self) -> Option<&T> {
         self.items.get(self.position)
     }
@@ -59,7 +62,7 @@ impl<T> State<T> {
 pub fn create<T>(items: Vec<T>, position: usize) -> Create<T> {
     assert!(items.is_empty() || position < items.len());
 
-    verbatim::create(State { items, position })
+    cloned::create(Rotating { items, position })
 }
 
 pub fn default<T>() -> Create<T> {
@@ -96,7 +99,7 @@ pub fn remove<T>(position: usize) -> Remove<T> {
 }
 
 pub fn destroy<T>() -> Destroy<T> {
-    verbatim::destroy()
+    cloned::destroy()
 }
 
 #[telety(crate::rotating)]
@@ -109,9 +112,9 @@ pub fn destroy<T>() -> Destroy<T> {
 #[tagset(reserved(..16))]
 pub struct Actions<T>;
 
-pub type Create<T> = verbatim::Create<State<T>>;
+pub type Create<T> = cloned::Create<Rotating<T>>;
 
-pub type Destroy<T> = verbatim::Destroy<State<T>>;
+pub type Destroy<T> = cloned::Destroy<Rotating<T>>;
 
 #[derive_where(Debug, Clone, Default, Serialize, Deserialize)]
 #[derive(spru::action::Update)]
@@ -123,9 +126,9 @@ pub struct Rotate<T> {
 
 impl<T> spru::action::Update for Rotate<T>
 where
-    Self: Clone + crate::Serial,
+    T: Clone,
 {
-    type T = State<T>;
+    type T = Rotating<T>;
     type Undo = Self;
 
     #[allow(refining_impl_trait)]
@@ -170,9 +173,9 @@ pub struct SetPosition<T> {
 
 impl<T> spru::action::Update for SetPosition<T>
 where
-    Self: Clone + crate::Serial,
+    T: Clone,
 {
-    type T = State<T>;
+    type T = Rotating<T>;
     type Undo = Self;
 
     #[allow(refining_impl_trait)]
@@ -201,10 +204,9 @@ pub struct Insert<T> {
 
 impl<T> spru::action::Update for Insert<T>
 where
-    Self: Clone + crate::Serial,
     T: Clone,
 {
-    type T = State<T>;
+    type T = Rotating<T>;
     type Undo = Remove<T>;
 
     #[allow(refining_impl_trait)]
@@ -247,9 +249,9 @@ pub struct Remove<T> {
 
 impl<T> spru::action::Update for Remove<T>
 where
-    Self: Clone + crate::Serial,
+    T: Clone,
 {
-    type T = State<T>;
+    type T = Rotating<T>;
     type Undo = Insert<T>;
 
     #[allow(refining_impl_trait)]

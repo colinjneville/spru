@@ -43,18 +43,18 @@ impl<Action> Log<Action> {
 }
 
 impl<Action> Log<Action> {
-    fn apply_or_revert<Lookup>(
+    fn apply_or_revert<Storage>(
         &mut self,
-        lookup: &mut Lookup,
+        storage: &mut Storage,
         transaction: Transaction<Action>,
     ) -> Result<transaction::Confirmed<Action>, RecoverableError<action::Error>>
     where
-        Lookup: item::Lookup,
-        Action: crate::Action<State = Lookup::State>,
+        Storage: item::Storage,
+        Action: crate::Action<State = Storage::State>,
     {
         self.release_undo();
 
-        let undo_transaction = transaction.apply_or_revert(lookup)?;
+        let undo_transaction = transaction.apply_or_revert(storage)?;
 
         let do_id = self.next_id;
         self.next_id = do_id.next();
@@ -80,14 +80,14 @@ impl<Action> Log<Action> {
         undo_id
     }
 
-    pub fn undo<Lookup>(
+    pub fn undo<Storage>(
         &mut self,
-        lookup: &mut Lookup,
+        storage: &mut Storage,
         transaction_id: transaction::Id,
     ) -> Result<transaction::Confirmed<Action>, RecoverableError<common::error::UndoError>>
     where
-        Lookup: item::Lookup,
-        Action: crate::Action<State = Lookup::State> + Clone,
+        Storage: item::Storage,
+        Action: crate::Action<State = Storage::State> + Clone,
     {
         let transaction = self
             .undo_transactions
@@ -98,7 +98,7 @@ impl<Action> Log<Action> {
             .clone();
 
         let confirmed = self
-            .apply_or_revert(lookup, transaction)
+            .apply_or_revert(storage, transaction)
             .map_err(|e| e.map_with(Into::into))?;
 
         Ok(confirmed)

@@ -6,6 +6,8 @@ use std::{
     sync::atomic::{self, AtomicU32},
 };
 
+/// An untyped id which points to an [Item](crate::Item).
+/// Untyped ids should only be used to implement [item::Storage](crate::item::Storage).
 #[derive(
     Debug,
     Clone,
@@ -23,8 +25,6 @@ use std::{
 pub struct Id(u32);
 
 impl Id {
-    pub(crate) const INVALID: Self = Self(u32::MAX);
-
     pub(crate) fn force_type<T>(self) -> IdT<T> {
         IdT::new(self)
     }
@@ -53,6 +53,12 @@ impl<T> From<IdT<T>> for Id {
     }
 }
 
+/// Strongly-typed identifier for an [Item](crate::Item<T>).
+/// As items are atomic unit in a game, they cannot contain one another,
+/// they must reference each other using `IdT`s. These ids are passed to
+/// an [crate::Interactor] to access the referenced item. `IdT`s should
+/// always be used in a game implementation, [Id]s should only be used
+/// for [item::Storage](crate::item::Storage) implementations.
 #[derive(serde::Serialize, serde::Deserialize)]
 #[repr(transparent)]
 #[serde(transparent)]
@@ -63,7 +69,6 @@ pub struct IdT<T> {
 }
 
 impl<T> IdT<T> {
-    // TODO make public?
     pub(crate) fn new(id: Id) -> Self {
         Self {
             id,
@@ -71,6 +76,7 @@ impl<T> IdT<T> {
         }
     }
 
+    /// Convert to an untyped id
     pub fn untyped(&self) -> Id {
         self.id
     }
@@ -162,7 +168,7 @@ impl fmt::Display for Range {
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
-pub struct Reservation {
+pub(crate) struct Reservation {
     next_id: AtomicU32,
     /// Exclusive bound
     end_of_id_reservation: u32,
@@ -221,12 +227,4 @@ impl Reservation {
             Err(())
         }
     }
-}
-
-#[derive(Debug, thiserror::Error)]
-pub enum Error {
-    #[error("Instance {id} already exists ({version})")]
-    AlreadyExists { id: Id, version: super::Version },
-    #[error("Instance {id} has already been destroyed")]
-    IsDestroyed { id: Id },
 }

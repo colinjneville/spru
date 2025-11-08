@@ -1,46 +1,56 @@
+//! Errors shared between client and server code
+
 use std::{fmt, ops, sync::Arc};
 
-use crate::{action, item::lookup, transaction};
+use crate::{action, item::storage, transaction};
 
+/// An error occurred while saving game state
 #[derive(Debug, thiserror::Error)]
+#[error("An error occurred while saving game state: {0}")]
 pub enum Save {
-    #[error(transparent)]
+    /// Serializing the game state failed
     Serialization(#[from] rmp_serde::encode::Error),
 }
 
 #[doc(hidden)]
 #[derive(Debug, thiserror::Error)]
+#[error("An error occurred while loading game state: {0}")]
 pub enum Load {
-    #[error(transparent)]
     Deserialization(#[from] rmp_serde::decode::Error),
-    #[error("{0}")]
-    Lookup(lookup::Error),
+    Storage(storage::Error),
 }
 
-impl From<lookup::Error> for Load {
-    fn from(value: lookup::Error) -> Self {
-        Self::Lookup(value)
+impl From<storage::Error> for Load {
+    fn from(value: storage::Error) -> Self {
+        Self::Storage(value)
     }
 }
 
+/// A type-erased error
 #[derive(Debug)]
 pub struct AnyError {
     inner: Box<dyn std::error::Error + Send + Sync + 'static>,
 }
 
 impl AnyError {
-    pub fn new<E: std::error::Error + Send + Sync + 'static>(e: E) -> Self {
+    /// Create an error from a string
+    pub fn from_string<S: Into<String>>(s: S) -> Self {
+        let s = s.into();
+        Self {
+            inner: Box::from(s),
+        }
+    }
+
+    pub(crate) fn new<E: std::error::Error + Send + Sync + 'static>(e: E) -> Self {
         Self { inner: Box::new(e) }
     }
 
-    pub fn new_boxed(e: Box<dyn std::error::Error + Send + Sync + 'static>) -> Self {
-        Self { inner: e }
-    }
-
+    /// Get a reference to the inner dynamic error
     pub fn get(&self) -> &(dyn std::error::Error + Send + Sync + 'static) {
         &*self.inner
     }
 
+    /// Attempt to downcast the error to the given concrete type
     pub fn try_cast<E: std::error::Error + Send + Sync + 'static>(self) -> Result<E, Self> {
         let Self { mut inner } = self;
 
@@ -73,6 +83,7 @@ impl ops::Deref for AnyError {
     }
 }
 
+/// A result with an [AnyError] `Err`
 pub type AnyResult<T> = std::result::Result<T, AnyError>;
 
 impl PsuedoError for AnyError {
@@ -81,9 +92,13 @@ impl PsuedoError for AnyError {
     }
 }
 
+/// An error type which does not implement [std::error::Error] to avoid conflicting [From]
+/// implementations, but can be costlessly converted to one when needed.
 pub trait PsuedoError: fmt::Debug + fmt::Display {
+    /// Equivalent to [std::error::Error::source]
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)>;
 
+    /// Convert this type to a type implementing [std::error::Error]
     fn into_error(self) -> ImplError<Self>
     where
         Self: Sized,
@@ -91,23 +106,25 @@ pub trait PsuedoError: fmt::Debug + fmt::Display {
         ImplError::new(self)
     }
 
+    /// Convert this reference to a reference to a type implementing [std::error::Error]
     fn as_error(&self) -> &ImplError<Self> {
         ImplError::new_ref(self)
     }
 }
 
+/// A wrapper around a [PsuedoError] which implements [std::error::Error]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[repr(transparent)]
 pub struct ImplError<E: ?Sized>(E);
 
 impl<E> ImplError<E> {
-    pub fn new(e: E) -> Self {
+    fn new(e: E) -> Self {
         Self(e)
     }
 }
 
 impl<E: ?Sized> ImplError<E> {
-    pub fn new_ref(e: &E) -> &Self {
+    fn new_ref(e: &E) -> &Self {
         // SAFETY: transparent struct refs can be transmuted safely
         unsafe { std::mem::transmute(e) }
     }
@@ -285,6 +302,12 @@ impl FatalErrorState {
     }
 }
 
+/// A fatal error which occurred on a [Client](crate::Client) or [Server](crate::Server),
+/// due to an implementation error (or bug in spru).
+/// Once [FatalError] is returned, any further operations will only return
+/// fatal errors, as the state has been corrupted. A server must be
+/// reloaded from a [Save](crate::server::Save) if available; a client must be
+/// reseeded.
 #[derive(Debug, Clone)]
 pub struct FatalError {
     inner: std::sync::Arc<AnyError>,

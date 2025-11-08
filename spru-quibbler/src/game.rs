@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use spru::item::IdT;
-use spru_util::{counter, fsm, pile, player_map, rotating, verbatim};
+use spru_util::{cloned, counter, fsm, pile, player_map, rotating};
 
 use crate::{
     data::{Card, card},
@@ -20,7 +20,10 @@ impl spru::game::Init for Init {
     type Action = crate::Actions;
     type Root = IdT<Root>;
 
-    fn initialize(self, interactor: &mut spru::game::init::Interactor<Self>) -> spru::game::init::Result<Self::Root> {
+    fn initialize(
+        self,
+        interactor: &mut spru::game::init::Interactor<Self>,
+    ) -> spru::game::init::Result<Self::Root> {
         let deck = interactor.create(pile::create(card::Card::all())).id();
         let discard = interactor.create(pile::create([])).id();
         let round = interactor.create(counter::create(0)).id();
@@ -41,20 +44,20 @@ impl spru::game::Init for Init {
             has_started: false,
         };
 
-        let root = interactor.create(verbatim::create(root)).id();
+        let root = interactor.create(cloned::create(root)).id();
         Ok(root)
     }
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Root {
-    pub deck: IdT<pile::State<Card>>,
-    pub discard: IdT<pile::State<Card>>,
-    pub round: IdT<counter::State<u32>>,
-    pub round_fsm: IdT<fsm::State<crate::round::machine::Impl>>,
-    pub players: IdT<player_map::State<player::Root>>,
-    pub current_turn: IdT<rotating::State<spru::player::Id>>,
-    pub current_dealer: IdT<rotating::State<spru::player::Id>>,
+    pub deck: IdT<pile::Pile<Card>>,
+    pub discard: IdT<pile::Pile<Card>>,
+    pub round: IdT<counter::Counter<u32>>,
+    pub round_fsm: IdT<fsm::Fsm<crate::round::machine::Impl>>,
+    pub players: IdT<player_map::PlayerMap<player::Root>>,
+    pub current_turn: IdT<rotating::Rotating<spru::player::Id>>,
+    pub current_dealer: IdT<rotating::Rotating<spru::player::Id>>,
 
     pub has_started: bool,
 }

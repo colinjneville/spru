@@ -2,6 +2,12 @@ use core::fmt;
 
 use crate::item;
 
+/// The version of an [Item](crate::Item). Every transaction that modifies an Item increments its
+/// version number by 1. When a [Client](crate::Client) sends an [Interaction](trait@crate::Interaction) to the
+/// [Server](crate::Server) to confirm, it sends all the Versions of Items it read. If the server
+/// has a different on any of those items, it rejects the Interaction, either because it
+/// conflicts, or was based on outdated information.
+/// Users never need to manually manage Versions, they are provided for diagnostic purposes only.
 #[derive(
     Debug,
     Clone,
@@ -20,7 +26,6 @@ pub struct Version(u32);
 
 impl Version {
     pub(crate) const ZERO: Self = Self(0);
-    pub(crate) const INVALID: Self = Self(u32::MAX);
 
     pub(crate) fn next(&self) -> Self {
         Self(self.0 + 1)
@@ -31,14 +36,6 @@ impl fmt::Display for Version {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "v{}", self.0)
     }
-}
-
-#[derive(Debug, thiserror::Error)]
-#[error("Item {item} expected {expected}, found {actual}")]
-pub struct Error {
-    pub item: item::Id,
-    pub expected: Version,
-    pub actual: Version,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
@@ -93,34 +90,31 @@ impl Expected {
         Self { expected }
     }
 
-    /// Find the first difference between two `Expected`, if any
-    pub(crate) fn diff(&self, actual: &Self) -> Result<(), item::version::Error> {
-        // item::version::Error wasn't made for potentially intra-item
+    /// Find the first difference between two [Expected], if any
+    pub(crate) fn diff(&self, actual: &Self) -> Result<(), item::Error> {
         let mut actual_iter = actual.expected.iter().copied();
         for (expected_id, expected_version) in self.expected.iter().copied() {
-            let (actual_id, mut actual_version) = actual_iter
-                .next()
-                .unwrap_or((item::Id::INVALID, item::Version::INVALID));
+            if let Some((actual_id, actual_version)) = actual_iter.next()
+                && actual_id <= expected_id
+            {
+                if actual_id < expected_id {
+                    return Err(item::Error::unexpected_change(actual_id));
+                }
 
-            if actual_id != expected_id {
-                actual_version = item::Version::INVALID;
-            }
-
-            if actual_version != expected_version {
-                return Err(item::version::Error {
-                    item: expected_id,
-                    expected: expected_version,
-                    actual: actual_version,
-                });
-            }
+                if actual_version != expected_version {
+                    return Err(item::Error::wrong_version(
+                        expected_id,
+                        expected_version,
+                        actual_version,
+                    ));
+                }
+            } else {
+                return Err(item::Error::expected_change(expected_id));
+            };
         }
 
-        if let Some((actual_id, actual_version)) = actual_iter.next() {
-            Err(item::version::Error {
-                item: actual_id,
-                expected: item::Version::INVALID,
-                actual: actual_version,
-            })
+        if let Some((actual_id, _actual_version)) = actual_iter.next() {
+            Err(item::Error::unexpected_change(actual_id))
         } else {
             Ok(())
         }

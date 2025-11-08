@@ -1,7 +1,7 @@
 use std::{collections::HashMap, mem};
 
-use spru::{follow, item::IdT};
-use spru_util::{counter, fsm, pile, rotating, verbatim};
+use spru::{interactor::with, item::IdT};
+use spru_util::{cloned, counter, fsm, pile, rotating};
 use tracing::instrument;
 
 use crate::{data, player, reaction::Trigger, round};
@@ -16,7 +16,7 @@ impl Play {
         Self { play: None }
     }
 
-    pub fn parsed(hand: &pile::State<data::Card>, s: &[u8]) -> Result<Self, u8> {
+    pub fn parsed(hand: &pile::Pile<data::Card>, s: &[u8]) -> Result<Self, u8> {
         let mut remaining_cards = HashMap::new();
         for card in hand {
             *remaining_cards.entry(card).or_insert(0) += 1;
@@ -84,20 +84,22 @@ impl spru::Interaction for Play {
     type Trigger = crate::reaction::Trigger;
 
     #[instrument(skip_all, ret, err)]
-    fn apply<Lookup>(
+    fn apply<Storage>(
         &self,
-        interactor: &mut spru::interaction::Interactor<Lookup, Self>,
+        interactor: &mut spru::interaction::Interactor<Storage, Self>,
     ) -> spru::interaction::Result<()>
     where
-        Lookup: spru::item::Lookup<State = Self::State>,
+        Storage: spru::item::Storage<State = Self::State>,
     {
         let player_id = interactor.context().player;
 
-        let root = interactor.get_root::<crate::game::Root>()?;
-        let round_fsm = follow!(root => root.round_fsm)?;
-        let players = follow!(root => root.players)?;
-        let player = players.expect_player(player_id);
-        let player_fsm = interactor.get(player.fsm)?;
+        with! { interactor =>
+            let root = interactor.get_root::<crate::game::Root>()?;
+            let round_fsm = ~[root.round_fsm]?;
+            let players = ~[root.players]?;
+            let player = players.expect_player(player_id);
+            let player_fsm = ~[player.fsm]?;
+        };
 
         if let Some(play) = &self.play {
             let play_kind = if play.is_full() {
@@ -121,7 +123,7 @@ impl spru::Interaction for Play {
                     crate::bail!("Word must be 2+ cards");
                 }
 
-                let mut word_str = String::new();
+                let mut word_str = Vec::new();
 
                 for card in word {
                     if remaining_cards
@@ -133,11 +135,11 @@ impl spru::Interaction for Play {
                         crate::bail!("Cards are not in hand");
                     }
 
-                    word_str.push_str(card.face().letters);
+                    word_str.extend_from_slice(card.face().letters);
                 }
 
                 word_str.make_ascii_lowercase();
-                if !wordnik_list::word_exists(&word_str) {
+                if !wordnik_list::word_exists(str::from_utf8(&word_str).unwrap()) {
                     crate::bail!("Word is not valid");
                 }
             }
@@ -151,7 +153,7 @@ impl spru::Interaction for Play {
 
             interactor
                 .get(player.played)?
-                .update(verbatim::update(play.clone()));
+                .update(cloned::update(play.clone()));
 
             interactor.enqueue_trigger(Trigger::Play);
         } else {

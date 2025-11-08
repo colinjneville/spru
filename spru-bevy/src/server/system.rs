@@ -82,12 +82,14 @@ pub(crate) fn init<Server: super::ServerSSS, GameInit>(
 {
     let result = (|| {
         let server = Server::init(game_init, player_init, reaction)?;
+        let root = common::component::Root::<Server::Common>::new(server.root().clone());
         let game_id = common::component::GameId::new(server.game_id());
 
         commands.spawn((
-            prelude::Name::new(format!("[{:x}] spru server", game_id.0.friendly_display())),
+            prelude::Name::new(format!("[{:x}] spru server", game_id.friendly_display())),
             game_id,
             super::component::Runner::new(server),
+            root,
         ));
 
         Ok(game_id)
@@ -109,7 +111,7 @@ pub(crate) fn signal<Server: super::ServerSSS>(
     event_trigger: &mut impl common::TriggerEvent,
 ) {
     let result = (|| {
-        let output = runner.server.apply_signal(sender, signal)?;
+        let output = runner.server.signal(sender, signal)?;
         let () = process_output(game_id, output, to_client, event_trigger);
         Ok(())
     })();
@@ -136,7 +138,7 @@ pub(crate) fn add_player<Server: super::ServerSSS>(
         let seed = process_output(game_id, output, to_client, event_trigger);
         let player_id = seed.local_player_id();
 
-        pending_clients.enqueue(seed);
+        pending_clients.enqueue(super::PendingClient { seed });
 
         Ok(player_id)
     })();

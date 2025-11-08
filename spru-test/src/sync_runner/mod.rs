@@ -32,27 +32,27 @@ impl<Server: spru::Server> SyncServer<Server> {
     }
 }
 
-enum SyncClientState<Client: spru::Client, Lookup> {
+enum SyncClientState<Client: spru::Client, Storage> {
     Pending(spru::common::Seed<Client::Common>),
-    Initialized(SyncClientInitialized<Client, Lookup>),
+    Initialized(SyncClientInitialized<Client, Storage>),
     // TODO: SyncClient should be broken into SyncClientState and a new SyncClientData
     Invalid,
 }
 
-struct SyncClientInitialized<Client: spru::Client, Lookup> {
+struct SyncClientInitialized<Client: spru::Client, Storage> {
     client: Client,
     outgoing_queue: VecDeque<spru::common::signal::ToServer<Client::Common>>,
-    lookup: Lookup,
+    storage: Storage,
     game_outcome: Option<Client::GameOutcome>,
 }
 
-struct SyncClient<Client: spru::Client, Lookup> {
+struct SyncClient<Client: spru::Client, Storage> {
     incoming_queue: VecDeque<spru::common::signal::ToClient<Client::Common>>,
     user_incoming_queue: VecDeque<ClientCommand<Client>>,
-    state: SyncClientState<Client, Lookup>,
+    state: SyncClientState<Client, Storage>,
 }
 
-impl<Client: spru::Client, Lookup> SyncClient<Client, Lookup> {
+impl<Client: spru::Client, Storage> SyncClient<Client, Storage> {
     pub fn new(init: spru::common::Seed<Client::Common>) -> Self {
         Self {
             incoming_queue: VecDeque::new(),
@@ -66,20 +66,20 @@ impl<Client: spru::Client, Lookup> SyncClient<Client, Lookup> {
 /// One update is made from all possible pending updates at random, to exercise the order variance
 /// found in actual async and networked games. Order is still maintained where it is guaranteed
 /// (messages from the server to the same client, etc.).
-pub struct SyncRunner<Server: spru::Server, Client: spru::Client, Lookup> {
+pub struct SyncRunner<Server: spru::Server, Client: spru::Client, Storage> {
     server: SyncServer<Server>,
-    clients: HashMap<spru::player::Id, SyncClient<Client, Lookup>>,
+    clients: HashMap<spru::player::Id, SyncClient<Client, Storage>>,
     game_outcome: Option<Client::GameOutcome>,
     random: rand::rngs::StdRng,
 
     is_dirty: bool,
 }
 
-impl<Server, Client, Lookup> SyncRunner<Server, Client, Lookup>
+impl<Server, Client, Storage> SyncRunner<Server, Client, Storage>
 where
     Server: spru::Server,
     Client: spru::Client<Common = Server::Common, GameOutcome: fmt::Debug + PartialEq + Clone>,
-    Lookup: spru::item::Lookup<State = Client::State> + Default,
+    Storage: spru::item::Storage<State = Client::State> + Default,
 {
     pub fn new<GameInit>(
         game_init: GameInit,
@@ -251,7 +251,7 @@ where
             outbound,
             events,
             ret: (),
-        } = self.server.server.apply_signal(client_id, signal)?;
+        } = self.server.server.signal(client_id, signal)?;
 
         self.queue_server_outbound(outbound);
         messaging.record_events(events);
@@ -306,7 +306,7 @@ where
                     ret: pending_interaction_id,
                 } = initialized
                     .client
-                    .stage_interaction(&mut initialized.lookup, arg)?;
+                    .stage_interaction(&mut initialized.storage, arg)?;
 
                 // TODO unify these
                 let events = events.into_iter().map(|e| (client_id, e));
@@ -323,10 +323,10 @@ where
                 let spru::client::Output {
                     outbound,
                     events,
-                    ret: (),
+                    ret: _count,
                 } = initialized
                     .client
-                    .apply_interactions(&mut initialized.lookup, arg)?;
+                    .apply_interactions(&mut initialized.storage, arg)?;
 
                 let events = events.into_iter().map(|e| (client_id, e));
                 messaging.record_events(events);
@@ -337,10 +337,10 @@ where
                 let spru::client::Output {
                     outbound,
                     events,
-                    ret: (),
+                    ret: _count,
                 } = initialized
                     .client
-                    .revert_interactions(&mut initialized.lookup, arg)?;
+                    .revert_interactions(&mut initialized.storage, arg)?;
 
                 let events = events.into_iter().map(|e| (client_id, e));
                 messaging.record_events(events);
@@ -358,9 +358,9 @@ where
         &mut self,
         messaging: &mut Messaging<Server, Client>,
         client_id: spru::player::Id,
-        client: &mut SyncClient<Client, Lookup>,
-        mut initialized: SyncClientInitialized<Client, Lookup>,
-    ) -> anyhow::Result<SyncClientInitialized<Client, Lookup>> {
+        client: &mut SyncClient<Client, Storage>,
+        mut initialized: SyncClientInitialized<Client, Storage>,
+    ) -> anyhow::Result<SyncClientInitialized<Client, Storage>> {
         let directive = client.incoming_queue.pop_front().unwrap();
         let spru::client::Output {
             outbound,
@@ -368,7 +368,7 @@ where
             ret: (),
         } = initialized
             .client
-            .signal(&mut initialized.lookup, directive)?;
+            .signal(&mut initialized.storage, directive)?;
 
         Self::queue_client_outbound(&mut initialized, outbound);
         let events = events.into_iter().map(|e| (client_id, e));
@@ -381,14 +381,14 @@ where
         &mut self,
         _messaging: &mut Messaging<Server, Client>,
         init: spru::common::Seed<Server::Common>,
-    ) -> anyhow::Result<SyncClientInitialized<Client, Lookup>> {
-        let mut lookup = Lookup::default();
+    ) -> anyhow::Result<SyncClientInitialized<Client, Storage>> {
+        let mut storage = Storage::default();
 
-        let client = Client::init(&mut lookup, init)?;
+        let client = Client::init(&mut storage, init)?;
 
         let client = SyncClientInitialized {
             client,
-            lookup,
+            storage,
             outgoing_queue: VecDeque::new(),
             game_outcome: None,
         };
@@ -415,7 +415,7 @@ where
     }
 
     fn queue_client_outbound(
-        client: &mut SyncClientInitialized<Client, Lookup>,
+        client: &mut SyncClientInitialized<Client, Storage>,
         outbound: impl IntoIterator<Item = spru::common::signal::ToServer<Server::Common>>,
     ) {
         for signal in outbound {
@@ -424,13 +424,21 @@ where
     }
 
     #[allow(dead_code)]
-    fn get_client(&self, player_id: player::Id) -> Result<&SyncClient<Client, Lookup>, RunnerError> {
-        self.clients.get(&player_id)
+    fn get_client(
+        &self,
+        player_id: player::Id,
+    ) -> Result<&SyncClient<Client, Storage>, RunnerError> {
+        self.clients
+            .get(&player_id)
             .ok_or(RunnerError::ClientDoesNotExist(player_id))
     }
 
-    fn get_client_mut(&mut self, player_id: player::Id) -> Result<&mut SyncClient<Client, Lookup>, RunnerError> {
-        self.clients.get_mut(&player_id)
+    fn get_client_mut(
+        &mut self,
+        player_id: player::Id,
+    ) -> Result<&mut SyncClient<Client, Storage>, RunnerError> {
+        self.clients
+            .get_mut(&player_id)
             .ok_or(RunnerError::ClientDoesNotExist(player_id))
     }
 }

@@ -1,4 +1,4 @@
-use spru::{follow, item::IdT};
+use spru::{interactor::with, item::IdT};
 use spru_util::{fsm, pile};
 use tracing::instrument;
 
@@ -22,34 +22,31 @@ impl spru::Interaction for Discard {
     type Trigger = crate::reaction::Trigger;
 
     #[instrument(skip_all, ret, err)]
-    fn apply<Lookup>(
+    fn apply<Storage>(
         &self,
-        interactor: &mut spru::interaction::Interactor<Lookup, Self>,
+        interactor: &mut spru::interaction::Interactor<Storage, Self>,
     ) -> spru::interaction::Result<()>
     where
-        Lookup: spru::item::Lookup<State = Self::State>,
+        Storage: spru::item::Storage<State = Self::State>,
     {
         let player_id = interactor.context().player;
-        let root = interactor.get_root()?;
 
-        let players = follow!(
-            root => root.players,
-        )?;
+        with! { interactor =>
+            let root = interactor.get_root()?;
+            let players = ~[root.players]?;
+            let player_fsm = ~[players.expect_player(player_id).fsm]?;
+            let hand = ~[players.expect_player(player_id).hand]?;
+            let discard = ~[root.discard]?;
+        };
 
-        let player_root = players.expect_player(player_id);
-
-        interactor
-            .get(player_root.fsm)?
-            .update(fsm::transition(crate::player::machine::Input::Discard));
-
-        let hand = interactor.get(player_root.hand)?;
+        player_fsm.update(fsm::transition(crate::player::machine::Input::Discard));
 
         let hand_index = hand
             .iter()
             .position(|i| i == &self.discard)
             .ok_or(crate::anyhow!("Card is not in hand"))?;
         hand.update(pile::remove(hand_index));
-        follow!(root => root.discard)?.update(pile::push_top(self.discard.clone()));
+        discard.update(pile::push_top(self.discard.clone()));
 
         Ok(())
     }

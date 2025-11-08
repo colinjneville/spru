@@ -2,66 +2,20 @@ pub mod error;
 
 use std::{marker::PhantomData, mem, ops};
 
-use amass::amass_telety;
 use derive_where::derive_where;
 use spru::common::error::AnyResult;
 use tagset::tagset;
 use telety::telety;
 
-use crate::{Strictness, verbatim};
+use crate::{Strictness, cloned};
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct State<T> {
+pub struct Pile<T> {
     /// front/top -> back/bottom
     items: FakeDeVec<T>,
-    // spaghetto is broken...
-    // items: spaghetto::DeVec<T>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[derive_where(Default; )]
-#[derive(serde::Serialize, serde::Deserialize)]
-struct FakeDeVec<T>(Vec<T>);
-impl<T> FakeDeVec<T> {
-    fn pop_front(&mut self) -> Option<T> {
-        if self.is_empty() {
-            None
-        } else {
-            Some(self.0.remove(0))
-        }
-    }
-
-    fn pop_back(&mut self) -> Option<T> {
-        self.pop()
-    }
-
-    fn push_front(&mut self, element: T) {
-        self.insert(0, element);
-    }
-
-    fn push_back(&mut self, element: T) {
-        self.push(element);
-    }
-}
-impl<T> std::iter::FromIterator<T> for FakeDeVec<T> {
-    fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
-        Self(Vec::from_iter(iter))
-    }
-}
-impl<T> ops::Deref for FakeDeVec<T> {
-    type Target = Vec<T>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-impl<T> ops::DerefMut for FakeDeVec<T> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
-
-impl<T> State<T> {
+impl<T> Pile<T> {
     /// Iterate items from top to bottom
     pub fn iter(&self) -> impl DoubleEndedIterator<Item = &T> {
         self.into_iter()
@@ -76,7 +30,7 @@ impl<T> State<T> {
     }
 }
 
-impl<T> ops::Deref for State<T> {
+impl<T> ops::Deref for Pile<T> {
     type Target = [T];
 
     fn deref(&self) -> &Self::Target {
@@ -84,7 +38,7 @@ impl<T> ops::Deref for State<T> {
     }
 }
 
-impl<'i, T> IntoIterator for &'i State<T> {
+impl<'i, T> IntoIterator for &'i Pile<T> {
     type Item = &'i T;
     type IntoIter = std::slice::Iter<'i, T>;
 
@@ -93,8 +47,27 @@ impl<'i, T> IntoIterator for &'i State<T> {
     }
 }
 
+#[telety(crate::pile)]
+#[tagset(Create<T>)]
+#[tagset(Destroy<T>)]
+#[tagset(Update<T>)]
+#[tagset(PushTop<T>)]
+#[tagset(PushBottom<T>)]
+#[tagset(PopTop<T>)]
+#[tagset(PopBottom<T>)]
+#[tagset(PushTopMany<T>)]
+#[tagset(PushBottomMany<T>)]
+#[tagset(PopTopMany<T>)]
+#[tagset(PopBottomMany<T>)]
+#[tagset(Insert<T>)]
+#[tagset(Remove<T>)]
+#[tagset(Shuffle<T>)]
+#[tagset(Clear<T>)]
+#[tagset(reserved(..32))]
+pub struct Actions<T>;
+
 pub fn create<T>(items: impl IntoIterator<Item = T>) -> Create<T> {
-    verbatim::create(State {
+    cloned::create(Pile {
         items: items.into_iter().collect(),
     })
 }
@@ -104,11 +77,11 @@ pub fn default<T>() -> Create<T> {
 }
 
 pub fn destroy<T>() -> Destroy<T> {
-    verbatim::destroy()
+    cloned::destroy()
 }
 
 pub fn update<T>(items: impl IntoIterator<Item = T>) -> Update<T> {
-    verbatim::update(State {
+    cloned::update(Pile {
         items: items.into_iter().collect(),
     })
 }
@@ -209,38 +182,68 @@ pub fn clear<T>() -> Clear<T> {
     Clear { _p: PhantomData }
 }
 
-#[telety(crate::pile)]
-#[tagset(Create<T>)]
-#[tagset(Destroy<T>)]
-#[tagset(Update<T>)]
-#[tagset(PushTop<T>)]
-#[tagset(PushBottom<T>)]
-#[tagset(PopTop<T>)]
-#[tagset(PopBottom<T>)]
-#[tagset(PushTopMany<T>)]
-#[tagset(PushBottomMany<T>)]
-#[tagset(PopTopMany<T>)]
-#[tagset(PopBottomMany<T>)]
-#[tagset(Insert<T>)]
-#[tagset(Remove<T>)]
-#[tagset(Shuffle<T>)]
-#[tagset(Clear<T>)]
-#[tagset(reserved(..32))]
-pub struct Actions<T>;
+// An inefficient temporary stand-in for a single-slice deque
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive_where(Default; )]
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(transparent)]
+struct FakeDeVec<T>(Vec<T>);
 
-#[derive(Debug, Clone, crate::FromInfallible)]
-#[amass_telety(crate::pile)]
-pub enum Error {
-    Pop(error::Pop),
-    Insert(error::Insert),
-    Remove(error::Remove),
+impl<T> FakeDeVec<T> {
+    fn pop_front(&mut self) -> Option<T> {
+        if self.is_empty() {
+            None
+        } else {
+            Some(self.0.remove(0))
+        }
+    }
+
+    fn pop_back(&mut self) -> Option<T> {
+        self.pop()
+    }
+
+    fn push_front(&mut self, element: T) {
+        self.insert(0, element);
+    }
+
+    fn push_back(&mut self, element: T) {
+        self.push(element);
+    }
 }
 
-pub type Create<T> = verbatim::Create<State<T>>;
+impl<T> std::iter::FromIterator<T> for FakeDeVec<T> {
+    fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
+        Self(Vec::from_iter(iter))
+    }
+}
 
-pub type Destroy<T> = verbatim::Destroy<State<T>>;
+impl<T> ops::Deref for FakeDeVec<T> {
+    type Target = Vec<T>;
 
-pub type Update<T> = verbatim::Update<State<T>>;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<T> ops::DerefMut for FakeDeVec<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+#[derive(Debug, Clone, crate::FromInfallible, thiserror::Error)]
+#[error("Pile error: {0}")]
+pub enum Error {
+    Pop(#[from] error::Pop),
+    Insert(#[from] error::Insert),
+    Remove(#[from] error::Remove),
+}
+
+pub type Create<T> = cloned::Create<Pile<T>>;
+
+pub type Destroy<T> = cloned::Destroy<Pile<T>>;
+
+pub type Update<T> = cloned::Update<Pile<T>>;
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, spru::action::Update)]
 pub struct PushTop<T> {
@@ -249,9 +252,9 @@ pub struct PushTop<T> {
 
 impl<T> spru::action::Update for PushTop<T>
 where
-    T: Clone + crate::Serial,
+    T: Clone,
 {
-    type T = State<T>;
+    type T = Pile<T>;
     type Undo = PopTop<T>;
 
     #[allow(refining_impl_trait)]
@@ -269,9 +272,9 @@ pub struct PopTop<T> {
 
 impl<T> spru::action::Update for PopTop<T>
 where
-    T: Clone + crate::Serial,
+    T: Clone,
 {
-    type T = State<T>;
+    type T = Pile<T>;
     type Undo = PushTop<T>;
 
     #[allow(refining_impl_trait)]
@@ -293,9 +296,9 @@ pub struct PushBottom<T> {
 
 impl<T> spru::action::Update for PushBottom<T>
 where
-    T: Clone + crate::Serial,
+    T: Clone,
 {
-    type T = State<T>;
+    type T = Pile<T>;
     type Undo = PopBottom<T>;
 
     #[allow(refining_impl_trait)]
@@ -314,9 +317,9 @@ pub struct PopBottom<T> {
 
 impl<T> spru::action::Update for PopBottom<T>
 where
-    T: Clone + crate::Serial,
+    T: Clone,
 {
-    type T = State<T>;
+    type T = Pile<T>;
     type Undo = PushBottom<T>;
 
     #[allow(refining_impl_trait)]
@@ -341,9 +344,9 @@ pub struct PopTopMany<T> {
 
 impl<T> spru::action::Update for PopTopMany<T>
 where
-    T: Clone + crate::Serial,
+    T: Clone,
 {
-    type T = State<T>;
+    type T = Pile<T>;
     type Undo = PushTopMany<T>;
 
     fn update(&self, value: &mut Self::T) -> AnyResult<impl Into<Option<Self::Undo>>> {
@@ -379,9 +382,9 @@ pub struct PopBottomMany<T> {
 
 impl<T> spru::action::Update for PopBottomMany<T>
 where
-    T: Clone + crate::Serial,
+    T: Clone,
 {
-    type T = State<T>;
+    type T = Pile<T>;
     type Undo = PushBottomMany<T>;
 
     fn update(&self, value: &mut Self::T) -> AnyResult<impl Into<Option<Self::Undo>>> {
@@ -417,9 +420,9 @@ pub struct PushTopMany<T> {
 
 impl<T> spru::action::Update for PushTopMany<T>
 where
-    T: Clone + crate::Serial,
+    T: Clone,
 {
-    type T = State<T>;
+    type T = Pile<T>;
     type Undo = PopTopMany<T>;
 
     fn update(&self, value: &mut Self::T) -> AnyResult<impl Into<Option<Self::Undo>>> {
@@ -453,9 +456,9 @@ pub struct PushBottomMany<T> {
 
 impl<T> spru::action::Update for PushBottomMany<T>
 where
-    T: Clone + crate::Serial,
+    T: Clone,
 {
-    type T = State<T>;
+    type T = Pile<T>;
     type Undo = PopBottomMany<T>;
 
     fn update(&self, value: &mut Self::T) -> AnyResult<impl Into<Option<Self::Undo>>> {
@@ -491,9 +494,9 @@ pub struct Shuffle<T> {
 
 impl<T> spru::action::Update for Shuffle<T>
 where
-    T: Clone + crate::Serial,
+    T: Clone,
 {
-    type T = State<T>;
+    type T = Pile<T>;
     type Undo = Self;
 
     #[allow(refining_impl_trait)]
@@ -557,7 +560,7 @@ pub struct Insert<T> {
 }
 
 impl<T: Clone> spru::action::Update for Insert<T> {
-    type T = State<T>;
+    type T = Pile<T>;
     type Undo = Remove<T>;
 
     #[allow(refining_impl_trait)]
@@ -583,7 +586,7 @@ pub struct Remove<T> {
 }
 
 impl<T> spru::action::Update for Remove<T> {
-    type T = State<T>;
+    type T = Pile<T>;
     type Undo = Insert<T>;
 
     #[allow(refining_impl_trait)]
@@ -605,7 +608,7 @@ pub struct Clear<T> {
 }
 
 impl<T> spru::action::Update for Clear<T> {
-    type T = State<T>;
+    type T = Pile<T>;
     type Undo = Update<T>;
 
     #[allow(refining_impl_trait)]

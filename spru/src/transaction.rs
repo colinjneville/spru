@@ -72,27 +72,30 @@ impl<Action> Transaction<Action> {
         Self { records }
     }
 
-    pub(crate) fn apply<Lookup>(&self, lookup: &mut Lookup) -> action::Result<Transaction<Action>>
+    pub(crate) fn apply<Storage>(
+        &self,
+        storage: &mut Storage,
+    ) -> action::Result<Transaction<Action>>
     where
-        Lookup: item::Lookup,
-        Action: crate::Action<State = Lookup::State>,
+        Storage: item::Storage,
+        Action: crate::Action<State = Storage::State>,
     {
-        let undo_records = self.records.apply(lookup)?;
+        let undo_records = self.records.apply(storage)?;
 
         Ok(Transaction {
             records: undo_records,
         })
     }
 
-    pub(crate) fn apply_or_revert<Lookup>(
+    pub(crate) fn apply_or_revert<Storage>(
         &self,
-        lookup: &mut Lookup,
+        storage: &mut Storage,
     ) -> Result<Transaction<Action>, RecoverableError<action::Error>>
     where
-        Lookup: item::Lookup,
-        Action: crate::Action<State = Lookup::State>,
+        Storage: item::Storage,
+        Action: crate::Action<State = Storage::State>,
     {
-        let undo_records = self.records.apply_or_revert(lookup)?;
+        let undo_records = self.records.apply_or_revert(storage)?;
 
         Ok(Transaction {
             records: undo_records,

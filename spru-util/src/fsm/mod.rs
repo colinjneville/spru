@@ -2,32 +2,40 @@ pub mod error;
 
 use std::mem;
 
-use amass::amass_telety;
 use derive_where::derive_where;
-pub use rust_fsm::StateMachineImpl;
+pub use rust_fsm;
 use spru::common::error::AnyResult;
 use tagset::tagset;
 use telety::telety;
 
-use crate::{Strictness, verbatim};
+use crate::{Strictness, cloned};
 
-pub trait StateMachineTy: Clone + StateMachineImpl + 'static {}
+/// A type which can be used in [Fsm].
+pub trait StateMachineTy: Clone + rust_fsm::StateMachineImpl + 'static {}
 
-impl<T: Clone + StateMachineImpl + 'static> StateMachineTy for T {}
+impl<T: Clone + rust_fsm::StateMachineImpl + 'static> StateMachineTy for T {}
 
+/// A finite-state machine, useful for tracking things like turn phases.
+/// Powered by [rust_fsm]'s state machines.
 #[derive_where(Debug, Clone, Serialize, Deserialize; FSM::State)]
-pub struct State<FSM: StateMachineTy>(FSM::State);
+pub struct Fsm<FSM: StateMachineTy>(FSM::State);
 
-impl<FSM: StateMachineTy> State<FSM> {}
+impl<FSM: StateMachineTy> Fsm<FSM> {
+    pub fn current(&self) -> &FSM::State {
+        &self.0
+    }
+}
 
 pub fn default<FSM: StateMachineTy>() -> Create<FSM> {
     create(FSM::INITIAL_STATE)
 }
 
 pub fn create<FSM: StateMachineTy>(initial_state: FSM::State) -> Create<FSM> {
-    verbatim::create(State(initial_state))
+    cloned::create(Fsm(initial_state))
 }
 
+/// Transition using the provided input. Fails if the input is not
+/// permitted for the current state.
 pub fn transition<FSM: StateMachineTy>(input: FSM::Input) -> Transition<FSM> {
     Transition {
         input,
@@ -35,6 +43,7 @@ pub fn transition<FSM: StateMachineTy>(input: FSM::Input) -> Transition<FSM> {
     }
 }
 
+/// Attempt a transition, but ignore any error
 pub fn try_transition<FSM: StateMachineTy>(input: FSM::Input) -> Transition<FSM> {
     Transition {
         input,
@@ -42,12 +51,13 @@ pub fn try_transition<FSM: StateMachineTy>(input: FSM::Input) -> Transition<FSM>
     }
 }
 
+/// Switch directly to the given state
 pub fn set<FSM: StateMachineTy>(new_state: FSM::State) -> Set<FSM> {
     Set { new_state }
 }
 
 pub fn destroy<FSM: StateMachineTy>() -> Destroy<FSM> {
-    verbatim::destroy()
+    cloned::destroy()
 }
 
 #[telety(crate::fsm)]
@@ -58,15 +68,15 @@ pub fn destroy<FSM: StateMachineTy>() -> Destroy<FSM> {
 #[tagset(reserved(..8))]
 pub struct Actions<FSM: StateMachineTy>;
 
-#[derive(Debug, Clone, crate::FromInfallible)]
-#[amass_telety(crate::fsm)]
+#[derive(Debug, Clone, crate::FromInfallible, thiserror::Error)]
+#[error("FSM error: {0}")]
 pub enum Error {
-    Transition(error::Transition),
+    Transition(#[from] error::Transition),
 }
 
-pub type Create<FSM> = verbatim::Create<State<FSM>>;
+pub type Create<FSM> = cloned::Create<Fsm<FSM>>;
 
-pub type Destroy<FSM> = verbatim::Destroy<State<FSM>>;
+pub type Destroy<FSM> = cloned::Destroy<Fsm<FSM>>;
 
 #[derive_where(Debug, Clone, Serialize, Deserialize; FSM::Input)]
 #[derive(spru::action::Update)]
@@ -78,9 +88,9 @@ pub struct Transition<FSM: StateMachineTy> {
 
 impl<FSM> spru::action::Update for Transition<FSM>
 where
-    FSM: StateMachineTy<State: crate::Serial + Clone, Input: crate::Serial + Clone>,
+    FSM: StateMachineTy<State: Clone, Input: Clone>,
 {
-    type T = State<FSM>;
+    type T = Fsm<FSM>;
     type Undo = Set<FSM>;
 
     #[allow(refining_impl_trait)]
@@ -114,7 +124,7 @@ impl<FSM> spru::action::Update for Set<FSM>
 where
     FSM: StateMachineTy<State: Clone>,
 {
-    type T = State<FSM>;
+    type T = Fsm<FSM>;
     type Undo = Self;
 
     #[allow(refining_impl_trait)]

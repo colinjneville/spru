@@ -21,6 +21,13 @@ impl<Server: super::ServerSSS> Runner<Server> {
     {
         self.server.save()
     }
+
+    pub fn storage(
+        &self,
+    ) -> &spru::item::storage::Canonical<<Server::State as tagset::TagSet>::Repr, Server::State>
+    {
+        self.server.storage()
+    }
 }
 
 #[derive_where(Debug; spru::common::signal::ToServer<Server::Common>)]
@@ -148,10 +155,10 @@ fn get_queue_mut<T>(
 }
 
 #[derive_where(Default; )]
-#[derive_where(Debug; spru::common::Seed<Server::Common>)]
+#[derive_where(Debug; super::PendingClient<Server::Common>)]
 #[derive(prelude::Component)]
 pub struct PendingClients<Server: super::ServerSSS> {
-    queue: VecDeque<spru::common::Seed<Server::Common>>,
+    queue: VecDeque<super::PendingClient<Server::Common>>,
 }
 
 impl<Server: super::ServerSSS> PendingClients<Server> {
@@ -163,11 +170,11 @@ impl<Server: super::ServerSSS> PendingClients<Server> {
         self.queue.is_empty()
     }
 
-    pub(crate) fn enqueue(&mut self, ret: spru::common::Seed<Server::Common>) {
-        self.queue.push_back(ret);
+    pub(crate) fn enqueue(&mut self, pending_client: super::PendingClient<Server::Common>) {
+        self.queue.push_back(pending_client);
     }
 
-    pub fn dequeue(&mut self) -> Option<spru::common::Seed<Server::Common>> {
+    pub fn dequeue(&mut self) -> Option<super::PendingClient<Server::Common>> {
         self.queue.pop_front()
     }
 }
@@ -201,7 +208,7 @@ impl<Server: super::ServerSSS> FromUser<Server> {
     }
 }
 
-#[derive_where(Debug; 
+#[derive_where(Debug;
     <Server::PlayerInit as spru::player::Init>::In,
     <Server::Reaction as spru::Reaction>::Trigger,
 )]

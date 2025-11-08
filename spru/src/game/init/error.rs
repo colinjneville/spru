@@ -4,7 +4,7 @@ use crate::{
     action,
     common::error::{AnyError, PsuedoError},
     game,
-    item::lookup,
+    item::storage,
 };
 
 /// An error encountered during a [game::Init].
@@ -48,8 +48,8 @@ impl ops::Deref for Error {
     }
 }
 
-impl From<lookup::Error> for Error {
-    fn from(value: lookup::Error) -> Self {
+impl From<storage::Error> for Error {
+    fn from(value: storage::Error) -> Self {
         Self::new(Kind::Action(action::Error::from(value)))
     }
 }

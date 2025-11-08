@@ -1,3 +1,7 @@
+//! Simple item actions via cloning.  
+//! [cloned::Create](Create) and [cloned::Destroy](Destroy) are sufficient to
+//! create and destroy most items.
+
 use std::{marker::PhantomData, mem};
 
 use derive_where::derive_where;
@@ -5,7 +9,7 @@ use spru::common::error::AnyResult;
 use tagset::tagset;
 use telety::telety;
 
-#[telety(crate::verbatim)]
+#[telety(crate::cloned)]
 #[tagset(Create<T>)]
 #[tagset(Update<T>)]
 #[tagset(Destroy<T>)]

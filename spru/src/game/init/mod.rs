@@ -8,28 +8,36 @@ use crate::{
     item::{self},
 };
 
+/// Initializes a game.  
+/// This is used once during [Server::init](crate::Server::init) to create the [Root](Init::Root)
+/// and any other initial state.
 pub trait Init {
+    /// The game's [Common::Root](crate::Common::Root).
+    /// Created by [Init::initialize].
     type Root;
+    /// The game's [trait@crate::State]
     type State: tagset::TagSet;
+    /// The game's [trait@crate::Action]
     type Action;
 
-    fn initialize(
-        self,
-        interactor: &mut Interactor<Self>,
-    ) -> self::Result<Self::Root>;
+    /// Initialize the game and return the [Root](Init::Root).
+    fn initialize(self, interactor: &mut Interactor<Self>) -> self::Result<Self::Root>;
 }
 
-pub type Interactor<'l, Init> =
-    crate::Interactor<'l,
-        item::lookup::Canonical<
-            <<Init as self::Init>::State as tagset::TagSet>::Repr,
-            <Init as self::Init>::State
-        >,
-        <Init as self::Init>::Action,
-        Context,
-        Output
-    >;
+/// An alias for the [Interactor](crate::Interactor) used in [game::Init](Init).
+pub type Interactor<'l, Init> = crate::Interactor<
+    'l,
+    item::storage::Canonical<
+        <<Init as self::Init>::State as tagset::TagSet>::Repr,
+        <Init as self::Init>::State,
+    >,
+    <Init as self::Init>::Action,
+    Context,
+    Output,
+>;
 
+/// [Interactor] context object. Contains no context, any required data should be contained
+/// within the [Init] object.
 #[derive(Debug)]
 #[non_exhaustive]
 pub struct Context {}
@@ -56,4 +64,5 @@ impl<GameOutcome> interactor::TakeGameOutcome<GameOutcome> for Output {
     }
 }
 
+/// A result with an [Error] `Err`
 pub type Result<T> = std::result::Result<T, self::Error>;

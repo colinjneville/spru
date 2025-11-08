@@ -10,6 +10,7 @@ use spru::{
     item::{self, IdT},
 };
 
+/// A standalone item storage.
 #[derive_where(Debug, Default; )]
 pub struct Standalone<State> {
     map: HashMap<any::TypeId, Box<dyn any::Any>>,
@@ -22,12 +23,12 @@ impl<State> Standalone<State> {
     }
 }
 
-impl<State: spru::State> spru::item::Lookup for Standalone<State> {
+impl<State: spru::State> spru::item::Storage for Standalone<State> {
     type State = State;
 
-    fn lookup<T>(&self, id: IdT<T>) -> spru::item::lookup::Result<&Item<T>>
+    fn get<T>(&self, id: IdT<T>) -> spru::item::storage::Result<&Item<T>>
     where
-        T: item::lookup::Lookupable<Self::State>,
+        T: item::storage::Storable<Self::State>,
     {
         let type_id = any::TypeId::of::<T>();
         let item = if let Some(inner_map) = self.map.get(&type_id) {
@@ -44,9 +45,9 @@ impl<State: spru::State> spru::item::Lookup for Standalone<State> {
     }
 
     #[allow(refining_impl_trait)]
-    fn lookup_mut<T>(&mut self, id: IdT<T>) -> spru::item::lookup::Result<&mut spru::Item<T>>
+    fn get_mut<T>(&mut self, id: IdT<T>) -> spru::item::storage::Result<&mut spru::Item<T>>
     where
-        T: item::lookup::Lookupable<Self::State>,
+        T: item::storage::Storable<Self::State>,
     {
         let type_id = any::TypeId::of::<T>();
         let item = if let Some(inner_map) = self.map.get_mut(&type_id) {
@@ -62,9 +63,9 @@ impl<State: spru::State> spru::item::Lookup for Standalone<State> {
             .map_err(Into::into)
     }
 
-    fn create<T>(&mut self, value: spru::Item<T>) -> spru::item::lookup::Result<()>
+    fn create<T>(&mut self, value: spru::Item<T>) -> spru::item::storage::Result<()>
     where
-        T: item::lookup::Lookupable<Self::State>,
+        T: item::storage::Storable<Self::State>,
     {
         let id = value.id();
         let type_id = any::TypeId::of::<T>();
@@ -84,9 +85,9 @@ impl<State: spru::State> spru::item::Lookup for Standalone<State> {
         }
     }
 
-    fn destroy<T>(&mut self, id: IdT<T>) -> spru::item::lookup::Result<spru::Item<T>>
+    fn destroy<T>(&mut self, id: IdT<T>) -> spru::item::storage::Result<spru::Item<T>>
     where
-        T: item::lookup::Lookupable<Self::State>,
+        T: item::storage::Storable<Self::State>,
     {
         let type_id = any::TypeId::of::<T>();
         let item = if let Some(inner_map) = self.map.get_mut(&type_id) {
@@ -123,35 +124,35 @@ mod test {
 
     #[test]
     fn standalone() {
-        use spru::item::lookup::Lookup as _;
-        let mut lookup = Standalone::<State>::new();
+        use spru::item::storage::Storage as _;
+        let mut storage = Standalone::<State>::new();
 
         let id0 = spru::item::IdT::test_new(0);
         let id1 = spru::item::IdT::test_new(1);
         let id2 = spru::item::IdT::test_new(2);
 
-        lookup
+        storage
             .create(spru::Item::test_new(id0.clone(), "zero".to_string()))
             .unwrap();
 
-        lookup
+        storage
             .create(spru::Item::test_new(id1.clone(), "one".to_string()))
             .unwrap();
 
-        lookup
+        storage
             .create(spru::Item::test_new(id2.clone(), "two".to_string()))
             .unwrap();
 
-        let s0 = lookup.lookup_mut(id0).unwrap().test_get_mut();
+        let s0 = storage.get_mut(id0).unwrap().test_get_mut();
 
         *s0 = "ZERO".to_string();
 
-        let s0 = lookup.lookup(id0).unwrap().get();
+        let s0 = storage.get(id0).unwrap().get();
         assert_eq!(s0, &"ZERO");
 
-        let s1 = lookup.lookup(id1).unwrap().get();
+        let s1 = storage.get(id1).unwrap().get();
         assert_eq!(s1, &"one");
 
-        lookup.destroy(id2).unwrap();
+        storage.destroy(id2).unwrap();
     }
 }

@@ -5,6 +5,7 @@ use crate::{
     item::{self, IdT},
 };
 
+/// An error returned by the [item::Storage]
 #[derive(Debug)]
 pub struct Error {
     inner: AnyError,
@@ -20,7 +21,7 @@ impl ops::Deref for Error {
 }
 
 impl Error {
-    pub fn new<E: std::error::Error + Send + Sync + 'static>(error: E) -> Self {
+    fn new<E: std::error::Error + Send + Sync + 'static>(error: E) -> Self {
         Self {
             inner: AnyError::new(error),
             context: None,
@@ -63,7 +64,7 @@ impl PsuedoError for Error {
 }
 
 #[derive(Debug)]
-pub struct Context {
+pub(crate) struct Context {
     id: item::Id,
     type_name: &'static str,
 }

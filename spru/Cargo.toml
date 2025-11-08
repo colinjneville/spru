@@ -14,7 +14,6 @@ test-util = []
 spru-macro = { path = "../spru-macro" }
 
 telety.workspace = true
-amass.workspace = true
 tagset.workspace = true
 
 halfbrown.workspace = true
@@ -38,5 +37,4 @@ uuid.workspace = true
 # serialization
 serde.workspace = true
 rmp-serde.workspace = true
-erased-serde.workspace = true
 serde_bytes.workspace = true

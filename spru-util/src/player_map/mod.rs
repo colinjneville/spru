@@ -8,14 +8,15 @@ use spru::{common::error::AnyResult, player};
 use tagset::tagset;
 use telety::telety;
 
-use crate::verbatim;
+use crate::cloned;
 
+/// Stores some state per player
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct State<PlayerState> {
+pub struct PlayerMap<PlayerState> {
     map: Vec<Option<(player::Id, PlayerState)>>,
 }
 
-impl<PlayerState> State<PlayerState> {
+impl<PlayerState> PlayerMap<PlayerState> {
     pub fn count(&self) -> usize {
         self.map.iter().flatten().count()
     }
@@ -37,17 +38,31 @@ impl<PlayerState> State<PlayerState> {
     }
 }
 
-pub type Create<PlayerState> = verbatim::Create<State<PlayerState>>;
-
 pub fn create<PlayerState>() -> Create<PlayerState> {
-    verbatim::create(State { map: vec![] })
+    cloned::create(PlayerMap { map: vec![] })
 }
 
-pub type Destroy<PlayerState> = verbatim::Destroy<State<PlayerState>>;
+pub fn add_player<PlayerState>(
+    id: player::Id,
+    player_state: PlayerState,
+) -> AddPlayer<PlayerState> {
+    AddPlayer { id, player_state }
+}
+
+pub fn remove_player<PlayerState>(id: player::Id) -> RemovePlayer<PlayerState> {
+    RemovePlayer {
+        id,
+        _p: PhantomData,
+    }
+}
 
 pub fn destroy<PlayerState>() -> Destroy<PlayerState> {
-    verbatim::destroy()
+    cloned::destroy()
 }
+
+pub type Create<PlayerState> = cloned::Create<PlayerMap<PlayerState>>;
+
+pub type Destroy<PlayerState> = cloned::Destroy<PlayerMap<PlayerState>>;
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, spru::action::Update)]
 pub struct AddPlayer<PlayerState> {
@@ -56,7 +71,7 @@ pub struct AddPlayer<PlayerState> {
 }
 
 impl<PlayerState: Clone> spru::action::Update for AddPlayer<PlayerState> {
-    type T = State<PlayerState>;
+    type T = PlayerMap<PlayerState>;
     type Undo = RemovePlayer<PlayerState>;
 
     #[allow(refining_impl_trait)]
@@ -76,13 +91,6 @@ impl<PlayerState: Clone> spru::action::Update for AddPlayer<PlayerState> {
     }
 }
 
-pub fn add_player<PlayerState>(
-    id: player::Id,
-    player_state: PlayerState,
-) -> AddPlayer<PlayerState> {
-    AddPlayer { id, player_state }
-}
-
 #[derive_where(Debug, Clone, Serialize, Deserialize)]
 #[derive(spru::action::Update)]
 pub struct RemovePlayer<PlayerState> {
@@ -91,7 +99,7 @@ pub struct RemovePlayer<PlayerState> {
 }
 
 impl<PlayerState> spru::action::Update for RemovePlayer<PlayerState> {
-    type T = State<PlayerState>;
+    type T = PlayerMap<PlayerState>;
     type Undo = AddPlayer<PlayerState>;
 
     #[allow(refining_impl_trait)]
@@ -104,13 +112,6 @@ impl<PlayerState> spru::action::Update for RemovePlayer<PlayerState> {
         }
 
         Err(Error::PlayerDoesNotExist(self.id).into())
-    }
-}
-
-pub fn remove_player<PlayerState>(id: player::Id) -> RemovePlayer<PlayerState> {
-    RemovePlayer {
-        id,
-        _p: PhantomData,
     }
 }
 

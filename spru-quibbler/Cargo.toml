@@ -10,7 +10,6 @@ spru = { path = "../spru/" }
 spru-util = { path = "../spru-util" }
 spru-bevy = { path = "../spru-bevy" }
 
-amass.workspace = true
 tagset.workspace = true
 telety.workspace = true
 
@@ -27,13 +26,12 @@ ron.workspace = true
 
 tracing.workspace = true
 
-# Ideally this would be a bevy-console, but its not updated for bevy 0.17 yet
-bevy_simple_text_input = "0.12.0"
 wordnik_list = "0.2.1"
 bevy-inspector-egui = "=0.34.0"
+bevy_egui = "0.38.0"
 
-#bevy_ratatui = "0.9.3"
-
+[target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dependencies]
+# no clipboard on wasm
 arboard = "3.6.1"
 
 [dependencies.bevy]

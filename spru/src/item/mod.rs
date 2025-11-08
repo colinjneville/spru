@@ -1,7 +1,7 @@
 pub mod id;
 pub use id::{Id, IdT};
-pub mod lookup;
-pub use lookup::Lookup;
+pub mod storage;
+pub use storage::Storage;
 pub mod version;
 pub use version::Version;
 
@@ -9,6 +9,7 @@ use std::ops;
 
 use crate::common;
 
+/// Holds one of the types from [trait@crate::State] along with metadata.
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct Item<T> {
     id: IdT<T>,
@@ -21,21 +22,16 @@ impl<T> Item<T> {
         Self { id, version, state }
     }
 
-    // Only to be used by macros for deserialization
-    #[doc(hidden)]
-    pub fn new_untyped_id(id: Id, version: Version, state: T) -> Self {
-        let id = IdT::new(id);
-        Self::new(id, version, state)
-    }
-
+    /// The [IdT] that uniquely identifies this Item
     pub fn id(&self) -> IdT<T> {
         self.id
     }
 
-    pub fn version(&self) -> Version {
+    pub(crate) fn version(&self) -> Version {
         self.version
     }
 
+    /// The `T` value contained within this Item
     pub fn get(&self) -> &T {
         &self.state
     }
@@ -111,41 +107,101 @@ impl Erased {
     }
 
     #[doc(hidden)]
-    pub fn cast<Lookup, T>(&self, lookup: &mut Lookup) -> Result<(), common::error::Load>
+    pub fn cast<Storage, T>(&self, storage: &mut Storage) -> Result<(), common::error::Load>
     where
-        Lookup: self::Lookup,
-        T: lookup::Lookupable<Lookup::State> + serde::de::DeserializeOwned,
+        Storage: self::Storage,
+        T: storage::Storable<Storage::State> + serde::de::DeserializeOwned,
     {
         let id = IdT::new(self.id);
         let value = rmp_serde::from_slice::<T>(&self.state)?;
         let item = Item::new(id, self.version, value);
-        lookup.create(item)?;
+        storage.create(item)?;
 
         Ok(())
     }
 }
 
-#[derive(Debug)]
-pub struct Mut<M>(M);
+/// The [Item] does not have the expected status
+#[derive(Debug, thiserror::Error)]
+#[error("{item} {kind}")]
+pub struct Error {
+    /// The [Item]'s [Id]
+    pub item: Id,
+    /// The [error::Kind] of [Item] error
+    #[source]
+    pub kind: error::Kind,
+}
 
-#[cfg(feature = "test-util")]
-#[doc(hidden)]
-impl<M> Mut<M> {
-    pub fn test_new(m: M) -> Self {
-        Self(m)
+impl Error {
+    // This is currently covered by Storage errors, which is not ideal
+    #[allow(dead_code)]
+    pub(crate) fn does_not_exist(item: Id, expected: Version) -> Self {
+        Self {
+            item,
+            kind: error::Kind::DoesNotExist { expected },
+        }
+    }
+
+    pub(crate) fn already_exists(item: Id, actual: Version) -> Self {
+        Self {
+            item,
+            kind: error::Kind::AlreadyExists { actual },
+        }
+    }
+
+    pub(crate) fn wrong_version(item: Id, expected: Version, actual: Version) -> Self {
+        Self {
+            item,
+            kind: error::Kind::WrongVersion { expected, actual },
+        }
+    }
+
+    pub(crate) fn expected_change(item: Id) -> Self {
+        Self {
+            item,
+            kind: error::Kind::ExpectedChange,
+        }
+    }
+
+    pub(crate) fn unexpected_change(item: Id) -> Self {
+        Self {
+            item,
+            kind: error::Kind::UnexpectedChange,
+        }
     }
 }
 
-impl<T, M: ops::DerefMut<Target = Item<T>>> ops::Deref for Mut<M> {
-    type Target = T;
+pub mod error {
+    use super::*;
 
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl<T, M: ops::DerefMut<Target = Item<T>>> ops::DerefMut for Mut<M> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        Item::get_mut(&mut *self.0)
+    /// The kind of [Error]
+    #[derive(Debug, thiserror::Error)]
+    pub enum Kind {
+        /// The item does not exist
+        #[error("does not exist (expected {expected})")]
+        DoesNotExist {
+            /// Expected version
+            expected: Version,
+        },
+        /// The item already exist
+        #[error("already exists ({actual})")]
+        AlreadyExists {
+            /// Actual version
+            actual: Version,
+        },
+        /// The item is the wrong version
+        #[error("is {actual} (expected {expected})")]
+        WrongVersion {
+            /// Expected version
+            expected: Version,
+            /// Actual version
+            actual: Version,
+        },
+        /// The item was expected to change, but did not
+        #[error("was not changed as expected")]
+        ExpectedChange,
+        /// The item was not expected to change, but did
+        #[error("was unexpectedly changed")]
+        UnexpectedChange,
     }
 }

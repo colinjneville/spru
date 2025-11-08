@@ -1,0 +1,7 @@
+This is a demo of the spru framework managing a local multiplayer game.
+spru manages an authoritative server state, and a client state per player. Clients can perform game actions on their local view, then send them to the server to be confirmed and synchronized with the other clients.
+In the top bar, you can issue commands to the server. Before the game begins, you can add additional players to the game. Then click start game.
+The bottom bar shows the players in the game. Click a player name to show their controls and local view of the game.
+Once you have selected a player from the bottom panel, you can take that player's turn (draw, then discard, then play or pass). Each of these interactions stages that interaction in the player's local game view (you can switch to other player views to see they have not been updated). Use the apply button to send this interaction to the server (and from there to the other players), or the revert button to discard all local changes. 
+NOTE: You MUST apply after clicking to draw from the deck, as players cannot peek at the top card of the deck until they have confirmed they are drawing it.
+(This demo is intentionally cumbersome to demonstrate the process. In an actual game you can combine staging and applying when applicable, have the UI validate legal interactions, etc.)

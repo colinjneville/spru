@@ -5,7 +5,7 @@ use bevy::prelude;
 
 pub trait CommonSSS:
     spru::Common<
-        State: Send + Sync + 'static,
+        State: tagset::TagSet + Send + Sync + 'static,
         Action: spru::Action<State = Self::State> + Send + Sync + 'static,
         Root: Send + Sync + 'static,
         GameOutcome: Send + Sync + 'static,
@@ -18,7 +18,7 @@ pub trait CommonSSS:
 
 impl<
     Common: spru::Common<
-            State: Send + Sync + 'static,
+            State: tagset::TagSet + Send + Sync + 'static,
             Action: spru::Action<State = Self::State> + Send + Sync + 'static,
             Root: Send + Sync + 'static,
             GameOutcome: Send + Sync + 'static,

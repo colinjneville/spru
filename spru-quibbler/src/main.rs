@@ -2,64 +2,75 @@
 #![allow(clippy::too_many_arguments)]
 
 mod actions;
-use std::fmt;
+use std::{collections::HashMap, fmt};
 
 pub use actions::Actions;
 pub mod data;
 pub mod game;
 pub mod interaction;
 pub use interaction::Interaction;
-pub mod round;
 mod play;
+pub mod round;
 pub use play::Play;
 mod player;
 mod reaction;
 pub use reaction::Reaction;
 mod state;
+use spru::{common::error::PsuedoError as _, item::Storage as _};
 use spru_bevy::{client::ClientSSS as _, server::ServerSSS as _};
 use spru_util::player_map;
 pub use state::State;
 
 use bevy::{ecs::system::IntoSystem, prelude};
+use spru_bevy::client::component::Item;
 
-type Client = spru::client::ClientImpl<Interaction, game::Outcome>;
-type Server = spru::server::ServerImpl<Interaction, Reaction, player::Init>;
+type Client = spru::client::Impl<Interaction, game::Outcome>;
+type Server = spru::server::Impl<Interaction, Reaction, player::Init>;
+type Common = <Client as spru::Client>::Common;
 
 fn main() {
     use prelude::PluginGroup as _;
 
     let _frame_duration = std::time::Duration::from_secs_f32(1. / 30.);
 
+    #[rustfmt::skip]
     bevy::app::App::new()
         .add_plugins((
-            // bevy::MinimalPlugins.set(
-            //     bevy::app::ScheduleRunnerPlugin::run_loop(frame_duration)
-            // ),
             bevy::DefaultPlugins.set(bevy::log::LogPlugin {
                 filter: "spru=trace,spru_bevy=info,spru_quibbler=trace".to_string(),
                 ..Default::default()
             }),
-            // bevy::log::LogPlugin {
-            //     filter: "spru=trace,spru_bevy=trace,spru_quibbler=trace".to_string(),
-            //     .. Default::default()
-            // },
             spru_bevy::client::Plugin::<Client>::default(),
             spru_bevy::server::Plugin::<Server>::default(),
             spru_bevy::local::Plugin::<Server, Client>::default(),
-            // Not yet updated to 0.17
-            // https://github.com/cxreiff/bevy_ratatui
-            // bevy_ratatui::RatatuiPlugins::default(),
-            bevy_simple_text_input::TextInputPlugin,
-            bevy_inspector_egui::bevy_egui::EguiPlugin::default(),
-            bevy_inspector_egui::quick::WorldInspectorPlugin::new(),
+            bevy_egui::EguiPlugin::default(),
+            bevy_inspector_egui::quick::WorldInspectorPlugin::new()
+                .run_if(bevy::ecs::schedule::common_conditions::resource_equals(WorldInspectorToggle(true))),
         ))
         .init_resource::<GameId>()
         .init_resource::<ClientIds>()
         .init_resource::<ActiveClientId>()
-        .add_systems(prelude::Startup, (startup,))
-        .add_systems(
-            prelude::FixedUpdate,
-            (process_input.pipe(error_to_console), print_piles),
+        .init_resource::<WorldInspectorToggle>()
+        .init_resource::<Log>()
+        .add_systems(prelude::Startup, 
+            (
+                startup,
+            )
+        )
+        .add_systems(prelude::FixedUpdate,
+            (
+                print_piles,
+            ),
+        )
+        .add_systems(prelude::Update,
+            (
+                misc_input,
+            )
+        )
+        .add_systems(bevy_egui::EguiPrimaryContextPass,
+            (
+                panel_ui.pipe(error_to_console),
+            )
         )
         // Server Init
         .add_observer(
@@ -76,9 +87,9 @@ fn main() {
                 let (_, mut from_user) =
                     Server::filter_mut(&mut q_server, gid).ok_or("Server not found")?;
 
-                for i in 0..2 {
+                for username in ["Alice", "Bob"] {
                     from_user.add_player(player::Input {
-                        username: format!("Player {i}"),
+                        username: username.to_string(),
                     });
                 }
 
@@ -91,11 +102,128 @@ fn main() {
              mut client_ids: prelude::ResMut<ClientIds>|
              -> prelude::Result {
                 let client_id = *client_init.result.as_ref().map_err(ToString::to_string)?;
-                client_ids.push(client_id);
+                client_ids.0.push(client_id);
                 Ok(())
             },
         )
+        // User-facing log
+        .add_observer(
+            |add_player: prelude::On<spru_bevy::server::event::AddPlayer<Server>>,
+             mut log: prelude::ResMut<Log>|
+            {
+                let message = match &add_player.result {
+                    Ok(player_id) => format!("Player {player_id} added"),
+                    Err(err) => format!("Add player failed: {err}"),
+                };
+                log.server_log(message);
+            },
+        )
+        .add_observer(
+            |manual_trigger: prelude::On<spru_bevy::server::event::ManualTrigger<Server>>,
+             mut log: prelude::ResMut<Log>|
+            {
+                let message = match &manual_trigger.result {
+                    Ok(()) => "Manual trigger successful".to_string(),
+                    Err(err) => format!("Manual trigger failed: {err}"),
+                };
+                log.server_log(message);
+            },
+        )
+        .add_observer(
+            |game_complete: prelude::On<spru_bevy::server::event::GameComplete<Server>>,
+             mut log: prelude::ResMut<Log>|
+            {
+                log.server_log("Game complete");
+                for (id, score) in &game_complete.game_outcome.final_scores {
+                    log.server_log(format!("{id}: {score}"));
+                }
+            },
+        )
+        .add_observer(
+            |stage_interaction: prelude::On<spru_bevy::client::event::StageInteraction<Client>>,
+             mut log: prelude::ResMut<Log>|
+            {
+                let message = match &stage_interaction.result {
+                    Ok(pending_id) => format!("Interaction staged ({pending_id})"),
+                    Err(err) => format!("Stage failed: {err}"),
+                };
+                log.client_log(stage_interaction.client_id, message);
+            },
+        )
+        .add_observer(
+            |apply_interactions: prelude::On<spru_bevy::client::event::ApplyInteractions<Client>>,
+             mut log: prelude::ResMut<Log>|
+            {
+                let message = match &apply_interactions.result {
+                    Ok(count) => {
+                        if *count == 0 {
+                            return;
+                        }
+                        format!("{count} Interactions applied")
+                    }
+                    Err(err) => format!("Apply failed: {err}"),
+                };
+                log.client_log(apply_interactions.client_id, message);
+            },
+        )
+        .add_observer(
+            |revert_interactions: prelude::On<spru_bevy::client::event::RevertInteractions<Client>>,
+             mut log: prelude::ResMut<Log>|
+            {
+                let message = match &revert_interactions.result {
+                    Ok(count) => {
+                        if *count == 0 {
+                            return;
+                        }
+                        format!("{count} Interactions reverted")
+                    }
+                    Err(err) => format!("Revert failed: {err}"),
+                };
+                log.client_log(revert_interactions.client_id, message);
+            },
+        )
         .run();
+}
+
+#[derive(Debug, Default, prelude::Resource)]
+struct Log {
+    server_log: Vec<String>,
+    client_logs: HashMap<spru_bevy::client::component::ClientId, Vec<String>>,
+}
+
+impl Log {
+    fn server_log<S: ToString>(&mut self, message: S) {
+        self.server_log.push(message.to_string());
+    }
+
+    fn client_log<S: ToString>(
+        &mut self,
+        client_id: spru_bevy::client::component::ClientId,
+        message: S,
+    ) {
+        self.client_logs
+            .entry(client_id)
+            .or_default()
+            .push(message.to_string());
+    }
+
+    fn iter_logs(
+        &self,
+        client_id: Option<spru_bevy::client::component::ClientId>,
+    ) -> impl DoubleEndedIterator<Item = &str> {
+        let client_log = if let Some(client_id) = client_id {
+            self.client_logs.get(&client_id)
+        } else {
+            None
+        }
+        .map(std::ops::Deref::deref)
+        // <[_]> Who knew this worked?
+        .map(<[_]>::iter)
+        .into_iter()
+        .flatten();
+
+        self.server_log.iter().chain(client_log).map(String::as_str)
+    }
 }
 
 #[derive(Debug)]
@@ -139,6 +267,9 @@ macro_rules! bail {
 }
 pub(crate) use bail;
 
+#[derive(Debug, Default, PartialEq, prelude::Resource)]
+struct WorldInspectorToggle(bool);
+
 #[derive(Debug, Default, prelude::Resource)]
 struct GameId(Option<spru_bevy::common::component::GameId>);
 
@@ -155,40 +286,11 @@ impl GameId {
 #[derive(Debug, Default, prelude::Resource)]
 struct ClientIds(Vec<spru_bevy::client::component::ClientId>);
 
-impl ClientIds {
-    pub fn get(&self) -> &[spru_bevy::client::component::ClientId] {
-        &self.0
-    }
-
-    fn push(&mut self, client_id: spru_bevy::client::component::ClientId) {
-        self.0.push(client_id);
-    }
-}
-
 #[derive(Debug, Default, prelude::Resource)]
 struct ActiveClientId(Option<spru_bevy::client::component::ClientId>);
 
-impl ActiveClientId {
-    pub fn get(&self) -> Option<spru_bevy::client::component::ClientId> {
-        self.0
-    }
-
-    fn set(&mut self, client_id: spru_bevy::client::component::ClientId) {
-        self.0 = Some(client_id);
-    }
-}
-
 fn startup(mut commands: prelude::Commands) {
     commands.spawn(bevy::prelude::Camera2d);
-    commands.spawn((
-        bevy_simple_text_input::TextInput,
-        prelude::Node {
-            padding: prelude::UiRect::all(prelude::Val::Px(5.0)),
-            border: prelude::UiRect::all(prelude::Val::Px(2.0)),
-            ..Default::default()
-        },
-        prelude::BorderColor::all(prelude::Color::BLACK),
-    ));
     commands.queue(spru_bevy::server::command::Init::<Server, _> {
         game_init: game::Init,
         player_init: player::Init,
@@ -200,168 +302,320 @@ fn print_piles(
     q_piles: prelude::Query<
         (
             &spru_bevy::client::component::ClientId,
-            &spru_bevy::client::component::Item<spru_util::pile::State<data::Card>>,
+            &Item<spru_util::pile::Pile<data::Card>>,
         ),
-        (
-            prelude::Changed<
-                spru_bevy::client::component::Item<spru_util::pile::State<data::Card>>,
-            >,
-        ),
+        (prelude::Changed<Item<spru_util::pile::Pile<data::Card>>>,),
     >,
 ) {
     for (client_id, pile) in q_piles {
         let mut s = String::new();
         for card in &**pile {
-            s.push_str(&format!("{} ", card.face().letters));
+            s.push_str(&format!("{} ", card.face().letters_str()));
         }
-        prelude::trace!(name: "pile_changed", client = client_id.0.into_u32(), value = s);
+        prelude::trace!(name: "pile_changed", client = client_id.into_u32(), value = s);
     }
 }
 
-fn process_input(
-    mut events: prelude::MessageReader<bevy_simple_text_input::TextInputSubmitMessage>,
+fn misc_input(
+    keys: prelude::Res<prelude::ButtonInput<prelude::KeyCode>>,
+    mut world_inspector_toggle: prelude::ResMut<WorldInspectorToggle>,
+) {
+    if keys.just_pressed(prelude::KeyCode::F1) {
+        world_inspector_toggle.0 = !world_inspector_toggle.0;
+    }
+}
+
+#[derive(Debug)]
+struct DefaultTrue(bool);
+
+impl Default for DefaultTrue {
+    fn default() -> Self {
+        Self(true)
+    }
+}
+
+fn panel_ui(
     mut q_server: prelude::Query<(
         &spru_bevy::common::component::GameId,
-        &mut spru_bevy::server::component::Runner<Server>,
+        &spru_bevy::server::component::Runner<Server>,
+        &spru_bevy::common::component::Root<Common>,
         &mut spru_bevy::server::component::FromUser<Server>,
     )>,
     mut q_client: prelude::Query<(
         &spru_bevy::common::component::GameId,
         &spru_bevy::client::component::ClientId,
         &spru_bevy::client::component::EntityMap,
+        &spru_bevy::common::component::Root<Common>,
         &mut spru_bevy::client::component::FromUser<Client>,
     )>,
-    q_player_root: prelude::Query<(
-        &spru_bevy::client::component::ClientId,
-        &spru_bevy::client::component::Item<player_map::State<crate::player::Root>>,
-    )>,
-    q_hand: prelude::Query<(
-        &spru_bevy::client::component::Item<spru_util::pile::State<data::Card>>,
-    )>,
+    q_game_root: prelude::Query<&Item<game::Root>>,
+    q_player_map: prelude::Query<&Item<player_map::PlayerMap<crate::player::Root>>>,
+    q_pile: prelude::Query<&Item<spru_util::pile::Pile<data::Card>>>,
+    q_current_turn: prelude::Query<&Item<spru_util::rotating::Rotating<spru::player::Id>>>,
+    q_player_fsm: prelude::Query<&Item<spru_util::fsm::Fsm<player::machine::Impl>>>,
+    q_counter: prelude::Query<&Item<spru_util::counter::Counter<u32>>>,
+    q_play: prelude::Query<&Item<Play>>,
     game_id: prelude::Res<GameId>,
     client_ids: prelude::Res<ClientIds>,
+    log: prelude::Res<Log>,
     mut active_client_id: prelude::ResMut<ActiveClientId>,
+    mut contexts: bevy_egui::EguiContexts,
+
+    // Condensed to stay under 16 parameter limit
+    (
+        mut add_player_string,
+        mut play_string,
+        mut show_spru_help_window,
+        mut show_quibbler_help_window,
+    ): (
+        prelude::Local<String>,
+        prelude::Local<String>,
+        prelude::Local<DefaultTrue>,
+        prelude::Local<DefaultTrue>,
+    ),
 ) -> prelude::Result {
-    for event in events.read() {
-        let game_id = game_id.get();
+    use bevy_egui::egui;
 
-        let text = event.value.as_bytes();
-        prelude::info!("'{}'", text.escape_ascii());
+    fn render_card(ui: &mut egui::Ui, card: &data::Card, is_unplayed: bool) -> egui::Response {
+        let color = if is_unplayed {
+            egui::Color32::from_rgb(145, 91, 87)
+        } else {
+            egui::Color32::WHITE
+        };
+        let text = format!("{}\n{}", card.face().letters_str(), card.face().points());
 
-        let mut words = text.split(u8::is_ascii_whitespace);
-        if let Some(command) = words.next() {
-            // let args: Vec<_> = words.collect();
+        let override_text_color = ui.visuals_mut().override_text_color.replace(egui::Color32::BLACK);
+        let button = egui::Button::new(text)
+            .min_size(egui::Vec2::new(48., 64.))
+            .corner_radius(8.)
+            .fill(color)
+            .stroke(egui::Stroke::new(4., egui::Color32::BLACK));
 
-            let (_, server_runner, mut server_from_user) =
-                Server::filter_mut(&mut q_server, game_id).ok_or("Server not found")?;
+        let response = ui.add(button);
 
-            let client_id;
-            let client_entity_map;
-            let client_from_user;
-            if let Some(active_client_id) = active_client_id.get() {
-                let (_, _, entity_map, from_user) =
-                    Client::filter_mut(&mut q_client, game_id, active_client_id)
-                        .ok_or("Client not found")?;
-                client_id = Ok(active_client_id);
-                client_entity_map = Ok(entity_map);
-                client_from_user = Ok(from_user);
-            } else {
-                client_id = Err("Client context not set");
-                client_entity_map = Err("Client context not set");
-                client_from_user = Err("Client context not set");
+        ui.visuals_mut().override_text_color = override_text_color;
+
+        response
+    }
+
+    let ctx = contexts.ctx_mut()?;
+
+    egui::Window::new("Spru Help")
+        .open(&mut show_spru_help_window.0)
+        .default_width(640.)
+        .default_pos([32., 64.])
+        .resizable([true, false])
+        .show(ctx, |ui| {
+            let mut help_text = include_str!("../spru_help.txt");
+            let multiline = egui::TextEdit::multiline(&mut help_text).interactive(false);
+            ui.add(multiline);
+        });
+
+    egui::Window::new("Quibbler Help")
+        .open(&mut show_quibbler_help_window.0)
+        .default_width(640.)
+        .default_pos([756., 64.])
+        .resizable([true, false])
+        .show(ctx, |ui| {
+            let mut help_text = include_str!("../quibbler_help.txt");
+            let multiline = egui::TextEdit::multiline(&mut help_text).interactive(false);
+            ui.add(multiline);
+        });
+
+    let (_, server_runner, server_root, mut server_from_user) =
+        Server::filter_mut(&mut q_server, game_id.get()).ok_or("Server not found")?;
+    let server_storage = server_runner.storage();
+    let server_game_root = server_storage
+        .get(**server_root)
+        .map_err(spru::item::storage::Error::into_error)?;
+    let server_player_map = server_storage
+        .get(server_game_root.players)
+        .map_err(spru::item::storage::Error::into_error)?;
+
+    egui::TopBottomPanel::top("server_control").show(ctx, |ui| {
+        ui.vertical(|ui| {
+            ui.horizontal(|ui| {
+                let response = ui
+                    .button("Add player")
+                    .on_hover_text("Input player display name");
+
+                let confirmed = ui
+                    .text_edit_singleline(&mut *add_player_string)
+                    .lost_focus()
+                    && ui.input(|i| i.key_pressed(egui::Key::Enter));
+
+                if (response.clicked() || confirmed) && !add_player_string.is_empty() {
+                    let player_init_in =
+                        player::Input::new(std::mem::take(&mut *add_player_string));
+                    server_from_user.add_player(player_init_in);
+                }
+            });
+
+            if ui.button("Start game").clicked() {
+                server_from_user.manual_trigger(reaction::Trigger::StartGame);
             }
+        });
+    });
 
-            let player_root = 'player_root: {
-                for (&current_client_id, player_root) in q_player_root {
-                    if client_id.ok() == Some(current_client_id) {
-                        break 'player_root player_root
-                            .get(current_client_id.0)
-                            .map_err(prelude::BevyError::from);
+    egui::TopBottomPanel::bottom("player_select").show(ctx, |ui| {
+        ui.horizontal(|ui| {
+            for client_id in &client_ids.0 {
+                if let Ok(player_root) = (**server_player_map).get(**client_id) {
+                    let button = egui::Button::selectable(
+                        Some(*client_id) == active_client_id.0,
+                        &player_root.data.username,
+                    );
+                    if ui.add(button).clicked() {
+                        active_client_id.0 = Some(*client_id);
                     }
                 }
-                Err("Player root not found".into())
-            };
-
-            let hand = 'hand: {
-                if let Ok(player_root) = player_root
-                    && let Ok(client_entity_map) = client_entity_map
-                    && let Ok(hand_entity) = client_entity_map.get(player_root.hand)
-                    && let Ok((hand,)) = q_hand.get(hand_entity)
-                {
-                    break 'hand Some(&**hand);
-                }
-                None
             }
-            .ok_or("Hand not found");
+        });
+    });
 
-            match command {
-                b"add_player" => {
-                    let username = words.next().ok_or("Expected username")?;
+    egui::TopBottomPanel::bottom("logs").show(ctx, |ui| {
+        egui::ScrollArea::vertical()
+            .max_height(64.)
+            .max_width(f32::INFINITY)
+            .show(ui, |ui| {
+                egui::Grid::new("log").striped(true).show(ui, |ui| {
+                    for log_line in log.iter_logs(active_client_id.0).rev() {
+                        ui.label(log_line);
+                        ui.end_row();
+                    }
+                });
+            });
+    });
 
-                    let username = String::from_utf8(username.to_vec()).unwrap();
+    if let Some(active_client_id) = &mut active_client_id.0 {
+        let (_, _, entity_map, root, mut from_user) =
+            Client::filter_mut(&mut q_client, game_id.get(), *active_client_id)
+                .ok_or("Client not found")?;
 
-                    server_from_user.add_player(player::Input { username });
-                }
-                b"start" => {
-                    server_from_user.manual_trigger(reaction::Trigger::StartGame);
-                }
-                b"save" => {
-                    let save = server_runner.save()?;
-                    let text =
-                        ron::ser::to_string_pretty(&save, ron::ser::PrettyConfig::default())?;
-                    arboard::Clipboard::new()?.set_text(text)?;
-                }
-                b"client" => {
-                    let num = words.next().ok_or("Expected ClientId")?;
+        let game_root = q_game_root.get(entity_map[**root])?;
+        let discard = q_pile.get(entity_map[game_root.discard])?;
+        let player_map = q_player_map.get(entity_map[game_root.players])?;
+        let active_player_root = player_map.expect_player(**active_client_id);
+        let active_player_username = &*active_player_root.data.username;
+        let hand = q_pile.get(entity_map[active_player_root.hand])?;
+        let current_turn = q_current_turn.get(entity_map[game_root.current_turn])?;
+        let current_player = current_turn.current().map(|p| player_map.expect_player(*p));
+        let round = q_counter.get(entity_map[game_root.round])?;
 
-                    let num: usize = str::from_utf8(num)
-                        .unwrap()
-                        .parse()
-                        .map_err(|_| "Invalid ClientId")?;
+        egui::TopBottomPanel::bottom("player_view").show(ctx, |ui| {
+            ui.vertical(|ui| -> prelude::Result {
+                ui.heading(format!("{active_player_username}'s view"));
+                ui.separator();
 
-                    let client_id = *client_ids.get().get(num).ok_or("ClientId does not exist")?;
+                ui.label(format!("Round {} of 8", round.value() + 1));
 
-                    active_client_id.set(client_id);
+                if let Some(current_player) = current_player {
+                    let current_player_fsm = q_player_fsm.get(entity_map[current_player.fsm])?;
+                    
+                    let current_player_username = &*current_player.data.username;
+                    ui.label(format!("{current_player_username}'s turn ({})", current_player_fsm.current()));
                 }
-                // Client scoped
-                b"draw" => {
-                    let location = words.next().ok_or("Invalid arguments")?;
+                ui.separator();
+                ui.horizontal(|ui| {
+                    if ui.button("Draw from deck").clicked() {
+                        from_user.stage_interaction(interaction::Draw::Deck.into());
+                    }
+                    if let Some(discard_top) = discard.top() {
+                        let button_message = format!("Draw '{}' from discard ({} points)", discard_top.face().letters_str(), discard_top.face().points);
+                        if ui.button(button_message).clicked() {
+                            from_user.stage_interaction(interaction::Draw::Discard.into());
+                        }
+                    }
+                });
 
-                    let interaction: Interaction = match location {
-                        b"deck" => Ok(interaction::Draw::Deck.into()),
-                        b"discard" => Ok(interaction::Draw::Discard.into()),
-                        _ => Err("Invalid location"),
-                    }?;
+                ui.label("Hand (click to discard)");
 
-                    client_from_user?.stage_interaction(interaction);
-                }
-                b"discard" => {
-                    let card_letters = words.next().ok_or("Invalid arguments")?;
-                    let card_letters = card_letters.to_ascii_uppercase();
-                    let card = data::Card::get(&card_letters).ok_or("Invalid card")?;
-                    client_from_user?.stage_interaction(interaction::Discard::new(card).into());
-                }
-                b"play" => {
-                    let mut words: Vec<_> = words.collect::<Vec<_>>().join(&b' ');
-                    words.make_ascii_uppercase();
+                ui.horizontal(|ui| {
+                    for card in &**hand {
+                        if render_card(ui, card, false).clicked() {
+                            from_user.stage_interaction(interaction::Discard::new(card.clone()).into());
+                        }
+                    }
+                });
 
-                    let interaction = interaction::Play::parsed(hand?, &words)
-                        .map_err(|c| format!("No card for character {}", c as char))?;
+                let confirmed = ui.text_edit_singleline(&mut *play_string).lost_focus()
+                    && ui.input(|i| i.key_pressed(egui::Key::Enter));
 
-                    client_from_user?.stage_interaction(interaction.into());
-                }
-                b"pass" => {
-                    client_from_user?.stage_interaction(interaction::Play::pass().into());
-                }
-                b"apply" => {
-                    client_from_user?.apply_all_interactions();
-                }
-                b"revert" => {
-                    client_from_user?.revert_all_interactions();
-                }
-                _ => return Err("Invalid command".into()),
-            }
-        }
+                ui.horizontal(|ui| -> prelude::Result {
+                    if ui.button("Play word(s)")
+                        .on_hover_text("Separate each played word with a space, do not type unused letters")
+                        .clicked() || confirmed
+                    {
+                        let mut words = std::mem::take(&mut *play_string)
+                            .into_bytes();
+                        words.make_ascii_uppercase();
+
+                        let play = interaction::Play::parsed(hand, &words)
+                            .map_err(|c| format!("Can't play '{}', missing '{c}'", String::from_utf8(words).unwrap()))?;
+                        
+                        from_user.stage_interaction(play.into());
+                    }
+
+                    if ui.button("Pass").clicked() {
+                        from_user.stage_interaction(interaction::Play::pass().into());
+                    }
+
+                    Ok(())
+                }).inner?;
+
+                ui.separator();
+
+                ui.horizontal(|ui| -> prelude::Result {
+                    for (_player_id, player_root) in player_map.iter() {
+                        let player_username = &*player_root.data.username;
+                        let player_score = q_counter.get(entity_map[player_root.score])?.value();
+                        let player_play = q_play.get(entity_map[player_root.played])?;
+                        
+                        ui.vertical(|ui| {
+                            ui.label(format!("{player_username}: {player_score} points"));
+                            ui.horizontal(|ui| {
+                                if player_play.word_count() > 0 {
+                                    for word in player_play.words() {
+                                        for card in word {
+                                            render_card(ui, card, false);
+                                        }
+                                        ui.add_space(24.);
+                                    }
+                                }
+
+                                if !player_play.is_full() {
+                                    for card in player_play.unused() {
+                                        render_card(ui, card, true);
+                                    }
+                                }
+                            });
+                            if player_play.is_played() {
+                                let play_score = player_play.base_score();
+                                let word_count = player_play.word_count();
+                                let max_word_len = player_play.max_word_len();
+                                ui.label(format!("{play_score} points"));
+                                ui.label(format!("Most words: {word_count} words"));
+                                ui.label(format!("Longest word: {max_word_len} letters"));
+                            }
+                        });
+                    }
+                    Ok(())
+                }).inner?;
+
+                ui.separator();
+                ui.label("Local Changes:");
+                ui.horizontal(|ui| {
+                    if ui.button("Apply").clicked() {
+                        from_user.apply_all_interactions();
+                    }
+                    if ui.button("Revert").clicked() {
+                        from_user.revert_all_interactions();
+                    }
+                });
+
+                Ok(())
+            }).inner
+        }).inner?;
     }
 
     Ok(())

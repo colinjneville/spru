@@ -2,6 +2,7 @@ pub mod command;
 pub mod component;
 pub mod event;
 mod plugin;
+use derive_where::derive_where;
 pub use plugin::Plugin;
 pub mod system;
 
@@ -27,7 +28,7 @@ pub trait ServerSSS:
     + Sync
     + 'static
 {
-    /// Filter a query over &[`common::component::GameId`] to
+    /// Filter a query over &[common::component::GameId] to
     /// the specific entity containing a Server with the given id. Panics if the
     /// [bevy::ecs::query::QueryData] does not contain GameId.
     fn filter<'w, 's, D, F>(
@@ -51,7 +52,7 @@ pub trait ServerSSS:
         None
     }
 
-    /// Filter a query over &[`common::component::GameId`] to
+    /// Filter a query over &[common::component::GameId] to
     /// the specific entity containing a Server with the given id. Panics if the
     /// [bevy::ecs::query::QueryData] does not contain GameId.
     fn filter_mut<'w, 's, D, F>(
@@ -98,15 +99,17 @@ impl<
 }
 
 #[derive(Debug, thiserror::Error)]
+#[error("An error occurred while running a Server: {0}")]
 pub enum RunServerError {
-    #[error(transparent)]
     Signal(#[from] spru::server::error::SignalError),
-    #[error(transparent)]
     AddPlayer(#[from] spru::server::error::AddPlayerError),
-    #[error(transparent)]
     ManualTrigger(#[from] spru::server::error::ManualTriggerError),
-    #[error(transparent)]
     CreateSave(#[from] spru::server::error::SaveError),
 }
 
 pub type RunServerResult<T> = std::result::Result<T, RunServerError>;
+
+#[derive_where(Debug; spru::common::Seed<Common>)]
+pub struct PendingClient<Common: crate::common::CommonSSS> {
+    pub seed: spru::common::Seed<Common>,
+}

@@ -4,7 +4,7 @@ use derive_where::derive_where;
 
 use crate::{
     Item, common,
-    item::{self, lookup},
+    item::{self, storage},
 };
 
 #[derive(Debug, thiserror::Error)]
@@ -13,6 +13,9 @@ enum Error {
     ItemDoesNotExist(item::Id),
 }
 
+/// The implementation of [item::Storage] which runs on [Server](crate::Server)s.
+/// Users do not need to interact directly with this, but it shows up in
+/// trait signatures.
 #[derive_where(Debug; Repr)]
 pub struct Canonical<Repr, State> {
     items_map: ItemsMap<Repr, State>,
@@ -30,12 +33,12 @@ impl<Repr, State> Canonical<Repr, State> {
     }
 }
 
-impl<State: crate::State> item::lookup::Lookup for Canonical<State::Repr, State> {
+impl<State: crate::State> item::Storage for Canonical<State::Repr, State> {
     type State = State;
 
-    fn lookup<T>(&self, id: item::IdT<T>) -> Result<&Item<T>, lookup::Error>
+    fn get<T>(&self, id: item::IdT<T>) -> Result<&Item<T>, storage::Error>
     where
-        T: super::Lookupable<Self::State>,
+        T: super::Storable<Self::State>,
     {
         self.items_map
             .get(id)
@@ -44,9 +47,9 @@ impl<State: crate::State> item::lookup::Lookup for Canonical<State::Repr, State>
     }
 
     #[allow(refining_impl_trait)]
-    fn lookup_mut<T>(&mut self, id: item::IdT<T>) -> Result<&mut Item<T>, lookup::Error>
+    fn get_mut<T>(&mut self, id: item::IdT<T>) -> Result<&mut Item<T>, storage::Error>
     where
-        T: super::Lookupable<Self::State>,
+        T: super::Storable<Self::State>,
     {
         self.items_map
             .get_mut(id)
@@ -54,17 +57,17 @@ impl<State: crate::State> item::lookup::Lookup for Canonical<State::Repr, State>
             .map_err(Into::into)
     }
 
-    fn create<T>(&mut self, value: Item<T>) -> Result<(), lookup::Error>
+    fn create<T>(&mut self, value: Item<T>) -> Result<(), storage::Error>
     where
-        T: super::Lookupable<Self::State>,
+        T: super::Storable<Self::State>,
     {
         self.items_map.insert(value);
         Ok(())
     }
 
-    fn destroy<T>(&mut self, id: item::IdT<T>) -> Result<Item<T>, lookup::Error>
+    fn destroy<T>(&mut self, id: item::IdT<T>) -> Result<Item<T>, storage::Error>
     where
-        T: super::Lookupable<Self::State>,
+        T: super::Storable<Self::State>,
     {
         self.items_map
             .remove(id)
@@ -185,7 +188,7 @@ pub(crate) struct ItemsMap<Repr, State> {
 }
 
 impl<Repr, State> ItemsMap<Repr, State> {
-     pub fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             raw: Default::default(),
             _p: PhantomData,
@@ -203,7 +206,7 @@ impl<State: crate::State> ItemsMap<State::Repr, State> {
         T: any::Any + serde::Serialize + Send + Sync,
         State: tagset::TagSetDiscriminant<T, Repr: Eq + std::hash::Hash>,
     {
-        let index = State::DISCRIMINANT.into();
+        let index = State::DISCRIMINANT;
         let item_map = self
             .raw
             .entry(index)
@@ -220,7 +223,7 @@ impl<State: crate::State> ItemsMap<State::Repr, State> {
         T: any::Any,
         State: tagset::TagSetDiscriminant<T, Repr: Eq + std::hash::Hash>,
     {
-        let index = State::DISCRIMINANT.into();
+        let index = State::DISCRIMINANT;
         if let Some(item_map) = self.raw.get_mut(&index) {
             let item_map = (&mut **item_map as &mut dyn any::Any)
                 .downcast_mut::<ItemMap<T>>()
@@ -236,7 +239,7 @@ impl<State: crate::State> ItemsMap<State::Repr, State> {
         T: any::Any,
         State: tagset::TagSetDiscriminant<T, Repr: Eq + std::hash::Hash>,
     {
-        let index = State::DISCRIMINANT.into();
+        let index = State::DISCRIMINANT;
         if let Some(item_map) = self.raw.get(&index) {
             let item_map = (&**item_map as &dyn any::Any)
                 .downcast_ref::<ItemMap<T>>()
@@ -252,7 +255,7 @@ impl<State: crate::State> ItemsMap<State::Repr, State> {
         T: any::Any,
         State: tagset::TagSetDiscriminant<T, Repr: Eq + std::hash::Hash>,
     {
-        let index = State::DISCRIMINANT.into();
+        let index = State::DISCRIMINANT;
         if let Some(item_map) = self.raw.get_mut(&index) {
             let item_map = (&mut **item_map as &mut dyn any::Any)
                 .downcast_mut::<ItemMap<T>>()
@@ -288,7 +291,8 @@ mod test {
 
     #[test]
     fn round_trip() {
-        use item::lookup::Lookup as _;
+        use crate::item::IdT;
+        use item::storage::Storage as _;
 
         extern crate self as spru;
 
@@ -296,19 +300,19 @@ mod test {
         let mut canonical = Canonical::<u32, MyCatalog>::new();
 
         canonical
-            .create(Item::new_untyped_id(id, item::Version::ZERO, S0(1i32)))
+            .create(Item::new(IdT::new(id), item::Version::ZERO, S0(1i32)))
             .expect("create failed");
         id = id.next();
         canonical
-            .create(Item::new_untyped_id(id, item::Version::ZERO, S0(2i32)))
+            .create(Item::new(IdT::new(id), item::Version::ZERO, S0(2i32)))
             .expect("create failed");
         id = id.next();
         canonical
-            .create(Item::new_untyped_id(id, item::Version::ZERO, S1(3i64)))
+            .create(Item::new(IdT::new(id), item::Version::ZERO, S1(3i64)))
             .expect("create failed");
         id = id.next();
         canonical
-            .create(Item::new_untyped_id(id, item::Version::ZERO, S1(4i64)))
+            .create(Item::new(IdT::new(id), item::Version::ZERO, S1(4i64)))
             .expect("create failed");
 
         let checkpoint = common::Snapshot::new(item::Id::new().force_type::<()>(), &canonical)
@@ -324,7 +328,7 @@ mod test {
             canonical2
                 .items_map
                 .get::<S0>(id.force_type())
-                .expect("lookup failed")
+                .expect("storage failed")
                 .get()
                 .0,
             1i32
@@ -334,7 +338,7 @@ mod test {
             canonical2
                 .items_map
                 .get::<S0>(id.force_type())
-                .expect("lookup failed")
+                .expect("storage failed")
                 .get()
                 .0,
             2i32
@@ -344,7 +348,7 @@ mod test {
             canonical2
                 .items_map
                 .get::<S1>(id.force_type())
-                .expect("lookup failed")
+                .expect("storage failed")
                 .get()
                 .0,
             3i64
@@ -354,7 +358,7 @@ mod test {
             canonical2
                 .items_map
                 .get::<S1>(id.force_type())
-                .expect("lookup failed")
+                .expect("storage failed")
                 .get()
                 .0,
             4i64

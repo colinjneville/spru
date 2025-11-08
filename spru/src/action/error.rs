@@ -1,11 +1,13 @@
+//! Errors encountered while applying [Action](trait@super::Action)s.
+
 use std::{fmt, ops};
 
 use crate::{
     common::error::{AnyError, PsuedoError},
-    item::lookup,
+    item::{self, storage},
 };
 
-/// An error encountered during an [super::Action].
+/// An error encountered while applying an [trait@super::Action].
 /// [std::ops::Deref] to use as a [std::error::Error].
 #[derive(Debug)]
 pub struct Error {
@@ -19,6 +21,10 @@ impl Error {
             kind,
             context: None,
         }
+    }
+
+    pub(crate) fn new_item(item_error: item::Error) -> Self {
+        Self::new(Kind::Item(item_error))
     }
 
     pub(crate) fn with_context<Action: ?Sized>(mut self, action: &Action) -> Self {
@@ -40,9 +46,9 @@ impl ops::Deref for Error {
     }
 }
 
-impl From<lookup::Error> for Error {
-    fn from(value: lookup::Error) -> Self {
-        Self::new(Kind::Lookup(value))
+impl From<storage::Error> for Error {
+    fn from(value: storage::Error) -> Self {
+        Self::new(Kind::Storage(value))
     }
 }
 
@@ -70,7 +76,8 @@ impl fmt::Display for Error {
 impl PsuedoError for Error {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match &self.kind {
-            Kind::Lookup(e) => std::error::Error::source(e.as_error()),
+            Kind::Storage(e) => std::error::Error::source(e.as_error()),
+            Kind::Item(e) => std::error::Error::source(e),
             Kind::Action(e) => std::error::Error::source(e.as_error()),
         }
     }
@@ -102,8 +109,10 @@ impl fmt::Display for Context {
 /// The inner error contained in the [Error]
 #[derive(Debug)]
 pub enum Kind {
-    /// A [lookup::Error]
-    Lookup(lookup::Error),
+    /// A [storage::Error]
+    Storage(storage::Error),
+    /// An [item::Error]
+    Item(item::Error),
     /// A user-provided error
     Action(AnyError),
 }
@@ -111,7 +120,8 @@ pub enum Kind {
 impl fmt::Display for Kind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Kind::Lookup(e) => fmt::Display::fmt(e, f),
+            Kind::Storage(e) => fmt::Display::fmt(e, f),
+            Kind::Item(e) => fmt::Display::fmt(e, f),
             Kind::Action(e) => fmt::Display::fmt(e, f),
         }
     }

@@ -1,4 +1,4 @@
-use spru::follow;
+use spru::interactor::with;
 use spru::item::IdT;
 use spru_util::{fsm, pile};
 use tracing::instrument;
@@ -18,23 +18,26 @@ impl spru::Interaction for Draw {
     type Trigger = crate::reaction::Trigger;
 
     #[instrument(skip_all, ret, err)]
-    fn apply<'l, Lookup>(
+    fn apply<'l, Storage>(
         &self,
-        interactor: &mut spru::interaction::Interactor<Lookup, Self>,
+        interactor: &mut spru::interaction::Interactor<Storage, Self>,
     ) -> spru::interaction::Result<()>
     where
-        Lookup: spru::item::Lookup<State = Self::State>,
+        Storage: spru::item::Storage<State = Self::State>,
     {
         let player_id = interactor.context().player;
-        let root = interactor.get_root()?;
-        // This should be the only place we *need* to check if it is our turn, as the fsm
-        // should always be on ToDraw when it is not our turn
-        interactor.get(root.current_turn)?.expect(&player_id)?;
 
-        let players = follow!(root => root.players)?;
-        let player = players.get(player_id)?;
+        with! { interactor =>
+            let root = interactor.get_root()?;
+            // This should be the only place we *need* to check if it is our turn, as the fsm
+            // should always be on ToDraw when it is not our turn
+            ~[root.current_turn]?.expect(&player_id)?;
+            let players = ~[root.players]?;
+            let player = players.get(player_id)?;
+            let fsm = ~[player.fsm]?;
 
-        let fsm = interactor.get(player.fsm)?;
+            let discard = ~[root.discard]?;
+        }
 
         fsm.update(fsm::transition(crate::player::machine::Input::Draw));
 
@@ -43,8 +46,6 @@ impl spru::Interaction for Draw {
                 interactor.enqueue_trigger(reaction::Trigger::DrawFromDeck);
             }
             Draw::Discard => {
-                let discard = follow!(root => root.discard)?;
-
                 let card = discard.top().expect("Discard cannot be empty");
                 discard.update(pile::pop_top());
 

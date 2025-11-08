@@ -1,4 +1,4 @@
-//! Errors returned by [crate::Server] operations
+//! Errors returned by [Server](crate::Server) operations
 
 use crate::{
     action,
@@ -6,7 +6,7 @@ use crate::{
     game, player,
 };
 
-/// An error occurred during [crate::Server::init]
+/// An error occurred during [Server::init](crate::Server::init)
 #[derive(Debug, thiserror::Error)]
 #[error("Server::init failed: {0}")]
 pub enum InitError {
@@ -14,50 +14,50 @@ pub enum InitError {
     GameInit(#[from] game::init::Error),
 }
 
-/// An error occurred during [crate::Server::save]
+/// An error occurred during [Server::save](crate::Server::save)
 #[derive(Debug, thiserror::Error)]
 #[error("Server::save failed: {0}")]
 pub enum SaveError {
-    /// Serialization failure when creating the [crate::Save]
+    /// Serialization failure when creating the [Save](crate::server::Save)
     Snapshot(#[from] common::error::Save),
-    /// Fatal error, the server must be recreated from a [crate::Save]
+    /// Fatal error, the server must be recreated from a [Save](crate::server::Save)
     Fatal(#[from] common::error::FatalError),
 }
 
-/// An error occurred during [crate::Server::load]
+/// An error occurred during [Server::load](crate::Server::load)
 #[derive(Debug, thiserror::Error)]
 #[error("Server::load failed: {0}")]
 pub enum LoadError {
-    /// Deserialization failure when loading the [crate::Save]
+    /// Deserialization failure when loading the [Save](crate::server::Save)
     Snapshot(#[from] common::error::Load),
 }
 
-/// An error occurred during [crate::Server::add_player]
+/// An error occurred during [Server::add_player](crate::Server::add_player)
 #[derive(Debug, thiserror::Error)]
 #[error("Server::add_player failed: {0}")]
 pub enum AddPlayerError {
     /// [player::Init] error
     PlayerInit(#[from] player::init::Error),
-    /// Serialization failure while creating [common::Seed]
+    /// Serialization failure while creating [Seed](common::Seed)
     Snapshot(#[from] common::error::Save),
-    /// Fatal error, the server must be recreated from a [crate::Save]
+    /// Fatal error, the server must be recreated from a [Save](crate::server::Save)
     Fatal(#[from] FatalError),
 }
 
-/// An error occurred during [crate::Server::manual_trigger]
+/// An error occurred during [Server::manual_trigger](crate::Server::manual_trigger)
 #[derive(Debug, thiserror::Error)]
 #[error("Server::manual_trigger failed: {0}")]
 pub enum ManualTriggerError {
-    /// [crate::Reaction] error
+    /// [Reaction](trait@crate::Reaction) error
     Reaction(#[from] action::Error),
-    /// Fatal error, the server must be recreated from a [crate::Save]
+    /// Fatal error, the server must be recreated from a [Save](crate::server::Save)
     Fatal(#[from] FatalError),
 }
 
-/// An error occurred during [crate::Server::signal]
+/// An error occurred during [Server::signal](crate::Server::signal)
 #[derive(Debug, thiserror::Error)]
 #[error("Server::signal failed: {0}")]
 pub enum SignalError {
-    /// Fatal error, the server must be recreated from a [crate::Save]
+    /// Fatal error, the server must be recreated from a [Save](crate::server::Save)
     Fatal(#[from] FatalError),
 }

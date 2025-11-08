@@ -44,7 +44,15 @@ impl Play {
     }
 
     pub fn max_word_len(&self) -> usize {
-        self.words.iter().map(Vec::len).max().unwrap_or_default()
+        self.words
+            .iter()
+            .map(|w| w.iter().fold(0, |n, c| n + c.face().letters.len()))
+            .max()
+            .unwrap_or_default()
+    }
+
+    pub fn unused(&self) -> &[data::Card] {
+        self.unused.as_slice()
     }
 }
 

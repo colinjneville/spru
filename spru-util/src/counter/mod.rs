@@ -12,7 +12,7 @@ use num_traits::Signed;
 use tagset::tagset;
 use telety::telety;
 
-use crate::{AddSigned, Strictness, verbatim};
+use crate::{Strictness, bounds, cloned};
 
 /// Types able to be used as a counter value
 pub trait CounterType: cmp::PartialOrd + ops::Sub<Output = Self> + num_traits::One + Clone {}
@@ -22,13 +22,15 @@ impl<T> CounterType for T where
 {
 }
 
+/// A numerical counter, for points, life totals, round numbers, etc.
+/// You can also apply minimum and/or maximum bounds.
 #[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
-pub struct State<T> {
+pub struct Counter<T> {
     value: T,
     bounds: RangeType<T>,
 }
 
-impl<T: AddSigned> State<T> {
+impl<T: bounds::AddSigned> Counter<T> {
     pub fn value(&self) -> &T {
         &self.value
     }
@@ -45,42 +47,42 @@ pub fn create<T>(value: T) -> Create<T> {
 pub fn create_bounded<T>(value: T, bounds: impl Into<RangeType<T>>) -> Create<T> {
     let bounds = bounds.into();
 
-    verbatim::create(State { value, bounds })
+    cloned::create(Counter { value, bounds })
 }
 
 pub fn default<T: Default>() -> Create<T> {
     create(T::default())
 }
 
-pub fn add<T: AddSigned>(value: T::Signed, strictness: Strictness) -> Add<T> {
+pub fn add<T: bounds::AddSigned>(value: T::Signed, strictness: Strictness) -> Add<T> {
     Add { value, strictness }
 }
 
-pub fn add_checked<T: AddSigned>(value: T::Signed) -> Add<T> {
+pub fn add_checked<T: bounds::AddSigned>(value: T::Signed) -> Add<T> {
     add(value, Strictness::AllOrError)
 }
 
-pub fn add_saturating<T: AddSigned>(value: T::Signed) -> Add<T> {
+pub fn add_saturating<T: bounds::AddSigned>(value: T::Signed) -> Add<T> {
     add(value, Strictness::BestEffort)
 }
 
 pub fn destroy<T>() -> Destroy<T> {
-    verbatim::destroy()
+    cloned::destroy()
 }
 
 #[telety(crate::counter)]
-#[tagset(verbatim::Create<State<T>>)]
+#[tagset(cloned::Create<Counter<T>>)]
 #[tagset(Add<T>)]
-#[tagset(verbatim::Destroy<State<T>>)]
+#[tagset(cloned::Destroy<Counter<T>>)]
 #[tagset(reserved(..8))]
-pub struct Actions<T: AddSigned>;
+pub struct Actions<T: bounds::AddSigned>;
 
-pub type Create<T> = verbatim::Create<State<T>>;
+pub type Create<T> = cloned::Create<Counter<T>>;
 
 #[derive_where(Debug, Clone; T::Signed)]
 #[derive(serde::Serialize, serde::Deserialize, spru::action::Update)]
 #[must_use]
-pub struct Add<T: AddSigned> {
+pub struct Add<T: bounds::AddSigned> {
     #[serde(bound(
         serialize = "T::Signed: serde::Serialize",
         deserialize = "T::Signed: serde::Deserialize<'de>"
@@ -91,9 +93,9 @@ pub struct Add<T: AddSigned> {
 
 impl<T> Add<T>
 where
-    T: CounterType + Ord + AddSigned<Signed: crate::Serial> + crate::Serial,
+    T: CounterType + Ord + bounds::AddSigned,
 {
-    fn sum(&self, value: &State<T>) -> Result<T, self::Error<T>> {
+    fn sum(&self, value: &Counter<T>) -> Result<T, self::Error<T>> {
         match self.strictness {
             Strictness::BestEffort => Ok(value
                 .bounds
@@ -112,9 +114,9 @@ where
 
 impl<T> spru::action::Update for Add<T>
 where
-    T: CounterType + Ord + AddSigned<Signed: crate::Serial> + crate::Serial,
+    T: CounterType + Ord + bounds::AddSigned + 'static,
 {
-    type T = State<T>;
+    type T = Counter<T>;
     type Undo = Self;
 
     fn update(&self, value: &mut Self::T) -> AnyResult<impl Into<Option<Self::Undo>>> {
@@ -135,10 +137,10 @@ where
     }
 }
 
-pub type Destroy<T> = verbatim::Destroy<State<T>>;
+pub type Destroy<T> = cloned::Destroy<Counter<T>>;
 
 #[derive(Debug, Clone, crate::FromInfallible, thiserror::Error)]
-pub enum Error<T: AddSigned> {
+pub enum Error<T: bounds::AddSigned> {
     #[error("Could not modify value of {value} by {modifier}")]
     InvalidModifier { value: T, modifier: T::Signed },
 }

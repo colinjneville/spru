@@ -8,10 +8,10 @@ pub fn run_client<Client: crate::client::ClientSSS>(
     world: &mut prelude::World,
 ) -> super::RunClientResult<()> {
     // We need to access the Client components, but also need
-    // full World access for Lookup.
+    // full World access for Storage.
     // First create a list of all Client entities. Then query
     // each Entity individually, temporarily remove the needed
-    // Components, create and use the Lookup, then finally
+    // Components, create and use the Storage, then finally
     // restore the Components before returning any error.
 
     // This currently triggers add/remove component events
@@ -51,7 +51,8 @@ pub fn run_client<Client: crate::client::ClientSSS>(
             );
         }
 
-        let mut lookup = super::lookup::BevyLookup::new(world, entity_map, game_id.0, client_id.0);
+        let mut storage =
+            super::storage::BevyStorage::new(world, entity_map, **game_id, **client_id);
 
         while let Some(client_signal) = from_server.dequeue() {
             // Manual reborrows are needed because the sub-functions take impl DerefMut instead of &mut
@@ -62,7 +63,7 @@ pub fn run_client<Client: crate::client::ClientSSS>(
                 *game_id,
                 *client_id,
                 client_signal,
-                &mut lookup,
+                &mut storage,
                 runner,
                 to_server,
                 &mut command_queue,
@@ -80,7 +81,7 @@ pub fn run_client<Client: crate::client::ClientSSS>(
                         *game_id,
                         *client_id,
                         interaction,
-                        &mut lookup,
+                        &mut storage,
                         runner,
                         to_server,
                         &mut command_queue,
@@ -91,7 +92,7 @@ pub fn run_client<Client: crate::client::ClientSSS>(
                         *game_id,
                         *client_id,
                         pending,
-                        &mut lookup,
+                        &mut storage,
                         runner,
                         to_server,
                         &mut command_queue,
@@ -102,7 +103,7 @@ pub fn run_client<Client: crate::client::ClientSSS>(
                         *game_id,
                         *client_id,
                         pending,
-                        &mut lookup,
+                        &mut storage,
                         runner,
                         to_server,
                         &mut command_queue,
@@ -164,25 +165,27 @@ pub(crate) fn init<Client: super::ClientSSS>(
     let game_id = common::component::GameId::new(init.game_id());
     let result = (|| {
         let mut entity_map = super::component::EntityMap::default();
-        let mut lookup = super::lookup::BevyLookup::new(
+        let mut storage = super::storage::BevyStorage::new(
             world,
             &mut entity_map,
             init.game_id(),
             init.local_player_id(),
         );
-        let client = Client::init(&mut lookup, init)?;
-        let client_id = super::component::ClientId(client.local_player_id());
+        let client = Client::init(&mut storage, init)?;
+        let client_id = super::component::ClientId::new(client.local_player_id());
+        let root = common::component::Root::<Client::Common>::new(client.root().clone());
 
         world.spawn((
             game_id,
             client_id,
             prelude::Name::new(format!(
                 "[{:x}:{}] spru client",
-                game_id.0.friendly_display(),
+                game_id.friendly_display(),
                 client_id
             )),
             entity_map,
             super::component::Runner::new(client),
+            root,
         ));
 
         Ok(client_id)
@@ -200,13 +203,13 @@ pub(crate) fn signal<Client: super::ClientSSS>(
     client_id: super::component::ClientId,
     signal: spru::common::signal::ToClient<Client::Common>,
 
-    lookup: &mut super::BevyLookup<Client::State>,
+    storage: &mut super::BevyStorage<Client::State>,
     mut runner: impl DerefMut<Target = super::component::Runner<Client>>,
     to_server: impl DerefMut<Target = super::component::ToServer<Client>>,
     event_trigger: &mut impl common::TriggerEvent,
 ) {
     let result = (|| {
-        let output = runner.client.signal(lookup, signal)?;
+        let output = runner.client.signal(storage, signal)?;
         let () = process_output(game_id, client_id, output, to_server, event_trigger);
         Ok(())
     })();
@@ -224,14 +227,16 @@ pub(crate) fn stage_interaction<Client: super::ClientSSS<Interaction: Clone>>(
     client_id: super::component::ClientId,
     interaction: Client::Interaction,
 
-    lookup: &mut super::BevyLookup<Client::State>,
+    storage: &mut super::BevyStorage<Client::State>,
     mut runner: impl DerefMut<Target = super::component::Runner<Client>>,
     to_server: impl DerefMut<Target = super::component::ToServer<Client>>,
     event_trigger: &mut impl common::TriggerEvent,
 ) {
     let interaction_clone = interaction.clone();
     let result = (|| {
-        let output = runner.client.stage_interaction(lookup, interaction_clone)?;
+        let output = runner
+            .client
+            .stage_interaction(storage, interaction_clone)?;
         let pending_interaction_id =
             process_output(game_id, client_id, output, to_server, event_trigger);
         Ok(pending_interaction_id)
@@ -250,7 +255,7 @@ pub(crate) fn apply_interactions<Client: super::ClientSSS>(
     client_id: super::component::ClientId,
     pending_interaction_id: Option<spru::interaction::Pending>,
 
-    lookup: &mut super::BevyLookup<Client::State>,
+    storage: &mut super::BevyStorage<Client::State>,
     mut runner: impl DerefMut<Target = super::component::Runner<Client>>,
     to_server: impl DerefMut<Target = super::component::ToServer<Client>>,
     event_trigger: &mut impl common::TriggerEvent,
@@ -258,10 +263,10 @@ pub(crate) fn apply_interactions<Client: super::ClientSSS>(
     let result = (|| {
         let output = runner
             .client
-            .apply_interactions(lookup, pending_interaction_id)?;
-        let () = process_output(game_id, client_id, output, to_server, event_trigger);
+            .apply_interactions(storage, pending_interaction_id)?;
+        let count = process_output(game_id, client_id, output, to_server, event_trigger);
 
-        Ok(())
+        Ok(count)
     })();
 
     event_trigger.trigger(super::event::ApplyInteractions::<Client> {
@@ -278,7 +283,7 @@ pub(crate) fn revert_interactions<Client: super::ClientSSS>(
     client_id: super::component::ClientId,
     pending_interaction_id: Option<spru::interaction::Pending>,
 
-    lookup: &mut super::BevyLookup<Client::State>,
+    storage: &mut super::BevyStorage<Client::State>,
     mut runner: impl DerefMut<Target = super::component::Runner<Client>>,
     to_server: impl DerefMut<Target = super::component::ToServer<Client>>,
     event_trigger: &mut impl common::TriggerEvent,
@@ -286,9 +291,9 @@ pub(crate) fn revert_interactions<Client: super::ClientSSS>(
     let result = (|| {
         let output = runner
             .client
-            .revert_interactions(lookup, pending_interaction_id)?;
-        let () = process_output(game_id, client_id, output, to_server, event_trigger);
-        Ok(())
+            .revert_interactions(storage, pending_interaction_id)?;
+        let count = process_output(game_id, client_id, output, to_server, event_trigger);
+        Ok(count)
     })();
 
     event_trigger.trigger(super::event::RevertInteractions::<Client> {
