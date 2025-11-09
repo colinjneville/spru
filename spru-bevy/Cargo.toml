@@ -14,7 +14,7 @@ server = []
 client = []
 
 [dependencies]
-spru = { path = "../spru/" }
+spru.workspace = true
 
 bevy.workspace = true
 

@@ -14,6 +14,11 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/colinjneville/spru"
 
 [workspace.dependencies]
+spru-macro = { version = "0.1", path = "./spru-macro" }
+spru = { version = "0.1", path = "./spru" }
+spru-util = { version = "0.1", path = "./spru-util" }
+spru-bevy = { version = "0.1", path = "./spru-bevy" }
+
 telety = "0.4"
 tagset = "0.1.2"
 

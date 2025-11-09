@@ -8,9 +8,9 @@ repository.workspace = true
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-spru = { path = "../spru/" }
-spru-util = { path = "../spru-util" }
-spru-bevy = { path = "../spru-bevy" }
+spru.workspace = true
+spru-util.workspace = true
+spru-bevy.workspace = true
 
 tagset.workspace = true
 telety.workspace = true

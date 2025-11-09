@@ -9,11 +9,11 @@ categories = ["game-development", "wasm"]
 keywords = ["gamedev", "framework", "game", "wasm"]
 
 [dev-dependencies]
-spru = { path = "../spru", features = ["test-util"] }
+spru = { workspace = true, features = ["test-util"] }
 
 [dependencies]
-spru = { path = "../spru" }
-spru-macro = { path = "../spru-macro" }
+spru.workspace = true
+spru-macro.workspace = true
 
 tagset.workspace = true
 telety.workspace = true

@@ -16,7 +16,7 @@ test-util = []
 [dev-dependencies]
 
 [dependencies]
-spru-macro = { path = "../spru-macro" }
+spru-macro.workspace = true
 
 telety.workspace = true
 tagset.workspace = true
