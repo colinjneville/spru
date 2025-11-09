@@ -21,3 +21,4 @@ A spru implementation for the [bevy](https://bevyengine.org/) game engine.
 
 # spru-quibbler
 An example word game built on spru-bevy.
+Try it in the browser [here](https://colinjneville.github.io/spru/quibbler.html).
