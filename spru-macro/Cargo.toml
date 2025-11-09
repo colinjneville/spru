@@ -2,6 +2,9 @@
 name = "spru-macro"
 version = "0.1.0"
 edition = "2024"
+description = "Proc macros for spru. Not intended for public use."
+license.workspace = true
+repository.workspace = true
 
 [lib]
 proc-macro = true

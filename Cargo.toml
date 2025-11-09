@@ -9,6 +9,10 @@ members = [
 	"spru-util",
 ]
 
+[workspace.package]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/colinjneville/spru"
+
 [workspace.dependencies]
 telety = "0.4"
 tagset = "0.1.2"

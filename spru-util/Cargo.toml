@@ -2,6 +2,11 @@
 name = "spru-util"
 version = "0.1.0"
 edition = "2024"
+description = "An experimental framework for building multiplayer strategy and digital board games."
+license.workspace = true
+repository.workspace = true
+categories = ["game-development", "wasm"]
+keywords = ["gamedev", "framework", "game", "wasm"]
 
 [dev-dependencies]
 spru = { path = "../spru", features = ["test-util"] }

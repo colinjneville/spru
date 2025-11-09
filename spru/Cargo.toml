@@ -2,6 +2,11 @@
 name = "spru"
 version = "0.1.0"
 edition = "2024"
+description = "Reusable components for the spru strategy and digital board game framework."
+license.workspace = true
+repository.workspace = true
+categories = ["game-development", "wasm"]
+keywords = ["gamedev", "framework", "game", "wasm"]
 
 [features]
 default = []
@@ -18,9 +23,6 @@ tagset.workspace = true
 
 halfbrown.workspace = true
 thiserror.workspace = true
-
-# temporary until proper errors are done
-anyhow.workspace = true
 
 derive_more = { workspace = true, features = ["from"] }
 derive-where.workspace = true
