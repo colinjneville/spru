@@ -79,7 +79,7 @@ features = [
 ]
 
 [workspace.dependencies.bevy]
-version = "0.17.2"
+version = "0.18.1"
 default-features = false
 features = [
     "bevy_log",

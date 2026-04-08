@@ -29,8 +29,8 @@ ron.workspace = true
 tracing.workspace = true
 
 wordnik_list = "0.2.1"
-bevy-inspector-egui = "=0.34.0"
-bevy_egui = "0.38.0"
+bevy-inspector-egui = "0.36.0"
+bevy_egui = "0.39.1"
 
 [target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dependencies]
 # no clipboard on wasm

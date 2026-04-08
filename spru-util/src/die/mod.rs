@@ -2,7 +2,7 @@ use std::mem;
 
 use derive_where::derive_where;
 
-use rand::{Rng, seq::IndexedRandom};
+use rand::{Rng, SeedableRng, seq::IndexedRandom};
 use spru::common::error::AnyResult;
 use tagset::tagset;
 use telety::telety;
@@ -22,7 +22,8 @@ impl<D: self::DieKind> Die<D> {
 }
 
 pub fn create<D: self::DieKind>(die: D) -> Create<D> {
-    let mut mock_rng = rand::rngs::mock::StepRng::new(0, 0);
+    // Select an arbitrary face to start with.
+    let mut mock_rng = rand::rngs::SmallRng::from_seed([0; _]);
     let current_face = die.roll(&mut mock_rng);
     cloned::create(Die { die, current_face })
 }
