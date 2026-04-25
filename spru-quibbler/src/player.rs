@@ -1,7 +1,7 @@
 use std::fmt;
 
 use rust_fsm::state_machine;
-use spru::{common::error::PsuedoError as _, interactor::with, item::IdT};
+use spru::{common::error::PseudoError as _, interactor::with, item::IdT};
 use spru_util::{cloned, counter, fsm, pile, player_map, rotating};
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]

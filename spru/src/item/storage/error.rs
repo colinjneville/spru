@@ -1,7 +1,7 @@
 use std::{any, fmt, ops};
 
 use crate::{
-    common::error::{AnyError, PsuedoError},
+    common::error::{AnyError, PseudoError},
     item::{self, IdT},
 };
 
@@ -57,7 +57,7 @@ impl<E: std::error::Error + Send + Sync + 'static> From<E> for Error {
     }
 }
 
-impl PsuedoError for Error {
+impl PseudoError for Error {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         std::error::Error::source(self.inner.as_error())
     }

@@ -14,7 +14,7 @@ use crate::{
     Interactor, Transaction, action,
     common::{
         self,
-        error::{PsuedoError, RecoverableError},
+        error::{PseudoError, RecoverableError},
     },
     game, interaction,
     interactor::{self, TakeGameOutcome, TakeTriggers},
@@ -349,7 +349,7 @@ where
             common::signal::ToServerInternal::ApplyInteraction(apply_interaction) => {
                 self.inner
                     .apply_interaction(&self.root, &mut messaging, sender, apply_interaction)
-                    .map_err(PsuedoError::into_error)
+                    .map_err(PseudoError::into_error)
                     .map_err(self.inner.error_state.make_fatal())?;
             }
         }
@@ -405,7 +405,7 @@ where
                     error::ManualTriggerError::Reaction(re.initial_error)
                 } else {
                     error::ManualTriggerError::Fatal(self.inner.error_state.make_fatal()(
-                        re.map_with(PsuedoError::into_error),
+                        re.map_with(PseudoError::into_error),
                     ))
                 }
             })?;

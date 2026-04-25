@@ -16,7 +16,7 @@ mod player;
 mod reaction;
 pub use reaction::Reaction;
 mod state;
-use spru::{common::error::PsuedoError as _, item::Storage as _};
+use spru::{common::error::PseudoError as _, item::Storage as _};
 use spru_bevy::{client::ClientSSS as _, server::ServerSSS as _};
 use spru_util::player_map;
 pub use state::State;

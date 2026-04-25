@@ -86,7 +86,7 @@ impl ops::Deref for AnyError {
 /// A result with an [AnyError] `Err`
 pub type AnyResult<T> = std::result::Result<T, AnyError>;
 
-impl PsuedoError for AnyError {
+impl PseudoError for AnyError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         std::error::Error::source(self.get())
     }
@@ -94,7 +94,7 @@ impl PsuedoError for AnyError {
 
 /// An error type which does not implement [std::error::Error] to avoid conflicting [From]
 /// implementations, but can be costlessly converted to one when needed.
-pub trait PsuedoError: fmt::Debug + fmt::Display {
+pub trait PseudoError: fmt::Debug + fmt::Display {
     /// Equivalent to [std::error::Error::source]
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)>;
 
@@ -130,15 +130,15 @@ impl<E: ?Sized> ImplError<E> {
     }
 }
 
-impl<E: PsuedoError> fmt::Display for ImplError<E> {
+impl<E: PseudoError> fmt::Display for ImplError<E> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Display::fmt(&self.0, f)
     }
 }
 
-impl<E: PsuedoError> std::error::Error for ImplError<E> {
+impl<E: PseudoError> std::error::Error for ImplError<E> {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        PsuedoError::source(&self.0)
+        PseudoError::source(&self.0)
     }
 }
 
@@ -148,7 +148,7 @@ pub(crate) struct RecoverableError<E> {
     pub recovery_error: Option<Box<action::Error>>,
 }
 
-impl<E: PsuedoError + 'static> ops::Deref for RecoverableError<E> {
+impl<E: PseudoError + 'static> ops::Deref for RecoverableError<E> {
     type Target = dyn std::error::Error;
 
     fn deref(&self) -> &Self::Target {
@@ -212,7 +212,7 @@ impl<E> RecoverableError<E> {
 
     pub(crate) fn into_error(self) -> RecoverableError<ImplError<E>>
     where
-        E: PsuedoError,
+        E: PseudoError,
     {
         let Self {
             initial_error,

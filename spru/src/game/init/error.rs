@@ -2,7 +2,7 @@ use std::{any, fmt, ops};
 
 use crate::{
     action,
-    common::error::{AnyError, PsuedoError},
+    common::error::{AnyError, PseudoError},
     game,
     item::storage,
 };
@@ -81,7 +81,7 @@ impl fmt::Display for Error {
     }
 }
 
-impl PsuedoError for Error {
+impl PseudoError for Error {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match &self.kind {
             Kind::Action(e) => std::error::Error::source(e.as_error()),

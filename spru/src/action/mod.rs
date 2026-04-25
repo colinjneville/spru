@@ -141,7 +141,7 @@ pub trait SubAction {
     for<VAR> VAR:
         crate::action::SubAction<Undo: Into<Self>>,
 ))]
-pub trait Action: Sized {
+pub trait Action: Sized + 'static {
     /// The type of item this action applies to
     type State: crate::State;
 

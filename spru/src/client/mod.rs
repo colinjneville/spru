@@ -11,7 +11,7 @@ use crate::{
     Transaction,
     common::{
         self,
-        error::{FatalError, PsuedoError},
+        error::{FatalError, PseudoError},
     },
     game, interaction, interactor, item, player,
 };
@@ -293,7 +293,7 @@ where
                 error::StageInteractionError::Interaction(re.initial_error)
             } else {
                 error::StageInteractionError::Fatal(self.inner.error_state.make_fatal()(
-                    re.map_with(PsuedoError::into_error),
+                    re.map_with(PseudoError::into_error),
                 ))
             }
         })?;
@@ -364,7 +364,7 @@ where
             .inner
             .log
             .revert_pending(storage, pending_interaction_id, false)
-            .map_err(PsuedoError::into_error)
+            .map_err(PseudoError::into_error)
             .map_err(self.inner.error_state.make_fatal())?;
 
         tracing::info!(name: "revert_interactions_success", "revert_interactions succeeded");
@@ -457,7 +457,7 @@ where
             self.inner
                 .log
                 .revert_pending(storage, None, true)
-                .map_err(PsuedoError::into_error)
+                .map_err(PseudoError::into_error)
                 .map_err(self.inner.error_state.make_fatal())?;
         }
 

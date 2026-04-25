@@ -20,7 +20,7 @@ spru-util = { version = "0.1", path = "./spru-util" }
 spru-bevy = { version = "0.1", path = "./spru-bevy" }
 
 telety = "0.4"
-tagset = "0.1.2"
+tagset = "0.1.3"
 
 halfbrown = { version = "0.3.0", features = ["serde"] }
 thiserror = "2.0.12"

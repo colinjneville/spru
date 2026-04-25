@@ -76,32 +76,78 @@ impl<Action> ItemStatus<Action> {
         }
     }
 
-    fn update_immediate<'l, Storage, Update>(
-        &mut self,
-        id: item::Id,
-        storage: &'l mut Storage,
-        update: Update,
-    ) -> action::Result<&'l Update::T>
-    where
-        Storage: item::Storage,
-        Action: crate::Action<State = Storage::State>,
-        Update: Into<Action>
-            + action::Update<T: item::storage::Storable<Storage::State>, Undo: Into<Action>>,
-    {
-        self.flush(id, storage)?;
+    // fn create_immediate<'l, Storage, Create>(
+    //     &mut self,
+    //     id: item::Id,
+    //     storage: &'l mut Storage,
+    //     create: Create,
+    // ) -> action::Result<Self>
+    // where
+    //     Storage: item::Storage,
+    //     Action: crate::Action<State = Storage::State>,
+    //     Create: Into<Action> + action::Create<T: item::storage::Storable<Storage::State>, Undo: Into<Action>>,
+    // {
+    //     let mut this = Self::pending();
+        
+    //     let context = action::Context::new(storage, id, this.version_change());
+    //     let undo = context.create(&create)?;
+    //     if let Some(undo) = undo {
+    //         this.flushed_do.push(create.into());
+    //         this.flushed_undo.push(undo.into());
+    //     }
 
-        let context = action::Context::new(storage, id, self.version_change());
-        let undo = context.update(&update)?;
-        if let Some(undo) = undo {
-            self.flushed_do.push(update.into());
-            self.flushed_undo.push(undo.into());
-        }
+    //     Ok(this)
+    // }
 
-        let item = storage
-            .get::<Update::T>(id.force_type())
-            .expect("Item must still exist");
-        Ok(item.get())
-    }
+    // fn update_immediate<'l, Storage, Update>(
+    //     &mut self,
+    //     id: item::Id,
+    //     storage: &'l mut Storage,
+    //     update: Update,
+    // ) -> action::Result<&'l Update::T>
+    // where
+    //     Storage: item::Storage,
+    //     Action: crate::Action<State = Storage::State>,
+    //     Update: Into<Action>
+    //         + action::Update<T: item::storage::Storable<Storage::State>, Undo: Into<Action>>,
+    // {
+    //     self.flush(id, storage)?;
+
+    //     let context = action::Context::new(storage, id, self.version_change());
+    //     let undo = context.update(&update)?;
+    //     if let Some(undo) = undo {
+    //         self.flushed_do.push(update.into());
+    //         self.flushed_undo.push(undo.into());
+    //     }
+
+    //     let item = storage
+    //         .get::<Update::T>(id.force_type())
+    //         .expect("Item must still exist");
+    //     Ok(item.get())
+    // }
+
+    // fn destroy_immediate<'l, Storage, Destroy>(
+    //     &mut self,
+    //     id: item::Id,
+    //     storage: &'l mut Storage,
+    //     destroy: Destroy,
+    // ) -> action::Result<()>
+    // where
+    //     Storage: item::Storage,
+    //     Action: crate::Action<State = Storage::State>,
+    //     Destroy: Into<Action> + action::Destroy<T: item::storage::Storable<Storage::State>, Undo: Into<Action>>,
+    // {
+    //     self.flush(id, storage)?;
+
+    //     let context = action::Context::new(storage, id, self.version_change());
+    //     let undo = context.destroy(&destroy)?;
+    //     if let Some(undo) = undo {
+    //         self.flushed_do.push(destroy.into());
+    //         self.flushed_undo.push(undo.into());
+    //     }
+
+    //     Ok(())
+    // }
 
     fn flush<Storage>(&mut self, id: item::Id, storage: &mut Storage) -> action::Result<()>
     where
@@ -206,24 +252,42 @@ impl<Action> ItemsStatus<Action> {
             .enqueue(action);
     }
 
-    fn update_immediate<'l, Storage, Update>(
-        &mut self,
-        id: item::Id,
-        storage: &'l mut Storage,
-        update: Update,
-    ) -> action::Result<&'l Update::T>
-    where
-        Storage: item::Storage,
-        Action: crate::Action<State = Storage::State>,
-        Update: Into<Action>
-            + action::Update<T: item::storage::Storable<Storage::State>, Undo: Into<Action>>,
-    {
-        self.items
-            .borrow_mut()
-            .get_mut(&id)
-            .expect("id must be added as read first")
-            .update_immediate(id, storage, update)
-    }
+    // fn create_immediate<'l, Storage, Create>(
+    //     &mut self,
+    //     id: item::Id,
+    //     storage: &'l mut Storage,
+    //     create: Create,
+    // ) -> action::Result<&'l Create::T>
+    // where
+    //     Storage: item::Storage,
+    //     Action: crate::Action<State = Storage::State>,
+    //     Create: Into<Action> + action::Create<T: item::storage::Storable<Storage::State>, Undo: Into<Action>>,
+    // {
+    //     self.items
+    //         .borrow_mut()
+    //         .entry(id)
+    //         .or_insert_with(|| ItemStatus::pending())
+    //         .create_immediate(id, storage, create)
+    // }
+
+    // fn update_immediate<'l, Storage, Update>(
+    //     &mut self,
+    //     id: item::Id,
+    //     storage: &'l mut Storage,
+    //     update: Update,
+    // ) -> action::Result<&'l Update::T>
+    // where
+    //     Storage: item::Storage,
+    //     Action: crate::Action<State = Storage::State>,
+    //     Update: Into<Action>
+    //         + action::Update<T: item::storage::Storable<Storage::State>, Undo: Into<Action>>,
+    // {
+    //     self.items
+    //         .borrow_mut()
+    //         .get_mut(&id)
+    //         .expect("id must be added as read first")
+    //         .update_immediate(id, storage, update)
+    // }
 
     fn flush<Storage>(&mut self, storage: &mut Storage) -> action::Result<()>
     where
@@ -272,15 +336,20 @@ impl<Action> ItemsStatus<Action> {
     }
 }
 
+/// A subcomponent of [Interactor] responsible for recording [Item] reads and writes.
+/// Normally, you do not need to use this directly, but in advanced scenarios, this 
+/// provides a common interface between all [Interactor] types in a single game (i.e.
+/// no Context or Output type parameters).
 #[derive(Debug)]
-struct Inner<'l, Storage, Action> {
+pub struct Ledger<'l, Storage, Action> {
     storage: &'l mut Storage,
     items_status: ItemsStatus<Action>,
     reservation: &'l item::id::Reservation,
 }
 
-impl<'l, Storage, Action> Inner<'l, Storage, Action> {
-    fn get<T>(&self, id: IdT<T>) -> storage::Result<Existing<'_, Storage, Action, T>>
+impl<'l, Storage, Action> Ledger<'l, Storage, Action> {
+    /// See [Interactor::get].
+    pub fn get<T>(&self, id: IdT<T>) -> storage::Result<Existing<'_, Storage, Action, T>>
     where
         Storage: item::Storage,
         T: item::storage::Storable<Storage::State>,
@@ -292,6 +361,50 @@ impl<'l, Storage, Action> Inner<'l, Storage, Action> {
         Ok(Existing { inner: self, item })
     }
 }
+
+
+#[cfg(feature = "test-util")]
+pub mod test_util {
+    use super::*;
+
+    #[derive(Debug)]
+    pub struct TestInteractor<Storage> {
+        storage: Storage,
+        reservation: item::id::Reservation,
+    }
+
+    impl<Storage> TestInteractor<Storage> {
+        pub fn new(storage: Storage) -> Self {
+            Self {
+                storage,
+                reservation: item::id::Reservation::all(),
+            }
+        }
+
+        pub fn interactor<Action, Root>(&mut self, root: Root) -> Interactor<'_, Storage, Action, TestContext<Root>, ()> {
+            let ledger = Ledger {
+                storage: &mut self.storage,
+                items_status: Default::default(),
+                reservation: &self.reservation,
+            };
+            Interactor { ledger, context: TestContext { root }, output: RefCell::new(()) }
+        }
+    }
+
+    #[derive(Debug)]
+    pub struct TestContext<Root> {
+        root: Root,
+    }
+
+    impl<Root> GetRoot for TestContext<Root> {
+        type Root = Root;
+    
+        fn get_root(&self) -> &Self::Root {
+            &self.root
+        }
+    }
+}
+
 
 /// The interface all modifications of the game state go through.  
 ///
@@ -321,7 +434,7 @@ impl<'l, Storage, Action> Inner<'l, Storage, Action> {
 /// all the preceding triggering Interactors will be reverted automatically.
 #[derive(Debug)]
 pub struct Interactor<'l, Storage, Action, Context, Output> {
-    inner: Inner<'l, Storage, Action>,
+    ledger: Ledger<'l, Storage, Action>,
     context: Context,
     output: RefCell<Output>,
 }
@@ -336,7 +449,7 @@ impl<'l, Storage, Action, Context, Output> Interactor<'l, Storage, Action, Conte
         Output: Default,
     {
         Self {
-            inner: Inner {
+            ledger: Ledger {
                 storage,
                 items_status: ItemsStatus::default(),
                 reservation,
@@ -344,6 +457,11 @@ impl<'l, Storage, Action, Context, Output> Interactor<'l, Storage, Action, Conte
             context,
             output: RefCell::new(Output::default()),
         }
+    }
+
+    /// Direct access to the [Ledger]. Only needed in rare cases to minimize type parameters.
+    pub fn ledger(&self) -> &Ledger<'l, Storage, Action> {
+        &self.ledger
     }
 
     /// Extra context available to this Interactor
@@ -365,27 +483,35 @@ impl<'l, Storage, Action, Context, Output> Interactor<'l, Storage, Action, Conte
         Create: Into<Action> + action::Create,
     {
         let item_id = self
-            .inner
+            .ledger
             .reservation
             .claim_id()
             .unwrap_or_else(|| unimplemented!("Out of ids"));
-        self.inner
+        self.ledger
             .items_status
             .enqueue_create(item_id, create.into());
 
         Pending {
-            inner: &self.inner,
+            inner: &self.ledger,
             item_id: item_id.force_type(),
         }
     }
 
-    /// Storage an existing item by id. Returns an error if the item does not exist.  
+    // TODO This is needed to simplify scripting bindings, but shouldn't be used manually.
+    #[doc(hidden)]
+    pub fn enqueue_action(&self, id: item::Id, action: Action) {
+        self.ledger
+        // `enqueue_create` is used to allow both Create and non-Create Actions
+            .items_status.enqueue_create(id, action);
+    }
+
+    /// Find an existing item by id. Returns an error if the item does not exist.  
     pub fn get<T>(&self, id: IdT<T>) -> storage::Result<Existing<'_, Storage, Action, T>>
     where
         Storage: item::Storage,
         T: item::storage::Storable<Storage::State>,
     {
-        self.inner.get(id)
+        self.ledger.get(id)
     }
 
     /// Gets the [Common::Root](crate::Common::Root) object.
@@ -406,26 +532,6 @@ impl<'l, Storage, Action, Context, Output> Interactor<'l, Storage, Action, Conte
     {
         let root_id = *self.context.get_root();
         self.get(root_id)
-    }
-
-    // TODO this isn't well-tested yet
-    #[doc(hidden)]
-    pub fn update_immediate<Update>(
-        &mut self,
-        update: WithUpdate<Update::T, Update>,
-    ) -> action::Result<&Update::T>
-    where
-        Storage: item::Storage,
-        Action: crate::Action<State = Storage::State>,
-        Update: Into<Action>
-            + action::Update<T: item::storage::Storable<Storage::State>, Undo: Into<Action>>,
-    {
-        let WithUpdate { id, update } = update;
-
-        self.flush()?;
-        self.inner
-            .items_status
-            .update_immediate(id.untyped(), self.inner.storage, update)
     }
 
     /// Enqueues a [Reaction](trait@crate::Reaction) with the given [Reaction::Trigger](crate::Reaction::Trigger).  
@@ -468,7 +574,7 @@ impl<'l, Storage, Action, Context, Output> Interactor<'l, Storage, Action, Conte
         Action: crate::Action<State = Storage::State>,
         Storage: item::Storage,
     {
-        self.inner.items_status.flush(self.inner.storage)
+        self.ledger.items_status.flush(self.ledger.storage)
     }
 
     pub(crate) fn revert<E>(self, err: E) -> RecoverableError<E>
@@ -477,7 +583,7 @@ impl<'l, Storage, Action, Context, Output> Interactor<'l, Storage, Action, Conte
         Storage: item::Storage,
     {
         let mut recoverable_error = RecoverableError::new(err);
-        if let Err(recovery_err) = self.inner.items_status.revert(self.inner.storage) {
+        if let Err(recovery_err) = self.ledger.items_status.revert(self.ledger.storage) {
             recoverable_error.set_recovery_error(recovery_err);
         }
 
@@ -507,8 +613,8 @@ impl<'l, Storage, Action, Context, Output> Interactor<'l, Storage, Action, Conte
     // Interactor must be flushed before calling `complete`
     fn complete_internal(self) -> Complete<Action, Context, Output> {
         let Self {
-            inner:
-                Inner {
+            ledger:
+                Ledger {
                     storage: _st,
                     items_status,
                     reservation: _reservation,
@@ -577,7 +683,7 @@ pub trait GetRoot {
 /// [Interactor::flush] is called.
 #[derive(Debug)]
 pub struct Pending<'i, Storage, Action, T> {
-    inner: &'i Inner<'i, Storage, Action>,
+    inner: &'i Ledger<'i, Storage, Action>,
     item_id: IdT<T>,
 }
 
@@ -602,7 +708,7 @@ impl<'i, Storage, Action, T> Pending<'i, Storage, Action, T> {
 /// An existing item.  
 #[derive(Debug)]
 pub struct Existing<'i, Storage, Action, T> {
-    inner: &'i Inner<'i, Storage, Action>,
+    inner: &'i Ledger<'i, Storage, Action>,
     item: &'i Item<T>,
 }
 
@@ -623,14 +729,14 @@ impl<'i, Storage, Action, T> Existing<'i, Storage, Action, T> {
         self
     }
 
-    // TODO this isn't well-tested yet
-    #[doc(hidden)]
-    pub fn update_immediate<Update>(self, update: Update) -> WithUpdate<T, Update> {
-        WithUpdate {
-            id: self.id(),
-            update,
-        }
-    }
+    // // TODO this isn't well-tested yet
+    // #[doc(hidden)]
+    // pub fn update_immediate<Update>(self, update: Update) -> WithUpdate<T, Update> {
+    //     WithUpdate {
+    //         id: self.id(),
+    //         update,
+    //     }
+    // }
 
     /// Destroy the item. See [action::Destroy].
     pub fn destroy<Destroy>(self, destroy: Destroy)
@@ -651,11 +757,11 @@ impl<'i, Storage, Action, T> ops::Deref for Existing<'i, Storage, Action, T> {
     }
 }
 
-// TODO this isn't well-tested yet
-#[doc(hidden)]
-#[must_use]
-#[derive(Debug)]
-pub struct WithUpdate<T, Update> {
-    id: IdT<T>,
-    update: Update,
-}
+// // TODO this isn't well-tested yet
+// #[doc(hidden)]
+// #[must_use]
+// #[derive(Debug)]
+// pub struct WithUpdate<T, Update> {
+//     id: IdT<T>,
+//     update: Update,
+// }

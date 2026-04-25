@@ -24,11 +24,17 @@ rand.workspace = true
 rand_chacha.workspace = true
 thiserror.workspace = true
 
-tracing.workspace = true
-
-rust-fsm = { workspace = true, optional = true }
 serde.workspace = true
 
+tracing.workspace = true
+
+# feature:fsm
+rust-fsm = { workspace = true, optional = true }
+
+# feature:lua
+mlua = { version = "0.11.6", optional = true, features = ["lua55", "vendored", "error-send"] }
+
 [features]
-default = ["fsm"]
+default = ["fsm", "lua"]
 fsm = ["dep:rust-fsm"]
+lua = ["dep:mlua"]

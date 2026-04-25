@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use spru::{common::error::{AnyError, PsuedoError as _}, interactor::with, item::IdT};
+use spru::{common::error::{AnyError, PseudoError as _}, interactor::with, item::IdT};
 use spru_util::{cloned, counter, fsm, pile, rotating};
 use tracing::instrument;
 
