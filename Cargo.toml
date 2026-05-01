@@ -5,6 +5,9 @@ members = [
 	"spru-bevy",
 	"spru-macro", 
 	"spru-quibbler", 
+    "spru-script",
+    "spru-script-lua",
+    "spru-script-macro",
 	"spru-test",
 	"spru-util",
 ]
@@ -18,6 +21,8 @@ spru-macro = { version = "0.1", path = "./spru-macro" }
 spru = { version = "0.1", path = "./spru" }
 spru-util = { version = "0.1", path = "./spru-util" }
 spru-bevy = { version = "0.1", path = "./spru-bevy" }
+spru-script-macro = { version = "0.1", path = "./spru-script-macro" }
+spru-script = { version = "0.1", path = "./spru-script" }
 
 telety = "0.4"
 tagset = "0.1.3"
@@ -25,6 +30,7 @@ tagset = "0.1.3"
 halfbrown = { version = "0.3.0", features = ["serde"] }
 thiserror = "2.0.12"
 anyhow = "1.0.100"
+append-only-vec = "0.1.8"
 
 derive_more = "1.0.0"
 derive-where = { version = "1.6.0", features = ["serde"] }

@@ -1,15 +1,16 @@
 [package]
-name = "spru-util"
+name = "spru-script-lua"
 version = "0.1.0"
 edition = "2024"
-description = "An experimental framework for building multiplayer strategy and digital board games."
+description = "A lua scripting implementation for the spru framework."
 license.workspace = true
 repository.workspace = true
 categories = ["game-development", "wasm"]
-keywords = ["gamedev", "framework", "game", "wasm"]
+keywords = ["gamedev", "framework", "game", "scripting", "lua"]
 
 [dev-dependencies]
 spru = { workspace = true, features = ["test-util"] }
+spru-util.workspace = true
 
 [dependencies]
 spru.workspace = true
@@ -20,18 +21,14 @@ tagset.workspace = true
 telety.workspace = true
 
 derive-where.workspace = true
-num-traits.workspace = true
-rand.workspace = true
-rand_chacha.workspace = true
-thiserror.workspace = true
+
+mlua = { version = "0.11.6", features = ["lua55", "vendored", "error-send", "send"] }
+
+append-only-vec.workspace = true
 
 serde.workspace = true
 
 tracing.workspace = true
 
-# feature:fsm
-rust-fsm = { workspace = true, optional = true }
-
 [features]
-default = ["fsm"]
-fsm = ["dep:rust-fsm"]
+default = []

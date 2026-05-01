@@ -1,15 +1,21 @@
 use std::marker::PhantomData;
 
-#[derive(Debug, Clone)]
+use spru_script::Language as _;
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Interaction<State, Action, Root, Trigger> {
-    script: super::Script,
+    script: String,
+    #[serde(default, skip)]
+    #[serde(bound(deserialize = "State: 'static, Action: 'static"))]
+    lua: crate::Lua<State, Action>,
     _p: PhantomData<(State, Action, Root, Trigger)>,
 }
 
-impl<State, Action, Root, Trigger> Interaction<State, Action, Root, Trigger> {
-    pub fn new(script: super::Script) -> Self {
+impl<State: 'static, Action: 'static, Root, Trigger> Interaction<State, Action, Root, Trigger> {
+    pub fn new(script: String) -> Self {
         Self {
             script,
+            lua: crate::Lua::new(),
             _p: PhantomData,
         }
     }
@@ -17,9 +23,9 @@ impl<State, Action, Root, Trigger> Interaction<State, Action, Root, Trigger> {
 
 impl<State, Action, Root, Trigger> spru::Interaction for Interaction<State, Action, Root, Trigger>
 where 
-    State: crate::scripting::ScriptableState<Action, super::Registry>,
+    State: spru_script::ScriptableState<Action, super::Registry>,
     Action: spru::Action<State = State> + 'static,
-    Root: super::IntoLua + 'static,
+    Root: super::IntoLua + Clone + 'static,
     Trigger: mlua::FromLua,
 {
     type State = State;
@@ -32,7 +38,7 @@ where
     where 
         Storage: spru::item::Storage<State = Self::State>
     {
-        let output: mlua::Value = self.script.exec(interactor)
+        let output: mlua::Value = self.lua.exec(interactor, &self.script)
             .map_err(spru::interaction::Error::from)?;
 
         println!("{output:?}");

@@ -27,7 +27,7 @@ use crate::{common, item};
 #[telety::telety(crate::state, alias_traits = "always")]
 #[tagset_meta]
 #[meta(bounds(for<VAR> Self: tagset::TagSetDiscriminant<VAR>))]
-pub trait State: tagset::TagSet<Repr: Clone + Eq + std::hash::Hash> + Sized {
+pub trait State: tagset::TagSet<Repr: Clone + Eq + std::hash::Hash> + Sized + 'static {
     #[doc(hidden)]
     #[meta(default {
         match_by_discriminant!(index, T => item.cast::<Storage, T>(storage))

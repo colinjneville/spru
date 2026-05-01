@@ -8,7 +8,6 @@ pub mod fsm;
 pub mod pile;
 pub mod player_map;
 pub mod rotating;
-pub mod scripting;
 pub mod storage;
 mod strictness;
 pub use strictness::Strictness;

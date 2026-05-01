@@ -32,8 +32,8 @@ mod registration;
 use registration::{Registration, RegistrationType};
 pub mod registry;
 use registry::Registry;
-pub mod script;
-pub use script::Script;
+// pub mod script;
+// pub use script::Script;
 
 use spru::item::IdT;
 
@@ -95,6 +95,59 @@ impl<T: 'static> IntoLua for IdT<T> {
     }
 }
 
+pub trait FromLua: Sized {
+    fn from_lua(value: mlua::Value, lua: &mlua::Lua) -> mlua::Result<Self>;
+}
+
+// Perhaps one day...
+// https://github.com/rust-lang/rfcs/issues/2758
+macro_rules! forward_from_lua {
+    ($(<>)? $($t:ty),+ $(,)?) => {
+        $(
+            impl FromLua for $t {
+                fn from_lua(value: mlua::Value, lua: &mlua::Lua) -> mlua::Result<Self> {
+                    mlua::FromLua::from_lua(value, lua)
+                }
+            }
+        )+
+    }
+}
+
+// https://docs.rs/mlua/latest/mlua/trait.FromLua.html#foreign-impls
+forward_from_lua! {
+    bool,
+    char,
+    f32,
+    f64,
+    i8,
+    i16,
+    i32,
+    i64,
+    i128,
+    isize,
+    u8,
+    u16,
+    u32,
+    u64,
+    u128,
+    usize,
+    Box<str>,
+    std::ffi::CString,
+    String,
+    std::ffi::OsString,
+    std::path::PathBuf,
+}
+
+// TODO generic impls
+
+impl<T: 'static> FromLua for IdT<T> {
+    fn from_lua(value: mlua::Value, lua: &mlua::Lua) -> mlua::Result<Self> {
+        let aud = <mlua::AnyUserData as mlua::FromLua>::from_lua(value, lua)?;
+        let idt = *aud.borrow::<Self>()?;
+        Ok(idt)
+    }
+}
+
 #[cfg(test)]
 
 mod test {
@@ -102,20 +155,29 @@ mod test {
 
     use spru::item::IdT;
 
-    use crate::scripting::{self, lua};
+    use spru_util::cloned;
 
     #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-    struct X {
-        a: i32,
+    struct X<T> {
+        a: T,
         // b: IdT<X>,
     }
 
-    impl<State, Action, Registry> scripting::ScriptableType<State, Action, Registry> for X
+    impl<T: Copy + 'static, State, Action, Registry> spru_script::ScriptableType<State, Action, Registry> for X<T>
     where 
         State: spru::State,
-        Action: spru::Action,
+        Action: spru::Action +
+            From<cloned::Create<Self>> +
+            From<cloned::Update<Self>> +
+            From<cloned::Destroy<Self>> +
+            ,
         Registry: 
-            scripting::RegistryGetter<State, Action, Self, i32>,
+            spru_script::RegistryCreate<State, Action, cloned::Create<Self>, Self, T> +
+            spru_script::RegistryGetter<State, Action, Self, T> +
+            spru_script::RegistrySetter<State, Action, Self, T> +
+            spru_script::RegistryMethod<State, Action, Self, T, T> +
+            spru_script::RegistryMethod<State, Action, Self, (), ()> +
+            ,
     {
         fn register<Storage>(registry: &Registry, registration: &mut Registry::MemberRegistration<'_, Storage, Self>)
              -> Result<(), Registry::Error> 
@@ -123,21 +185,39 @@ mod test {
             Storage: spru::item::Storage<State = State>,
         {
             registry.register_get(registration, "a", |this| this.a)?;
+            registry.register_set(registration, "a", |_this, value| vec![cloned::update(X { a: value }).into()])?;
+            // registry.register_method(registration, "multiplier", |this, args| {
+            //     let product = this.a * args;
+            //     (product, vec![cloned::update(X { a: product}).into()])
+            // })?;
+            registry.register_method(registration, "delete", |_this, ()| {
+                ((), vec![cloned::destroy().into()])
+            })?;
+            registry.register_create(registration, "new", |args| {
+                cloned::create(X { a: args })
+            })?;
             Ok(())
         }
     }
 
     #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
     struct Y {
-        b: IdT<X>,
+        b: IdT<X<i32>>,
+        c: IdT<X<i64>>,
     }
 
-    impl<State, Action, Registry> scripting::ScriptableType<State, Action, Registry> for Y
+    impl<State, Action, Registry> spru_script::ScriptableType<State, Action, Registry> for Y
     where 
         State: spru::State,
-        Action: spru::Action,
+        Action: spru::Action +
+            From<cloned::Update<Y>> +
+            ,
         Registry: 
-            scripting::RegistryGetter<State, Action, Self, IdT<X>>,
+            spru_script::RegistryGetter<State, Action, Self, IdT<X<i32>>> +
+            spru_script::RegistrySetter<State, Action, Self, IdT<X<i32>>> +
+            spru_script::RegistryGetter<State, Action, Self, IdT<X<i64>>> +
+            spru_script::RegistrySetter<State, Action, Self, IdT<X<i64>>> +
+            ,
     {
         fn register<Storage>(registry: &Registry, registration: &mut Registry::MemberRegistration<'_, Storage, Self>) 
             -> Result<(), Registry::Error> 
@@ -145,6 +225,9 @@ mod test {
             Storage: spru::item::Storage<State = State>,
         {
             registry.register_get(registration, "b", |this| this.b)?;
+            registry.register_set(registration, "b", |this, value| vec![cloned::update(Self {b: value, .. this.clone() }).into()])?;
+            registry.register_get(registration, "c", |this| this.c)?;
+            registry.register_set(registration, "c", |this, value| vec![cloned::update(Self {c: value, .. this.clone() }).into()])?;
             Ok(())
         }
     }
@@ -153,9 +236,10 @@ mod test {
     #[tagset(impl<'de> tagset::serde::DeserializeFromDiscriminant<'de>)]
     #[tagset(impl<'de> tagset::proxy::serde::Deserialize<'de>)]
     #[tagset(impl spru::State)]
-    #[tagset(impl<Action, Registry> scripting::ScriptableState<Action, Registry>)]
+    #[tagset(impl<Action, Registry> spru_script::ScriptableState<Action, Registry>)]
     #[tagset(derive(Debug))]
-    #[tagset(X)]
+    #[tagset(X<i32>)]
+    #[tagset(X<i64>)]
     #[tagset(Y)]
     struct MyState;
 
@@ -166,16 +250,19 @@ mod test {
     #[tagset(impl<'de> tagset::serde::DeserializeFromDiscriminant<'de>)]
     #[tagset(impl<'de> tagset::proxy::serde::Deserialize<'de>)]
     #[tagset(derive(Debug, Clone))]
-    #[tagset(include(crate::cloned::Actions<X>))]
-    #[tagset(include(crate::cloned::Actions<Y>))]
+    #[tagset(include(cloned::Actions<X<i32>>))]
+    #[tagset(include(cloned::Actions<X<i64>>))] 
+    #[tagset(include(cloned::Actions<Y>))]
     struct MyAction;
 
 
     #[test]
     fn register_type() {
-        let storage = crate::storage::Standalone::<MyState>::new();
+        use spru_script::Language as _;
 
-        let lua = lua::Lua::new();
+        let storage = spru_util::storage::Standalone::<MyState>::new();
+
+        let lua = crate::Lua::<MyState, MyAction>::new();
 
         // let game_init = game_init::GameInit::new(lua.script("
         //     root.b.a
@@ -184,10 +271,12 @@ mod test {
         let mut test_interactor = spru::interactor::test_util::TestInteractor::new(storage);
 
         let mut interactor = test_interactor.interactor::<MyAction, _>(());
-        let x = interactor
-            .create(crate::cloned::create(X { a: 3 }));
+        let x32 = interactor
+            .create(cloned::create(X { a: 3i32 }));
+        let x64 = interactor
+            .create(cloned::create(X { a: 4i64 }));
         let y = interactor
-            .create(crate::cloned::create(Y { b: x.id() }));
+            .create(cloned::create(Y { b: x32.id(), c: x64.id() }));
         let root = y.id();
 
         interactor.flush().unwrap();
@@ -204,20 +293,42 @@ mod test {
 
         // let mut interactor = test_interactor.interactor::<MyAction, _>(());
         // let x = interactor
-        //     .create(crate::cloned::create(X { a: 3 }));
+        //     .create(cloned::create(X { a: 3 }));
         // let y = interactor
-        //     .create(crate::cloned::create(Y { b: x.id() }));
+        //     .create(cloned::create(Y { b: x.id() }));
         // let root = y.id();
 
         // interactor.flush().unwrap();
         
         // let lua = Instance::new();
 
-        let script = lua.script("root.b.a");
-        let interactor = test_interactor.interactor::<MyAction, _>(root);
-        let value: mlua::Value = script.exec(&interactor).unwrap();
+        let script = "
+            local c = root.b:multiplier(4)
+            root.b:multiplier(c)
+            return root.b.a
+        ";
 
-        // assert_eq!(value.as_integer().unwrap(), 3);
+        let script = "
+            local x2 = X[i32].new(5)
+            root.b = x2
+            print(root.b:exists())
+            root.b:delete()
+            print(root.b:exists())
+            return 5
+        ";
+
+        let mut interactor = test_interactor.interactor::<MyAction, _>(root);
+        let value: mlua::Value = lua.exec(&mut interactor, script).unwrap();
+
+        // let script2 = lua.script("
+        //     return root.b.a
+        // ");
+
+        // let value2: mlua::Value = script2.exec(&mut interactor).unwrap();
+        println!("{}", value.as_integer().unwrap());
+
+        // assert_eq!(value.as_integer().unwrap(), (3 * 4) * (3 * 4));
+        assert_eq!(value.as_integer().unwrap(), 5);
     }
 
     

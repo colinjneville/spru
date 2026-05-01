@@ -25,7 +25,9 @@ use std::{
 pub struct Id(u32);
 
 impl Id {
-    pub(crate) fn force_type<T>(self) -> IdT<T> {
+    // TODO Currently required by scripting
+    #[doc(hidden)]
+    pub fn force_type<T>(self) -> IdT<T> {
         IdT::new(self)
     }
 }

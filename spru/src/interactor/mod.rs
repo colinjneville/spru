@@ -360,6 +360,36 @@ impl<'l, Storage, Action> Ledger<'l, Storage, Action> {
 
         Ok(Existing { inner: self, item })
     }
+
+    // TODO This is needed to simplify scripting bindings, but shouldn't be used manually,
+    // because it does not enforce the Action is actually Create<T>.
+    #[doc(hidden)]
+    pub fn enqueue_create(&self, create: Action) -> item::Id {
+        let item_id = self
+            .reservation
+            .claim_id()
+            .unwrap_or_else(|| unimplemented!("Out of ids"));
+        self.items_status
+            .enqueue_create(item_id, create);
+
+        item_id
+    }
+
+    // TODO This is needed to simplify scripting bindings, but shouldn't be used manually.
+    #[doc(hidden)]
+    pub fn enqueue_action(&self, id: item::Id, action: Action) {
+        // `enqueue_create` is used to allow both Create and non-Create Actions
+        self.items_status.enqueue_create(id, action);
+    }
+
+    /// See [Interactor::flush].
+    pub fn flush(&mut self) -> action::Result<()>
+    where
+        Action: crate::Action<State = Storage::State>,
+        Storage: item::Storage,
+    {
+        self.items_status.flush(self.storage)
+    }
 }
 
 
@@ -405,6 +435,14 @@ pub mod test_util {
     }
 }
 
+// TODO Allow split borrows on parts of the Interactor, but may be exposing more than desired.
+#[doc(hidden)]
+#[derive(Debug)]
+pub struct SplitMut<'l, 's, Storage, Action, Context, Output> {
+    pub ledger: &'s mut Ledger<'l, Storage, Action>,
+    pub context: &'s mut Context,
+    pub output: &'s mut Output,
+}
 
 /// The interface all modifications of the game state go through.  
 ///
@@ -464,6 +502,26 @@ impl<'l, Storage, Action, Context, Output> Interactor<'l, Storage, Action, Conte
         &self.ledger
     }
 
+    /// Direct access to the [Ledger]. Only needed in rare cases to minimize type parameters.
+    pub fn ledger_mut(&mut self) -> &mut Ledger<'l, Storage, Action> {
+        &mut self.ledger
+    }
+
+    #[doc(hidden)]
+    pub fn split_mut(&mut self) -> SplitMut<'l, '_, Storage, Action, Context, Output> {
+        let Self {
+            ledger,
+            context,
+            output,
+        } = self;
+
+        SplitMut {
+            ledger,
+            context,
+            output: output.get_mut(),
+        }
+    }
+
     /// Extra context available to this Interactor
     pub fn context(&self) -> &Context {
         &self.context
@@ -495,14 +553,6 @@ impl<'l, Storage, Action, Context, Output> Interactor<'l, Storage, Action, Conte
             inner: &self.ledger,
             item_id: item_id.force_type(),
         }
-    }
-
-    // TODO This is needed to simplify scripting bindings, but shouldn't be used manually.
-    #[doc(hidden)]
-    pub fn enqueue_action(&self, id: item::Id, action: Action) {
-        self.ledger
-        // `enqueue_create` is used to allow both Create and non-Create Actions
-            .items_status.enqueue_create(id, action);
     }
 
     /// Find an existing item by id. Returns an error if the item does not exist.  
@@ -574,7 +624,7 @@ impl<'l, Storage, Action, Context, Output> Interactor<'l, Storage, Action, Conte
         Action: crate::Action<State = Storage::State>,
         Storage: item::Storage,
     {
-        self.ledger.items_status.flush(self.ledger.storage)
+        self.ledger.flush()
     }
 
     pub(crate) fn revert<E>(self, err: E) -> RecoverableError<E>
