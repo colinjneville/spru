@@ -35,7 +35,7 @@ impl<State, Action, T> spru_script::RegistryType<State, Action, T> for Registry
 where
     State: spru::State,
     Action: spru::Action,
-    T: spru_script::ScriptableType<State, Action, Self>,
+    T: spru_script::ScriptableType<State, Action, Self, Type = T>,
     T: spru::item::storage::Storable<State> + 'static,
 {
     fn register_type<Storage>(
@@ -203,7 +203,6 @@ where
         Ok(())
     }
 }
-
 
 impl<State, Action, T: 'static, U> spru_script::RegistryGetter<State, Action, T, U> for Registry
 where 

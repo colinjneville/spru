@@ -10,11 +10,15 @@ use telety::telety;
 #[derive(Debug)]
 pub struct ScriptablePath(pub &'static [&'static str], pub &'static [Self]);
 
+/// Implements [ScriptableType] for the type. Apply to the struct definition and/or impl blocks.
+/// Apply `#[get]` and `#[set]` attributes to fields, and `#[get]`, `#[set]`, `#[method]`, and `#[create]`
+/// attributes to functions in an impl block.
+/// TODO further documentation
+pub use spru_script_macro::script;
+
 /// Parses a rust type path during macro expansion. Used for implementing [ScriptableState::register].
 /// Not normally needed for manual use.
 pub use spru_script_macro::scriptable_path;
-
-// const S: ScriptablePath = ScriptablePath(&["sadf", "ewrt", "cxvb"], &[ScriptablePath(&["i32"], &[])]);
 
 /// A [spru::State] with scripting support. Implement using the [tagset::tagset] macro.
 /// ```ignore
@@ -54,11 +58,14 @@ pub trait ScriptableType<State, Action, Registry: ?Sized>: Sized + 'static
 where
     Registry: self::Registry<State, Action>,
 {
+    /// The type being registered, usually `Self`
+    type Type;
+
     /// Registers members of this type with the scripting implementation.
     /// [ScriptRegistryGetter::register_get], etc. should be called for each field/method.
     fn register<Storage>(
         registry: &Registry, 
-        registration: &mut Registry::MemberRegistration<'_, Storage, Self>, 
+        registration: &mut Registry::MemberRegistration<'_, Storage, Self::Type>, 
     )
          -> Result<(), Registry::Error>
     where
@@ -155,7 +162,7 @@ pub trait RegistrySetter<State, Action, T, U>: Registry<State, Action> {
 /// Scripting implementations implement this for types they support as methods.
 pub trait RegistryMethod<State, Action, T, Args, Ret>: Registry<State, Action> {
     /// Register a method.
-    fn register_method<Storage>(&self, registration: &mut Self::MemberRegistration<'_, Storage, T>, ident: &str, setter: fn(&T, Args) -> (Ret, Vec<Action>)) 
+    fn register_method<Storage>(&self, registration: &mut Self::MemberRegistration<'_, Storage, T>, ident: &str, method: fn(&T, Args) -> (Ret, Vec<Action>)) 
         -> Result<(), Self::Error>
     where
         Storage: spru::item::Storage<State = State>,
@@ -169,9 +176,61 @@ where
     Create: spru::action::Create<T = T> + Into<Action>,
 {
     /// Register a constructor.
-    fn register_create<Storage>(&self, registration: &mut Self::MemberRegistration<'_, Storage, T>, ident: &str, setter: fn(Args) -> Create) 
+    fn register_create<Storage>(&self, registration: &mut Self::MemberRegistration<'_, Storage, T>, ident: &str, create: fn(Args) -> Create) 
         -> Result<(), Self::Error>
     where
         Storage: spru::item::Storage<State = State>,
     ;
 }
+
+mod private {
+    #[doc(hidden)]
+    pub trait Sealed { }
+}
+
+#[doc(hidden)]
+/// Used by [script] to allow returning multiple sub-Action types from methods.
+pub trait MethodReturn<Action> : private::Sealed {
+    type T;
+
+    fn convert(self) -> (Self::T, Vec<Action>);
+}
+
+macro_rules! tuple_method_return {
+    () => { };
+    ($n:tt $first:ident $($nn:tt $rest:ident)*) => {
+        impl<T, $first, $($rest),*> private::Sealed for (T, $first, $($rest),*) { }
+
+        impl<T, Action, $first, $($rest),*> MethodReturn<Action> for (T, $first, $($rest),*) 
+        where
+            $first: Into<Action>,
+            $($rest: Into<Action>),*
+        {
+            type T = T;
+
+            fn convert(self) -> (Self::T, Vec<Action>) {
+                let mut v = vec![
+                    self.$n.into(),
+                    $(self.$nn.into()),*
+                ];
+                
+                v.reverse();
+
+                (self.0, v)
+            }
+        }
+        tuple_method_return!($($nn $rest)*);
+    };
+}
+
+impl<T> private::Sealed for (T, ) { }
+
+impl<T, Action> MethodReturn<Action> for (T, ) {
+    type T = T;
+
+    fn convert(self) -> (Self::T, Vec<Action>) {
+        (self.0, vec![])
+    }
+}
+
+tuple_method_return!(16 P 15 O 14 N 13 M 12 L 11 K 10 J 9 I 8 H 7 G 6 F 5 E 4 D 3 C 2 B 1 A);

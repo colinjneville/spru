@@ -158,78 +158,36 @@ mod test {
     use spru_util::cloned;
 
     #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-    struct X<T> {
+    #[spru_script::script(include = [XFun])]
+    struct X<T: 'static> {
+        #[get]
+        #[set]
         a: T,
         // b: IdT<X>,
     }
 
-    impl<T: Copy + 'static, State, Action, Registry> spru_script::ScriptableType<State, Action, Registry> for X<T>
-    where 
-        State: spru::State,
-        Action: spru::Action +
-            From<cloned::Create<Self>> +
-            From<cloned::Update<Self>> +
-            From<cloned::Destroy<Self>> +
-            ,
-        Registry: 
-            spru_script::RegistryCreate<State, Action, cloned::Create<Self>, Self, T> +
-            spru_script::RegistryGetter<State, Action, Self, T> +
-            spru_script::RegistrySetter<State, Action, Self, T> +
-            spru_script::RegistryMethod<State, Action, Self, T, T> +
-            spru_script::RegistryMethod<State, Action, Self, (), ()> +
-            ,
-    {
-        fn register<Storage>(registry: &Registry, registration: &mut Registry::MemberRegistration<'_, Storage, Self>)
-             -> Result<(), Registry::Error> 
-        where
-            Storage: spru::item::Storage<State = State>,
-        {
-            registry.register_get(registration, "a", |this| this.a)?;
-            registry.register_set(registration, "a", |_this, value| vec![cloned::update(X { a: value }).into()])?;
-            // registry.register_method(registration, "multiplier", |this, args| {
-            //     let product = this.a * args;
-            //     (product, vec![cloned::update(X { a: product}).into()])
-            // })?;
-            registry.register_method(registration, "delete", |_this, ()| {
-                ((), vec![cloned::destroy().into()])
-            })?;
-            registry.register_create(registration, "new", |args| {
-                cloned::create(X { a: args })
-            })?;
-            Ok(())
+    #[spru_script::script(partial = XFun)]
+    impl<T> X<T> {
+        #[create]
+        fn new((value, _i): (T, i32)) -> spru_util::cloned::Create<X<T>> {
+            spru_util::cloned::create(Self { a: value })
+        }
+
+        #[method]
+        fn destroy(&self) -> ((), spru_util::cloned::Destroy<X<T>>) {
+            ((), spru_util::cloned::destroy())
         }
     }
 
     #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+    #[spru_script::script]
     struct Y {
+        #[get]
+        #[set]
         b: IdT<X<i32>>,
+        #[get]
+        #[set]
         c: IdT<X<i64>>,
-    }
-
-    impl<State, Action, Registry> spru_script::ScriptableType<State, Action, Registry> for Y
-    where 
-        State: spru::State,
-        Action: spru::Action +
-            From<cloned::Update<Y>> +
-            ,
-        Registry: 
-            spru_script::RegistryGetter<State, Action, Self, IdT<X<i32>>> +
-            spru_script::RegistrySetter<State, Action, Self, IdT<X<i32>>> +
-            spru_script::RegistryGetter<State, Action, Self, IdT<X<i64>>> +
-            spru_script::RegistrySetter<State, Action, Self, IdT<X<i64>>> +
-            ,
-    {
-        fn register<Storage>(registry: &Registry, registration: &mut Registry::MemberRegistration<'_, Storage, Self>) 
-            -> Result<(), Registry::Error> 
-        where
-            Storage: spru::item::Storage<State = State>,
-        {
-            registry.register_get(registration, "b", |this| this.b)?;
-            registry.register_set(registration, "b", |this, value| vec![cloned::update(Self {b: value, .. this.clone() }).into()])?;
-            registry.register_get(registration, "c", |this| this.c)?;
-            registry.register_set(registration, "c", |this, value| vec![cloned::update(Self {c: value, .. this.clone() }).into()])?;
-            Ok(())
-        }
     }
 
     #[tagset(impl tagset::proxy::serde::Serialize)]
@@ -309,12 +267,14 @@ mod test {
         ";
 
         let script = "
-            local x2 = X[i32].new(5)
+            local x2 = X[i32].new(5, 7)
             root.b = x2
+            print(root.b.a)
             print(root.b:exists())
-            root.b:delete()
+            local aa = root.b.a
+            root.b:destroy()
             print(root.b:exists())
-            return 5
+            return aa
         ";
 
         let mut interactor = test_interactor.interactor::<MyAction, _>(root);
