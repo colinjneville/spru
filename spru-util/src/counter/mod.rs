@@ -1,6 +1,7 @@
 mod range_type;
 pub use range_type::RangeType;
 use spru::common::error::AnyResult;
+use spru_script::script;
 
 use std::{
     cmp,
@@ -25,9 +26,53 @@ impl<T> CounterType for T where
 /// A numerical counter, for points, life totals, round numbers, etc.
 /// You can also apply minimum and/or maximum bounds.
 #[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
+#[script(include = [Methods])]
 pub struct Counter<T> {
+    #[get]
+    #[set]
     value: T,
     bounds: RangeType<T>,
+}
+
+#[script(partial = Methods)]
+impl<T> Counter<T>
+where 
+    T: CounterType + Ord + bounds::AddSigned + Default + 'static,
+{
+    #[create]
+    fn new(value: T) -> cloned::Create<Counter<T>> {
+        create(value)
+    }
+
+    // TODO how should bounds be handled in script?
+
+    #[create]
+    fn default() -> cloned::Create<Counter<T>> {
+        create(T::default())
+    }
+
+    #[method]
+    fn destroy(&self) -> ((), cloned::Destroy<Counter<T>>) {
+        ((), destroy())
+    }
+
+    #[method]
+    fn add_saturating(&self, value: T::Signed) -> (T, Add<T>) {
+        let add = add_saturating(value);
+        let sum = add.sum(self)
+            .ok()
+            .unwrap_or(self.value);
+        (sum, add)
+    }
+
+    #[method]
+    fn add_checked(&self, value: T::Signed) -> (T, Add<T>) {
+        let add = add_checked(value);
+        let sum = add.sum(self)
+            .ok()
+            .unwrap_or(self.value);
+        (sum, add)
+    }
 }
 
 impl<T: bounds::AddSigned> Counter<T> {

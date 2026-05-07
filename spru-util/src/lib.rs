@@ -4,7 +4,9 @@ pub mod bounds;
 pub mod cloned;
 pub mod counter;
 pub mod die;
+pub mod fail;
 pub mod fsm;
+pub mod maybe;
 pub mod pile;
 pub mod player_map;
 pub mod rotating;
@@ -15,3 +17,5 @@ pub use strictness::Strictness;
 pub(crate) type Rng = rand_chacha::ChaCha8Rng;
 
 pub use spru_macro::FromInfallible;
+
+extern crate self as spru_util;

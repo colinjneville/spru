@@ -84,7 +84,9 @@ impl super::ScriptImpl for ScriptGet {
         } = context;
 
         let field_ident = self.field_kind.field_ident()?;
-        let field_name = field_ident.to_string();
+        let field_name = self.name_override
+            .clone()
+            .unwrap_or_else(|| field_ident.to_string());
 
         let stmt = match &self.field_kind {
             FieldKind::Field(_field) => syn::parse_quote_spanned! { self.span =>

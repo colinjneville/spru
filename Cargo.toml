@@ -23,6 +23,7 @@ spru-util = { version = "0.1", path = "./spru-util" }
 spru-bevy = { version = "0.1", path = "./spru-bevy" }
 spru-script-macro = { version = "0.1", path = "./spru-script-macro" }
 spru-script = { version = "0.1", path = "./spru-script" }
+spru-script-lua = { version = "0.1", path = "./spru-script-lua" }
 
 telety = "0.4"
 tagset = "0.1.3"
@@ -44,6 +45,9 @@ rand_chacha = "0.9.0"
 rust-fsm = "0.8.0"
 
 uuid = { version = "1.18.1", features = [ "v4", "serde" ] }
+
+# scripting
+mlua = { version = "0.11.6", features = ["lua55", "vendored", "error-send", "send"] }
 
 # logging
 tracing = "0.1.41"

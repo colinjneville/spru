@@ -4,6 +4,7 @@ use std::marker::PhantomData;
 
 use derive_where::derive_where;
 use spru::common::error::AnyResult;
+use spru_script::script;
 use tagset::tagset;
 use telety::telety;
 
@@ -14,9 +15,43 @@ use crate::cloned;
 #[derive(Debug, Clone)]
 #[derive_where(Default)]
 #[derive(serde::Serialize, serde::Deserialize)]
+#[script(include = [Methods])]
 pub struct Rotating<T> {
+    #[get]
     items: Vec<T>,
+    #[get]
     position: usize,
+}
+
+#[script(partial = Methods)]
+impl<T: Clone + 'static> Rotating<T> {
+    #[create(name = new)]
+    fn _new(items: Vec<T>, position: usize) -> Create<T> {
+        cloned::create(Rotating {
+            items,
+            position,
+        })
+    }
+
+    #[method]
+    fn destroy(&self) -> ((), Destroy<T>) {
+        ((), cloned::destroy())
+    }
+
+    #[method(name = current)]
+    fn _current(&self) -> (Option<T>, ) {
+        (self.items.get(self.position).cloned(), )
+    }
+
+    #[get(name = len)]
+    fn _len(&self) -> usize {
+        self.items.len()
+    }
+
+    #[get(name = is_empty)]
+    fn _is_empty(&self) -> bool {
+        self.items.is_empty()
+    }
 }
 
 impl<T> Rotating<T> {

@@ -32,8 +32,6 @@ mod registration;
 use registration::{Registration, RegistrationType};
 pub mod registry;
 use registry::Registry;
-// pub mod script;
-// pub use script::Script;
 
 use spru::item::IdT;
 
@@ -44,9 +42,9 @@ pub trait IntoLua {
 // Perhaps one day...
 // https://github.com/rust-lang/rfcs/issues/2758
 macro_rules! forward_into_lua {
-    ($(<>)? $($t:ty),+ $(,)?) => {
+    ($( [$($generics:tt)*] $t:ty),+ $(,)?) => {
         $(
-            impl IntoLua for $t {
+            impl <$($generics)*> IntoLua for $t {
                 fn into_lua(self, lua: &mlua::Lua) -> mlua::Result<mlua::Value> {
                     mlua::IntoLua::into_lua(self, lua)
                 }
@@ -57,37 +55,47 @@ macro_rules! forward_into_lua {
 
 // https://docs.rs/mlua/latest/mlua/trait.IntoLua.html#foreign-impls
 forward_into_lua! {
-    &str,
-    &std::ffi::CStr,
-    &std::ffi::OsStr,
-    &std::path::Path,
-    // &BStr,
-    std::borrow::Cow<'_, str>,
-    std::borrow::Cow<'_, std::ffi::CStr>,
-    bool,
-    char,
-    f32,
-    f64,
-    i8,
-    i16,
-    i32,
-    i64,
-    i128,
-    isize,
-    u8,
-    u16,
-    u32,
-    u64,
-    u128,
-    usize,
-    Box<str>,
-    std::ffi::CString,
-    String,
-    std::ffi::OsString,
-    std::path::PathBuf,
+    [] &str,
+    [] &std::ffi::CStr,
+    [] &std::ffi::OsStr,
+    [] &std::path::Path,
+    // [] &BStr,
+    [] std::borrow::Cow<'_, str>,
+    [] std::borrow::Cow<'_, std::ffi::CStr>,
+    [] bool,
+    [] char,
+    [] f32,
+    [] f64,
+    [] i8,
+    [] i16,
+    [] i32,
+    [] i64,
+    [] i128,
+    [] isize,
+    [] u8,
+    [] u16,
+    [] u32,
+    [] u64,
+    [] u128,
+    [] usize,
+    [] Box<str>,
+    [] std::ffi::CString,
+    [] String,
+    [] std::ffi::OsString,
+    [] std::path::PathBuf,
+
+    [K: Eq + std::hash::Hash + mlua::IntoLua, V: mlua::IntoLua, S: std::hash::BuildHasher] std::collections::HashMap<K, V, S>,
+    [K: Ord + mlua::IntoLua, V: mlua::IntoLua] std::collections::BTreeMap<K, V>,
+    [T: Clone + mlua::IntoLua] &[T],
+    [T: mlua::IntoLua, const N: usize] [T; N],
+    [T: Eq + std::hash::Hash + mlua::IntoLua, S: std::hash::BuildHasher] std::collections::HashSet<T, S>,
+    [T: Ord + mlua::IntoLua] std::collections::BTreeSet<T>,
+    [T: mlua::IntoLua] Option<T>,
+    [T: mlua::IntoLua] Box<[T]>,
+    [T: mlua::IntoLua] Vec<T>,
 }
 
-// TODO generic impls
+// TODO https://docs.rs/mlua/latest/mlua/trait.IntoLua.html#implementors
 
 impl<T: 'static> IntoLua for IdT<T> {
     fn into_lua(self, lua: &mlua::Lua) -> mlua::Result<mlua::Value> {
@@ -102,9 +110,9 @@ pub trait FromLua: Sized {
 // Perhaps one day...
 // https://github.com/rust-lang/rfcs/issues/2758
 macro_rules! forward_from_lua {
-    ($(<>)? $($t:ty),+ $(,)?) => {
+    ($( [$($generics:tt)*] $t:ty),+ $(,)?) => {
         $(
-            impl FromLua for $t {
+            impl <$($generics)*> FromLua for $t {
                 fn from_lua(value: mlua::Value, lua: &mlua::Lua) -> mlua::Result<Self> {
                     mlua::FromLua::from_lua(value, lua)
                 }
@@ -115,30 +123,38 @@ macro_rules! forward_from_lua {
 
 // https://docs.rs/mlua/latest/mlua/trait.FromLua.html#foreign-impls
 forward_from_lua! {
-    bool,
-    char,
-    f32,
-    f64,
-    i8,
-    i16,
-    i32,
-    i64,
-    i128,
-    isize,
-    u8,
-    u16,
-    u32,
-    u64,
-    u128,
-    usize,
-    Box<str>,
-    std::ffi::CString,
-    String,
-    std::ffi::OsString,
-    std::path::PathBuf,
+    [] bool,
+    [] char,
+    [] f32,
+    [] f64,
+    [] i8,
+    [] i16,
+    [] i32,
+    [] i64,
+    [] i128,
+    [] isize,
+    [] u8,
+    [] u16,
+    [] u32,
+    [] u64,
+    [] u128,
+    [] usize,
+    [] Box<str>,
+    [] std::ffi::CString,
+    [] String,
+    [] std::ffi::OsString,
+    [] std::path::PathBuf,
+    [K: Eq + std::hash::Hash + mlua::FromLua, V: mlua::FromLua, S: std::hash::BuildHasher + Default] std::collections::HashMap<K, V, S>, 
+    [K: Ord + mlua::FromLua, V: mlua::FromLua] std::collections::BTreeMap<K, V>,
+    [T: mlua::FromLua, const N: usize] [T; N],
+    [T: Eq + std::hash::Hash + mlua::FromLua, S: std::hash::BuildHasher + Default] std::collections::HashSet<T, S>,
+    [T: Ord + mlua::FromLua] std::collections::BTreeSet<T>,
+    [T: mlua::FromLua] Option<T>,
+    [T: mlua::FromLua] Box<[T]>,
+    [T: mlua::FromLua] Vec<T>,
 }
 
-// TODO generic impls
+// TODO https://docs.rs/mlua/latest/mlua/trait.FromLua.html#implementors
 
 impl<T: 'static> FromLua for IdT<T> {
     fn from_lua(value: mlua::Value, lua: &mlua::Lua) -> mlua::Result<Self> {

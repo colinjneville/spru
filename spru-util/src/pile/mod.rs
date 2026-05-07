@@ -4,15 +4,164 @@ use std::{marker::PhantomData, mem, ops};
 
 use derive_where::derive_where;
 use spru::common::error::AnyResult;
+use spru_script::script;
 use tagset::tagset;
 use telety::telety;
 
-use crate::{Strictness, cloned};
+use crate::{Strictness, cloned, fail, maybe};
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[script(include = [Methods])]
 pub struct Pile<T> {
     /// front/top -> back/bottom
     items: FakeDeVec<T>,
+}
+
+#[script(partial = Methods)]
+impl<T: Clone + 'static> Pile<T> {
+    #[create]
+    fn default() -> Create<T> {
+        create(vec![])
+    }
+
+    #[create]
+    fn new(items: Vec<T>) -> Create<T> {
+        create(items)
+    }
+
+    #[method]
+    fn destroy(&self) -> ((), Destroy<T>) {
+        ((), destroy())
+    }
+
+    #[get(name = top)]
+    fn _top(&self) -> Option<T> {
+        self.top().cloned()
+    }
+
+    #[get(name = bottom)]
+    fn _bottom(&self) -> Option<T> {
+        self.bottom().cloned()
+    }
+
+    #[get]
+    fn items(&self) -> Vec<T> {
+        self.items.0.clone()
+    }
+
+    #[set(name = items)]
+    fn items_set(&self, items: Vec<T>) -> (Update<T>, ) {
+        (update(items), )
+    }
+
+    #[method]
+    fn get(&self, index: usize) -> (Option<T>, maybe::Update<fail::Update<Pile<T>>>) {
+        if let Some(value) = self.items.get(index) {
+            (Some(value.clone()), maybe::no())
+        } else {
+            (None, maybe::yes(fail::fail(format!("Index {index} is out of range for pile with length {}", self.items.0.len()))))
+        }
+    }
+
+    #[method]
+    fn set(&self, index: usize, value: T) -> (T, Set<T>) {
+        let prev = self.items.0.get(index)
+            .cloned()
+            // If we error, this value should never make it 
+            // to the scripting environment, so it can be any valid T
+            .unwrap_or_else(|| value.clone());
+        (prev, set(index, value))
+    }
+
+    #[method]
+    fn try_get(&self, index: usize) -> (Option<T>, ) {
+        (self.items.get(index).cloned(), )
+    }
+
+    #[method(name = insert)]
+    fn _insert(&self, index: usize, element: T) -> ((), Insert<T>) {
+        ((), insert(index, element))
+    }
+
+    #[method(name = remove)]
+    fn _remove(&self, index: usize) -> (Option<T>, Remove<T>) {
+        (self.items.0.get(index).cloned(), remove(index))
+    }
+
+    #[method]
+    fn push_top(&self, item: T) -> ((), PushTop<T>) {
+        ((), push_top(item))
+    }
+
+    #[method]
+    fn push_top_many(&self, items: Vec<T>) -> ((), PushTopMany<T>) {
+        ((), push_top_many(items))
+    }
+
+    #[method]
+    fn push_bottom(&self, item: T) -> ((), PushBottom<T>) {
+        ((), push_bottom(item))
+    }
+
+    #[method]
+    fn push_bottom_many(&self, items: Vec<T>) -> ((), PushBottomMany<T>) {
+        ((), push_bottom_many(items))
+    }
+
+    #[method]
+    fn pop_top(&self) -> (Option<T>, PopTop<T>) {
+        (self._top(), pop_top())
+    }
+
+    #[method]
+    fn pop_top_many(&self, count: usize) -> (Vec<T>, PopTopMany<T>) {
+        (self.items.0[0..count].to_vec(), pop_top_many(count))
+    }
+
+    #[method]
+    fn pop_bottom(&self) -> (Option<T>, PopBottom<T>) {
+        (self._bottom(), pop_bottom())
+    }
+
+    #[method]
+    fn pop_bottom_many(&self, count: usize) -> (Vec<T>, PopBottomMany<T>) {
+        let start = self.items.0.len().saturating_sub(count);
+        let mut v = self.items.0[start..].to_vec();
+        v.reverse();
+        (v, pop_bottom_many(count))
+    }
+
+    #[method]
+    fn try_pop_top(&self) -> (Option<T>, PopTop<T>) {
+        (self._top(), try_pop_top())
+    }
+
+    #[method]
+    fn try_pop_top_many(&self, count: usize) -> (Vec<T>, PopTopMany<T>) {
+        (self.items.0.get(0..count).unwrap_or(&[]).to_vec(), try_pop_top_many(count))
+    }
+
+    #[method]
+    fn try_pop_bottom(&self) -> (Option<T>, PopBottom<T>) {
+        (self._bottom(), try_pop_bottom())
+    }
+
+    #[method]
+    fn try_pop_bottom_many(&self, count: usize) -> (Vec<T>, PopBottomMany<T>) {
+        let start = self.items.0.len().saturating_sub(count);
+        (self.items.0.get(start..).unwrap_or(&[]).to_vec(), try_pop_bottom_many(count))
+    }
+
+    #[method]
+    fn clear(&self) -> ((), Clear<T>) {
+        ((), clear())
+    }
+
+    #[method]
+    fn shuffle(&self) -> ((), Shuffle<T>) {
+        let mut rng = rand::rng();
+        ((), shuffle(&mut rng))
+    }
 }
 
 impl<T> Pile<T> {
@@ -59,6 +208,7 @@ impl<'i, T> IntoIterator for &'i Pile<T> {
 #[tagset(PushBottomMany<T>)]
 #[tagset(PopTopMany<T>)]
 #[tagset(PopBottomMany<T>)]
+#[tagset(Set<T>)]
 #[tagset(Insert<T>)]
 #[tagset(Remove<T>)]
 #[tagset(Shuffle<T>)]
@@ -84,6 +234,13 @@ pub fn update<T>(items: impl IntoIterator<Item = T>) -> Update<T> {
     cloned::update(Pile {
         items: items.into_iter().collect(),
     })
+}
+
+pub fn set<T>(index: usize, element: T) -> Set<T> {
+    Set {
+        index,
+        element,
+    }
 }
 
 pub fn shuffle<T, R: rand::Rng>(rng: &mut R) -> Shuffle<T> {
@@ -141,14 +298,14 @@ pub fn pop_top_many<T>(count: usize) -> PopTopMany<T> {
 
 pub fn try_pop_top_many<T>(count: usize) -> PopTopMany<T> {
     PopTopMany {
-        strictness: Strictness::AllOrError,
+        strictness: Strictness::BestEffort,
         count,
         _p: PhantomData,
     }
 }
 
-pub fn pop_bottom_many<T>(count: usize) -> PopTopMany<T> {
-    PopTopMany {
+pub fn pop_bottom_many<T>(count: usize) -> PopBottomMany<T> {
+    PopBottomMany {
         strictness: Strictness::AllOrError,
         count,
         _p: PhantomData,
@@ -157,7 +314,7 @@ pub fn pop_bottom_many<T>(count: usize) -> PopTopMany<T> {
 
 pub fn try_pop_bottom_many<T>(count: usize) -> PopBottomMany<T> {
     PopBottomMany {
-        strictness: Strictness::AllOrError,
+        strictness: Strictness::BestEffort,
         count,
         _p: PhantomData,
     }
@@ -169,6 +326,13 @@ pub fn push_bottom_many<T>(elements: Vec<T>) -> PushBottomMany<T> {
 
 pub fn push_top_many<T>(elements: Vec<T>) -> PushTopMany<T> {
     PushTopMany { elements }
+}
+
+pub fn insert<T>(index: usize, element: T) -> Insert<T> {
+    Insert {
+        index,
+        element,
+    }
 }
 
 pub fn remove<T>(index: usize) -> Remove<T> {
@@ -231,14 +395,6 @@ impl<T> ops::DerefMut for FakeDeVec<T> {
     }
 }
 
-#[derive(Debug, Clone, crate::FromInfallible, thiserror::Error)]
-#[error("Pile error: {0}")]
-pub enum Error {
-    Pop(#[from] error::Pop),
-    Insert(#[from] error::Insert),
-    Remove(#[from] error::Remove),
-}
-
 pub type Create<T> = cloned::Create<Pile<T>>;
 
 pub type Destroy<T> = cloned::Destroy<Pile<T>>;
@@ -283,7 +439,7 @@ where
             Some(item) => Some(push_top(item)),
             None => match self.strictness {
                 Strictness::BestEffort => None,
-                Strictness::AllOrError => Err(error::Pop::Empty)?,
+                Strictness::AllOrError => Err(error::Empty)?,
             },
         })
     }
@@ -328,7 +484,7 @@ where
             Some(item) => Some(push_bottom(item)),
             None => match self.strictness {
                 Strictness::BestEffort => None,
-                Strictness::AllOrError => Err(error::Pop::Empty)?,
+                Strictness::AllOrError => Err(error::Empty)?,
             },
         })
     }
@@ -359,7 +515,7 @@ where
         let mut elements = vec![];
 
         if strictness == Strictness::AllOrError && value.items.len() <= count {
-            Err(error::Pop::Empty.into())
+            Err(error::Empty.into())
         } else {
             for _ in 0..count {
                 if let Some(element) = value.items.pop_front() {
@@ -397,7 +553,7 @@ where
         let mut elements = vec![];
 
         if strictness == Strictness::AllOrError && value.items.len() <= count {
-            Err(error::Pop::Empty.into())
+            Err(error::Empty.into())
         } else {
             for _ in 0..count {
                 if let Some(element) = value.items.pop_front() {
@@ -464,8 +620,8 @@ where
     fn update(&self, value: &mut Self::T) -> AnyResult<impl Into<Option<Self::Undo>>> {
         let Self { ref elements } = *self;
 
-        for element in elements {
-            value.items.push_front(element.clone());
+        for element in elements.iter().rev() {
+            value.items.push_back(element.clone());
         }
 
         Ok(PopBottomMany {
@@ -554,6 +710,35 @@ impl<T> Shuffle<T> {
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, spru::action::Update)]
+pub struct Set<T> {
+    index: usize,
+    element: T,
+}
+
+impl<T: Clone> spru::action::Update for Set<T> {
+    type T = Pile<T>;
+    type Undo = Set<T>;
+
+    #[allow(refining_impl_trait)]
+    fn update(&self, value: &mut Self::T) -> AnyResult<Self::Undo> {
+        let Self {
+            index,
+            ref element,
+        } = *self;
+
+        if let Some(existing) = value.items.0.get_mut(self.index) {
+            let element = std::mem::replace(existing, element.clone());
+            Ok(Set {
+                index,
+                element,
+            })
+        } else {
+            Err(error::IndexOutOfRange { index, len: value.items.len() }.into())
+        }
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, spru::action::Update)]
 pub struct Insert<T> {
     index: usize,
     element: T,
@@ -573,7 +758,7 @@ impl<T: Clone> spru::action::Update for Insert<T> {
                 _p: PhantomData,
             })
         } else {
-            Err(error::Insert::Index(index, value.items.len()).into())
+            Err(error::IndexOutOfRange { index, len: value.items.len() }.into())
         }
     }
 }
@@ -596,7 +781,7 @@ impl<T> spru::action::Update for Remove<T> {
             let element = value.items.remove(index);
             Ok(Insert { index, element })
         } else {
-            Err(error::Remove::Index(index, value.items.len()).into())
+            Err(error::IndexOutOfRange { index, len: value.items.len() }.into())
         }
     }
 }
@@ -641,5 +826,119 @@ mod test {
         undo.update(&mut pile).unwrap();
 
         assert_eq!(pile.items, orig_order);
+    }
+
+    use crate::pile::Pile;
+
+    #[tagset(impl tagset::proxy::serde::Serialize)]
+    #[tagset(impl<'de> tagset::serde::DeserializeFromDiscriminant<'de>)]
+    #[tagset(impl<'de> tagset::proxy::serde::Deserialize<'de>)]
+    #[tagset(impl spru::State)]
+    #[tagset(impl<Action, Registry> spru_script::ScriptableState<Action, Registry>)]
+    #[tagset(derive(Debug))]
+    #[tagset(Pile<i32>)]
+    struct MyState;
+
+    #[tagset(impl spru::Action {
+        type State = MyState;
+    })]
+    #[tagset(impl tagset::proxy::serde::Serialize)]
+    #[tagset(impl<'de> tagset::serde::DeserializeFromDiscriminant<'de>)]
+    #[tagset(impl<'de> tagset::proxy::serde::Deserialize<'de>)]
+    #[tagset(derive(Debug, Clone))]
+    #[tagset(include(super::Actions<i32>))]
+    #[tagset(crate::maybe::Update<crate::fail::Update<Pile<i32>>>)]
+    #[tagset(crate::fail::Update<Pile<i32>>)]
+    struct MyAction;
+
+    #[test]
+    fn test_script() {
+        use spru_script::Language as _;
+
+        let storage = crate::storage::Standalone::<MyState>::new();
+
+        let lua = spru_script_lua::Lua::<MyState, MyAction>::new();
+
+        let mut test_interactor = spru::interactor::test_util::TestInteractor::new(storage);
+
+        let script = r#"
+            local output = {}
+            output.insert = table.insert
+
+            local deck = Pile[i32].default()
+
+            -- (/)
+            output:insert(deck:try_pop_bottom())
+            -- (/)
+            output:insert(deck:try_pop_top())
+            -- (/)
+            for i, value in ipairs(deck:try_pop_bottom_many(5)) do
+                output:insert(value)
+            end
+            -- (/)
+            for i, value in ipairs(deck:try_pop_top_many(5)) do
+                output:insert(value)
+            end
+            
+            deck:push_top(6)
+            deck:push_top(7)
+            deck:push_top_many({8, 9, 10})
+            deck:push_bottom(5)
+            deck:push_bottom(4)
+            deck:push_bottom_many({1, 2, 3})
+
+            -- 10...1
+            for i, value in ipairs(deck.items) do
+                output:insert(value)
+            end
+
+            -- 10
+            output:insert(deck:pop_top())
+            -- 9
+            output:insert(deck.top)
+            -- 1
+            output:insert(deck:pop_bottom())
+            -- 2
+            output:insert(deck.bottom)
+            -- 9, 8
+            for i, value in ipairs(deck:pop_top_many(2)) do
+                output:insert(value)
+            end
+            -- 2, 3
+            for i, value in ipairs(deck:pop_bottom_many(2)) do
+                output:insert(value)
+            end
+
+            -- 11
+            deck:set(2, 11)
+            output:insert(deck:get(2))
+
+            -- 21
+            deck.items = {20, 21, 22}
+            output:insert(deck:get(1))
+
+            -- 21
+            deck:insert(1, 31)
+            output:insert(deck:get(2))
+
+            -- 31
+            deck:remove(0)
+            output:insert(deck:get(0))
+
+            deck:clear()
+
+            -- (/)
+            output:insert(deck:try_pop_top())
+
+            return output
+        "#;
+
+        let mut interactor = test_interactor.interactor::<MyAction, _>(7);
+        let value: Vec<i32> = lua.exec(&mut interactor, script).unwrap();
+
+        assert_eq!(
+            value, 
+            vec![10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 10, 9, 1, 2, 9, 8, 2, 3, 11, 21, 21, 31, ],
+        );
     }
 }

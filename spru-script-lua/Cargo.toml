@@ -22,7 +22,7 @@ telety.workspace = true
 
 derive-where.workspace = true
 
-mlua = { version = "0.11.6", features = ["lua55", "vendored", "error-send", "send"] }
+mlua.workspace = true
 
 append-only-vec.workspace = true
 

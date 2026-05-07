@@ -234,3 +234,39 @@ impl<T, Action> MethodReturn<Action> for (T, ) {
 }
 
 tuple_method_return!(16 P 15 O 14 N 13 M 12 L 11 K 10 J 9 I 8 H 7 G 6 F 5 E 4 D 3 C 2 B 1 A);
+
+
+
+#[doc(hidden)]
+/// Used by [script] to allow returning multiple sub-Action types from setters.
+pub trait SetReturn<Action> : private::Sealed {
+    fn convert(self) -> Vec<Action>;
+}
+
+macro_rules! tuple_set_return {
+    () => { };
+    ($n:tt $first:ident $($nn:tt $rest:ident)*) => {
+        // Handled by MethodReturn
+        // impl<$first, $($rest),*> private::Sealed for ($first, $($rest),*) { }
+
+        impl<Action, $first, $($rest),*> SetReturn<Action> for ($first, $($rest),*) 
+        where
+            $first: Into<Action>,
+            $($rest: Into<Action>),*
+        {
+            fn convert(self) -> Vec<Action> {
+                let mut v = vec![
+                    self.$n.into(),
+                    $(self.$nn.into()),*
+                ];
+                
+                v.reverse();
+
+                v
+            }
+        }
+        tuple_set_return!($($nn $rest)*);
+    };
+}
+
+tuple_set_return!(15 P 14 O 13 N 12 M 11 L 10 K 9 J 8 I 7 H 6 G 5 F 4 E 3 D 2 C 1 B 0 A);

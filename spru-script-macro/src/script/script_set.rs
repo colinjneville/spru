@@ -82,7 +82,7 @@ impl ScriptSet {
             FieldKind::Virtual(impl_item_fn) => {
                 let fn_ident = &impl_item_fn.sig.ident;
                 Ok(syn::parse_quote_spanned! { self.span => 
-                    |this, value| { this.#fn_ident(value).into() }
+                    |this, value| { ::spru_script::SetReturn::convert(this.#fn_ident(value)) }
                 })
             },
         }
@@ -132,26 +132,45 @@ impl super::ScriptImpl for ScriptSet {
         -> syn::Result<()> 
     {
         let Context {
-            type_parameter_state,
-            type_parameter_action,
-            parameter_registry,
-            parameter_registration,
             self_type,
+            ..
         } = context;
 
-        let action_type = self.action_type(self_type)?;
+        if let FieldKind::Field(_field) = &self.field_kind {
+            let bound = syn::parse_quote_spanned! { self.span => 
+                From<::spru_util::cloned::Update::<#self_type>>
+            };
 
-        let bound = syn::parse_quote_spanned! { self.span => 
-            From<#action_type>
-        };
-        action_bounds.push(bound);
-
+            action_bounds.push(bound);
+        }
+        
         Ok(())
     }
 
-    fn other_bounds(&self, _context: &Context, other_bounds: &mut syn::punctuated::Punctuated<syn::WherePredicate, syn::Token![,]>)
+    #[vacro_report::scope]
+    fn other_bounds(&self, context: &Context, other_bounds: &mut syn::punctuated::Punctuated<syn::WherePredicate, syn::Token![,]>)
         -> syn::Result<()>
     {
+        let Context {
+            type_parameter_action,
+            ..
+        } = context;
+
+        if let FieldKind::Virtual(field_fn) = &self.field_kind {
+            const ERR_TUPLE_RETURN: &str = "The return type of a set method must be a tuple. The elements are the Actions produced by the method.";
+
+            match &field_fn.sig.output {
+                syn::ReturnType::Default => return Err(syn::Error::new_spanned(&field_fn.sig, ERR_TUPLE_RETURN)),
+                syn::ReturnType::Type(_, return_type) => {
+                    let bound = syn::parse_quote_spanned! { self.span => 
+                        #return_type: spru_script::SetReturn<#type_parameter_action>
+                    };
+
+                    other_bounds.push(bound);
+                }
+            }
+        }
+        
         Ok(())
     }
 
