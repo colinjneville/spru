@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use spru::item::IdT;
+use spru_script::script;
 use spru_util::{cloned, counter, fsm, pile, player_map, rotating};
 
 use crate::{
@@ -50,15 +51,24 @@ impl spru::game::Init for Init {
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[script]
 pub struct Root {
+    #[get]
     pub deck: IdT<pile::Pile<Card>>,
+    #[get]
     pub discard: IdT<pile::Pile<Card>>,
+    #[get]
     pub round: IdT<counter::Counter<u32>>,
+    #[get]
     pub round_fsm: IdT<fsm::Fsm<crate::round::machine::Impl>>,
+    #[get]
     pub players: IdT<player_map::PlayerMap<player::Root>>,
+    #[get]
     pub current_turn: IdT<rotating::Rotating<spru::player::Id>>,
+    #[get]
     pub current_dealer: IdT<rotating::Rotating<spru::player::Id>>,
-
+    #[get]
+    #[set]
     pub has_started: bool,
 }
 

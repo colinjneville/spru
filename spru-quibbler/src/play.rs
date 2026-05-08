@@ -1,11 +1,67 @@
 use std::fmt;
 
+use spru_script::script;
+use spru_util::cloned;
+
 use crate::data;
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+#[script(include = [Methods])]
 pub struct Play {
+    #[get]
     words: Vec<Vec<data::Card>>,
+    #[get]
     unused: Vec<data::Card>,
+}
+
+#[script(partial = Methods)]
+impl Play {
+    #[create(name = new)]
+    fn _new(words: Vec<Vec<data::Card>>, unused: Vec<data::Card>) -> cloned::Create<Play> {
+        cloned::create(Self::new(words, unused))
+    }
+
+    #[method]
+    fn destroy(&self) -> ((), cloned::Destroy<Play>) {
+        ((), cloned::destroy())
+    }
+
+    #[get(name = is_played)]
+    fn _is_played(&self) -> bool {
+        self.is_played()
+    }
+
+    #[get(name = is_full)]
+    fn _is_full(&self) -> bool {
+        self.is_full()
+    }
+
+    #[get(name = base_score)]
+    fn _base_score(&self) -> u32 {
+        self.base_score()
+    }
+
+    #[get(name = words)]
+    fn _words(&self) -> Vec<Vec<data::Card>> {
+        self.words()
+            .map(<[data::Card]>::to_vec)
+            .collect()
+    }
+
+    #[get(name = word_count)]
+    fn _word_count(&self) -> usize {
+        self.words.len()
+    }
+
+    #[get(name = max_word_len)]
+    fn _max_word_len(&self) -> usize {
+        self.max_word_len()
+    }
+
+    #[get(name = unused)]
+    fn _unused(&self) -> Vec<data::Card> {
+        self.unused().to_vec()
+    }
 }
 
 impl Play {

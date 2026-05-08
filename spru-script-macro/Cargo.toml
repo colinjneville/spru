@@ -2,6 +2,7 @@
 name = "spru-script-macro"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.95"
 description = "Proc macros for spru-script. Not intended for public use."
 license.workspace = true
 repository.workspace = true

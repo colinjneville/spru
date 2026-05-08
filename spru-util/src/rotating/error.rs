@@ -1,12 +1,18 @@
 use std::fmt;
 
-#[derive(Debug, Default)]
-pub struct Expected;
+#[derive(Clone, Debug, thiserror::Error)]
+#[error("The Rotating index ({index}/{len}) is invalid")]
+pub struct IndexOutOfRange {
+    pub index: usize,
+    pub len: usize,
+}
 
-impl fmt::Display for Expected {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Actual value did not match the expected value")
+impl IndexOutOfRange {
+    pub(crate) fn new(index: usize, len: usize) -> Self {
+        Self {
+            index,
+            len,
+        }
     }
 }
 
-impl std::error::Error for Expected {}

@@ -495,11 +495,11 @@ fn panel_ui(
         let game_root = q_game_root.get(entity_map[**root])?;
         let discard = q_pile.get(entity_map[game_root.discard])?;
         let player_map = q_player_map.get(entity_map[game_root.players])?;
-        let active_player_root = player_map.expect_player(**active_client_id);
+        let active_player_root = player_map.get(**active_client_id).unwrap();
         let active_player_username = &*active_player_root.data.username;
         let hand = q_pile.get(entity_map[active_player_root.hand])?;
         let current_turn = q_current_turn.get(entity_map[game_root.current_turn])?;
-        let current_player = current_turn.current().map(|p| player_map.expect_player(*p));
+        let current_player = current_turn.current().map(|p| player_map.get(*p).unwrap());
         let round = q_counter.get(entity_map[game_root.round])?;
 
         egui::TopBottomPanel::bottom("player_view").show(ctx, |ui| {

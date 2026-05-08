@@ -1,5 +1,5 @@
-mod error;
-pub use error::Error;
+pub mod error;
+use spru_script::script;
 
 use std::marker::PhantomData;
 
@@ -12,8 +12,45 @@ use crate::cloned;
 
 /// Stores some state per player
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[script(include = [Methods])]
 pub struct PlayerMap<PlayerState> {
     map: Vec<Option<(player::Id, PlayerState)>>,
+}
+
+#[script(partial = Methods)]
+impl<PlayerState> PlayerMap<PlayerState> 
+where 
+    PlayerState: Clone + 'static,
+{
+    #[create]
+    fn new() -> cloned::Create<PlayerMap<PlayerState>> {
+        create()
+    }
+
+    #[method]
+    fn destroy(&self) -> ((), cloned::Destroy<PlayerMap<PlayerState>>) {
+        ((), cloned::destroy())
+    }
+
+    #[get(name = count)]
+    fn _count(&self) -> usize {
+        self.count()
+    }
+
+    #[method(name = get)]
+    fn _get(&self, player_id: player::Id) -> (Option<PlayerState>, ) {
+        (self.get(player_id).ok().cloned(), )
+    }
+
+    #[method(name = add_player)]
+    fn _add_player(&self, player_id: player::Id, player_state: PlayerState) -> ((), AddPlayer<PlayerState>) {
+        ((), add_player(player_id, player_state))
+    }
+
+    #[method(name = remove_player)]
+    fn _remove_player(&self, player_id: player::Id) -> ((), RemovePlayer<PlayerState>) {
+        ((), remove_player(player_id))
+    }
 }
 
 impl<PlayerState> PlayerMap<PlayerState> {
@@ -21,20 +58,16 @@ impl<PlayerState> PlayerMap<PlayerState> {
         self.map.iter().flatten().count()
     }
 
-    pub fn get(&self, id: player::Id) -> Result<&PlayerState, Error> {
+    pub fn get(&self, id: player::Id) -> Result<&PlayerState, error::PlayerDoesNotExist> {
         self.map
             .get(id.into_u32() as usize)
             .and_then(Option::as_ref)
             .map(|(_, state)| state)
-            .ok_or(Error::PlayerDoesNotExist(id))
+            .ok_or(error::PlayerDoesNotExist::new(id))
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (player::Id, &PlayerState)> {
         self.map.iter().flatten().map(|(id, state)| (*id, state))
-    }
-
-    pub fn expect_player(&self, id: player::Id) -> &PlayerState {
-        self.get(id).unwrap()
     }
 }
 
@@ -82,7 +115,7 @@ impl<PlayerState: Clone> spru::action::Update for AddPlayer<PlayerState> {
         }
 
         match &mut value.map[index] {
-            Some(_) => Err(Error::PlayerAlreadyExists(self.id).into()),
+            Some(_) => Err(error::PlayerAlreadyExists::new(self.id).into()),
             option @ None => {
                 *option = Some((self.id, self.player_state.clone()));
                 Ok(remove_player(self.id))
@@ -111,7 +144,7 @@ impl<PlayerState> spru::action::Update for RemovePlayer<PlayerState> {
             return Ok(add_player(self.id, player_state));
         }
 
-        Err(Error::PlayerDoesNotExist(self.id).into())
+        Err(error::PlayerDoesNotExist::new(self.id).into())
     }
 }
 

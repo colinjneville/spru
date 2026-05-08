@@ -1,6 +1,7 @@
-use spru::interactor::with;
+use spru::common::error::PseudoError as _;
+use spru::{common::error::AnyError, interactor::with};
 use spru::item::IdT;
-use spru_util::{fsm, pile};
+use spru_util::{fsm, maybe, pile};
 use tracing::instrument;
 
 use crate::reaction;
@@ -31,7 +32,9 @@ impl spru::Interaction for Draw {
             let root = interactor.get_root()?;
             // This should be the only place we *need* to check if it is our turn, as the fsm
             // should always be on ToDraw when it is not our turn
-            ~[root.current_turn]?.expect(&player_id)?;
+            if ~[root.current_turn]?.current() != Some(&player_id) {
+                return Err(AnyError::from_string("It is not this player's turn").into_error().into());
+            }
             let players = ~[root.players]?;
             let player = players.get(player_id)?;
             let fsm = ~[player.fsm]?;

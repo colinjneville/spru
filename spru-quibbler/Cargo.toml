@@ -11,6 +11,8 @@ repository.workspace = true
 spru.workspace = true
 spru-util.workspace = true
 spru-bevy.workspace = true
+spru-script.workspace = true
+spru-script-lua.workspace = true
 
 tagset.workspace = true
 telety.workspace = true

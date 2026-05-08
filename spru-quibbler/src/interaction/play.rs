@@ -97,7 +97,7 @@ impl spru::Interaction for Play {
             let root = interactor.get_root::<crate::game::Root>()?;
             let round_fsm = ~[root.round_fsm]?;
             let players = ~[root.players]?;
-            let player = players.expect_player(player_id);
+            let player = players.get(player_id).unwrap();
             let player_fsm = ~[player.fsm]?;
         };
 

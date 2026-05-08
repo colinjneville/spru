@@ -27,20 +27,12 @@ pub struct Rotating<T> {
 impl<T: Clone + 'static> Rotating<T> {
     #[create(name = new)]
     fn _new(items: Vec<T>, position: usize) -> Create<T> {
-        cloned::create(Rotating {
-            items,
-            position,
-        })
+        create(items,position)
     }
 
-    #[method]
-    fn destroy(&self) -> ((), Destroy<T>) {
-        ((), cloned::destroy())
-    }
-
-    #[method(name = current)]
-    fn _current(&self) -> (Option<T>, ) {
-        (self.items.get(self.position).cloned(), )
+    #[create]
+    fn default() -> Create<T> {
+        create(vec![], 0)
     }
 
     #[get(name = len)]
@@ -51,6 +43,41 @@ impl<T: Clone + 'static> Rotating<T> {
     #[get(name = is_empty)]
     fn _is_empty(&self) -> bool {
         self.items.is_empty()
+    }
+
+    #[get(name = position)]
+    fn _position(&self) -> Option<usize> {
+        self.position()
+    }
+
+    #[get(name = current)]
+    fn _current(&self) -> Option<T> {
+        self.items.get(self.position).cloned()
+    }
+
+    #[get]
+    fn items(&self) -> Vec<T> {
+        self.items.clone()
+    }
+
+    #[set(name = items)]
+    fn items_set(&self, items: Vec<T>) -> (SetItems<T>, ) {
+        (set_items(items), )
+    }
+
+    #[method]
+    fn destroy(&self) -> ((), Destroy<T>) {
+        ((), cloned::destroy())
+    }
+
+    #[method(name = insert)]
+    fn _insert(&self, position: usize, item: T) -> ((), Insert<T>) {
+        ((), insert(position, item))
+    }
+
+    #[method(name = remove)]
+    fn _remove(&self, position: usize) -> (Option<T>, Remove<T>) {
+        (self.items.get(position).cloned(), remove(position))
     }
 }
 
@@ -80,18 +107,6 @@ impl<T> Rotating<T> {
     pub fn is_empty(&self) -> bool {
         self.items.is_empty()
     }
-
-    pub fn expect<U>(&self, expected_value: &U) -> Result<&T, error::Expected>
-    where
-        T: PartialEq<U>,
-    {
-        if let Some(current) = self.current()
-            && current == expected_value
-        {
-            return Ok(current);
-        }
-        Err(error::Expected)
-    }
 }
 
 pub fn create<T>(items: Vec<T>, position: usize) -> Create<T> {
@@ -102,6 +117,13 @@ pub fn create<T>(items: Vec<T>, position: usize) -> Create<T> {
 
 pub fn default<T>() -> Create<T> {
     create(vec![], 0)
+}
+
+pub fn set_items<T>(items: Vec<T>) -> SetItems<T> {
+    SetItems {
+        items,
+        position: None, 
+    }
 }
 
 pub fn rotate<T>(reverse: bool) -> Rotate<T> {
@@ -139,6 +161,7 @@ pub fn destroy<T>() -> Destroy<T> {
 
 #[telety(crate::rotating)]
 #[tagset(Create<T>)]
+#[tagset(SetItems<T>)]
 #[tagset(Rotate<T>)]
 #[tagset(SetPosition<T>)]
 #[tagset(Insert<T>)]
@@ -150,6 +173,42 @@ pub struct Actions<T>;
 pub type Create<T> = cloned::Create<Rotating<T>>;
 
 pub type Destroy<T> = cloned::Destroy<Rotating<T>>;
+
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+#[derive(spru::action::Update)]
+#[must_use]
+pub struct SetItems<T> {
+    items: Vec<T>,
+    position: Option<usize>,
+}
+
+impl<T> spru::action::Update for SetItems<T>
+where
+    T: Clone,
+{
+    type T = Rotating<T>;
+    type Undo = Self;
+
+    fn update(&self, value: &mut Self::T) -> AnyResult<impl Into<Option<Self::Undo>>> {
+        
+        let items = std::mem::replace(&mut value.items, self.items.clone());
+        let p = match self.position {
+            Some(p) => p,
+            None => value.position.clamp(1, value.items.len()) - 1,
+        };
+
+        let position = if p != value.position {
+            Some(std::mem::replace(&mut value.position, p))
+        } else {
+            None
+        };
+        
+        Ok(Self {
+            items,
+            position,
+        })
+    }
+}
 
 #[derive_where(Debug, Clone, Default, Serialize, Deserialize)]
 #[derive(spru::action::Update)]
@@ -218,7 +277,7 @@ where
         let Self { mut position, _p } = *self;
 
         if position >= value.items.len() {
-            Err(Error::InvalidPosition(position, value.items.len()).into())
+            Err(error::IndexOutOfRange::new(position, value.items.len()).into())
         } else if position != value.position {
             std::mem::swap(&mut value.position, &mut position);
 
@@ -269,7 +328,7 @@ where
                 _p: PhantomData,
             })
         } else {
-            Err(Error::InvalidPosition(position, value.items.len()).into())
+            Err(error::IndexOutOfRange::new(position, value.items.len()).into())
         }
     }
 }
@@ -308,14 +367,7 @@ where
                 set_to_inserted,
             })
         } else {
-            Err(Error::InvalidPosition(position, value.items.len()).into())
+            Err(error::IndexOutOfRange::new(position, value.items.len()).into())
         }
     }
-}
-
-#[derive(Debug, Clone, crate::FromInfallible, thiserror::Error)]
-#[non_exhaustive]
-pub enum Error {
-    #[error("Invalid position {0}, len() is {1}")]
-    InvalidPosition(usize, usize),
 }

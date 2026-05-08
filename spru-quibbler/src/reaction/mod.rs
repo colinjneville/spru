@@ -181,7 +181,7 @@ impl Trigger {
         // Award 10 bonus points to winners of longest word/most words
         for winner in [max_len_winner, max_words_winner].into_iter().flatten() {
             with! { interactor =>
-                let score = ~[players.expect_player(winner).score]?;
+                let score = ~[players.get(winner).unwrap().score]?;
             };
 
             score.update(counter::add_checked(10));

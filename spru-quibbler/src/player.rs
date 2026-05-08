@@ -2,6 +2,7 @@ use std::fmt;
 
 use rust_fsm::state_machine;
 use spru::{common::error::PseudoError as _, interactor::with, item::IdT};
+use spru_script::script;
 use spru_util::{cloned, counter, fsm, pile, player_map, rotating};
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -72,11 +73,17 @@ impl spru::player::Init for Init {
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+// TODO Non-State types currently cannot be registered for scripting
+#[script]
 pub struct Root {
     pub data: Input,
+    #[get]
     pub hand: IdT<pile::Pile<data::Card>>,
+    #[get]
     pub score: IdT<counter::Counter<u32>>,
+    #[get]
     pub fsm: IdT<fsm::Fsm<machine::Impl>>,
+    #[get]
     pub played: IdT<crate::Play>,
 }
 

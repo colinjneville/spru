@@ -1,11 +1,11 @@
+pub mod error;
 mod range_type;
 pub use range_type::RangeType;
 use spru::common::error::AnyResult;
 use spru_script::script;
 
 use std::{
-    cmp,
-    ops::{self, RangeBounds},
+    cmp, fmt, ops::{self, RangeBounds}
 };
 
 use derive_where::derive_where;
@@ -29,7 +29,6 @@ impl<T> CounterType for T where
 #[script(include = [Methods])]
 pub struct Counter<T> {
     #[get]
-    #[set]
     value: T,
     bounds: RangeType<T>,
 }
@@ -56,12 +55,22 @@ where
         ((), destroy())
     }
 
+    #[set(name = value)]
+    fn value_set(&self, value: T) -> (Set<T>, ) {
+        (set(value), )
+    }
+
+    #[method]
+    fn set_clamped(&self, value: T) -> (T, Set<T>) {
+        (self.bounds.constrain(value), set_clamped(value))
+    }
+
     #[method]
     fn add_saturating(&self, value: T::Signed) -> (T, Add<T>) {
         let add = add_saturating(value);
         let sum = add.sum(self)
             .ok()
-            .unwrap_or(self.value);
+            .expect("Saturating add cannot fail");
         (sum, add)
     }
 
@@ -99,6 +108,20 @@ pub fn default<T: Default>() -> Create<T> {
     create(T::default())
 }
 
+pub fn set<T: bounds::AddSigned>(value: T) -> Set<T> {
+    Set {
+        value,
+        strictness: Strictness::AllOrError,
+    }
+}
+
+pub fn set_clamped<T: bounds::AddSigned>(value: T) -> Set<T> {
+    Set {
+        value,
+        strictness: Strictness::BestEffort,
+    }
+}
+
 pub fn add<T: bounds::AddSigned>(value: T::Signed, strictness: Strictness) -> Add<T> {
     Add { value, strictness }
 }
@@ -123,6 +146,33 @@ pub fn destroy<T>() -> Destroy<T> {
 pub struct Actions<T: bounds::AddSigned>;
 
 pub type Create<T> = cloned::Create<Counter<T>>;
+
+#[derive_where(Debug, Clone; T::Signed)]
+#[derive(serde::Serialize, serde::Deserialize, spru::action::Update)]
+#[must_use]
+pub struct Set<T: bounds::AddSigned> {
+    value: T,
+    strictness: Strictness,
+}
+
+impl<T: bounds::AddSigned + CounterType + Ord + fmt::Display + 'static> spru::action::Update for Set<T> {
+    type T = Counter<T>;
+    type Undo = Self;
+
+    fn update(&self, value: &mut Self::T) -> AnyResult<impl Into<Option<Self::Undo>>> {
+        let prev = value.value.clone();
+        let bounded = value.bounds.constrain(self.value);
+        if self.strictness == Strictness::AllOrError && self.value == bounded {
+            Err(error::ValueOutOfBounds::new(self.value.clone(), value.bounds.clone()).into())
+        } else {
+            value.value = bounded;
+            Ok(Self {
+                value: prev,
+                strictness: Strictness::AllOrError,
+            })
+        }
+    }
+}
 
 #[derive_where(Debug, Clone; T::Signed)]
 #[derive(serde::Serialize, serde::Deserialize, spru::action::Update)]

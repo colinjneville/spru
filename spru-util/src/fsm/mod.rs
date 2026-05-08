@@ -5,6 +5,7 @@ use std::mem;
 use derive_where::derive_where;
 pub use rust_fsm;
 use spru::common::error::AnyResult;
+use spru_script::script;
 use tagset::tagset;
 use telety::telety;
 
@@ -18,7 +19,52 @@ impl<T: Clone + rust_fsm::StateMachineImpl + 'static> StateMachineTy for T {}
 /// A finite-state machine, useful for tracking things like turn phases.
 /// Powered by [rust_fsm]'s state machines.
 #[derive_where(Debug, Clone, Serialize, Deserialize; FSM::State)]
+#[script(include = [Methods])]
 pub struct Fsm<FSM: StateMachineTy>(FSM::State);
+
+#[script(partial = Methods)]
+impl<FSM> Fsm<FSM> 
+where
+    FSM: StateMachineTy,
+    FSM::State: Clone,
+{
+    #[create]
+    fn new(initial_state: FSM::State) -> Create<FSM> {
+        create(initial_state)
+    }
+
+    #[create]
+    fn default() -> Create<FSM> {
+        default()
+    }
+
+    #[method]
+    fn destroy(&self) -> ((), cloned::Destroy<Fsm<FSM>>) {
+        ((), destroy())
+    }
+
+    #[get(name = current)]
+    fn _current(&self) -> FSM::State {
+        self.current().clone()
+    }
+
+    #[method]
+    fn transition(&self, input: FSM::Input) -> (Option<FSM::Output>, Transition<FSM>) {
+        let output = <FSM as rust_fsm::StateMachineImpl>::output(&self.0, &input);
+        (output, transition(input))
+    }
+
+    #[method]
+    fn try_transition(&self, input: FSM::Input) -> (Option<FSM::Output>, Transition<FSM>) {
+        let output = <FSM as rust_fsm::StateMachineImpl>::output(&self.0, &input);
+        (output, try_transition(input))
+    }
+
+    #[method]
+    fn set(&self, new_state: FSM::State) -> ((), Set<FSM>) {
+        ((), set(new_state))
+    }
+}
 
 impl<FSM: StateMachineTy> Fsm<FSM> {
     pub fn current(&self) -> &FSM::State {

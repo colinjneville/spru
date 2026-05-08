@@ -34,8 +34,8 @@ impl spru::Interaction for Discard {
         with! { interactor =>
             let root = interactor.get_root()?;
             let players = ~[root.players]?;
-            let player_fsm = ~[players.expect_player(player_id).fsm]?;
-            let hand = ~[players.expect_player(player_id).hand]?;
+            let player_fsm = ~[players.get(player_id).unwrap().fsm]?;
+            let hand = ~[players.get(player_id).unwrap().hand]?;
             let discard = ~[root.discard]?;
         };
 
