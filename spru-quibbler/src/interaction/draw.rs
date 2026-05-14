@@ -1,10 +1,12 @@
 use spru::common::error::PseudoError as _;
 use spru::{common::error::AnyError, interactor::with};
 use spru::item::IdT;
+use spru_script::Wrap;
 use spru_util::{fsm, maybe, pile};
 use tracing::instrument;
 
 use crate::reaction;
+use crate::script::Script;
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum Draw {
@@ -46,7 +48,7 @@ impl spru::Interaction for Draw {
 
         match self {
             Draw::Deck => {
-                interactor.enqueue_trigger(reaction::Trigger::DrawFromDeck);
+                interactor.enqueue_trigger(Wrap::new(reaction::TriggerImpl::DrawFromDeck));
             }
             Draw::Discard => {
                 let card = discard.top().expect("Discard cannot be empty");
@@ -60,4 +62,10 @@ impl spru::Interaction for Draw {
 
         Ok(())
     }
+}
+
+const SCRIPT: Script = crate::script::script!("scripts/draw.lua");
+
+pub fn new(is_deck: bool) -> super::LuaInteraction<bool> {
+    super::LuaInteraction::new(spru_script_lua::Lua::new(), SCRIPT.get(), is_deck)
 }

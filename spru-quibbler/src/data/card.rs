@@ -1,11 +1,29 @@
 use std::fmt;
 
+use spru_script::script;
+
+pub type Card = spru_script::Wrap<CardImpl>;
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
-pub struct Card {
+#[script(state = false, include = [Methods], derive = [Eq])]
+pub struct CardImpl {
     face_index: usize,
 }
 
-impl Card {
+#[script(state = false, partial = Methods)]
+impl CardImpl {
+    #[get]
+    fn letters(&self) -> String {
+        self.face().letters_str().to_string()
+    }
+
+    #[get]
+    fn points(&self) -> u32 {
+        self.face().points()
+    }
+}
+
+impl CardImpl {
     fn new(face_index: usize) -> Self {
         Self { face_index }
     }
@@ -14,38 +32,28 @@ impl Card {
         &FACES[self.face_index].face
     }
 
-    pub fn all() -> Vec<Card> {
-        let mut cards = vec![];
-        for (i, face_count) in FACES.iter().enumerate() {
-            for _ in 0..face_count.count {
-                cards.push(Card { face_index: i });
-            }
-        }
-        cards
-    }
-
     #[allow(dead_code)]
     pub(crate) fn get(letters: &[u8]) -> Option<Self> {
         match letters {
-            b"QU" => Some(Card::new(26)),
-            b"IN" => Some(Card::new(27)),
-            b"ER" => Some(Card::new(28)),
-            b"CL" => Some(Card::new(29)),
-            b"TH" => Some(Card::new(30)),
-            &[letter] => Some(Card::new((letter - b'A') as usize)),
+            b"QU" => Some(Self::new(26)),
+            b"IN" => Some(Self::new(27)),
+            b"ER" => Some(Self::new(28)),
+            b"CL" => Some(Self::new(29)),
+            b"TH" => Some(Self::new(30)),
+            &[letter] => Some(Self::new((letter - b'A') as usize)),
             _ => None,
         }
     }
 
     pub(crate) fn get_matching(first: u8, second: Option<u8>) -> (Self, Option<Self>) {
-        let first_card = Card::new((first - b'A') as usize);
+        let first_card = Self::new((first - b'A') as usize);
 
         let second_card = match (first, second) {
-            (b'Q', Some(b'U')) => Some(Card::new(26)),
-            (b'I', Some(b'N')) => Some(Card::new(27)),
-            (b'E', Some(b'R')) => Some(Card::new(28)),
-            (b'C', Some(b'L')) => Some(Card::new(29)),
-            (b'T', Some(b'H')) => Some(Card::new(30)),
+            (b'Q', Some(b'U')) => Some(Self::new(26)),
+            (b'I', Some(b'N')) => Some(Self::new(27)),
+            (b'E', Some(b'R')) => Some(Self::new(28)),
+            (b'C', Some(b'L')) => Some(Self::new(29)),
+            (b'T', Some(b'H')) => Some(Self::new(30)),
             _ => None,
         };
 
@@ -53,10 +61,20 @@ impl Card {
     }
 }
 
-impl fmt::Display for Card {
+impl fmt::Display for CardImpl {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", str::from_utf8(self.face().letters).unwrap())
     }
+}
+
+pub fn all() -> Vec<Card> {
+    let mut cards = vec![];
+    for (i, face_count) in FACES.iter().enumerate() {
+        for _ in 0..face_count.count {
+            cards.push(Card::new(CardImpl { face_index: i }));
+        }
+    }
+    cards
 }
 
 #[derive(Debug)]

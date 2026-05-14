@@ -1,6 +1,7 @@
 use std::any::TypeId;
 
 use append_only_vec::AppendOnlyVec;
+use derive_where::derive_where;
 
 /// Cache for lua instances based on type paramters.
 /// In most cases, this will act as a lazy singleton, but servers and test executables 
@@ -48,6 +49,14 @@ impl Internal {
         let type_parameters_metatable = lua.create_table()
             .expect("Failed to create type parameters metatable");
 
+        lua.register_userdata_type::<spru::player::Id>(|registry| {
+            use mlua::UserDataMethods as _;
+            registry.add_meta_method(mlua::MetaMethod::Eq.name(), |lua, a, b: mlua::MultiValue| {
+                let b: spru::player::Id = crate::FromLuaMulti::from_lua_multi(b, lua)?;
+                Ok(a == &b)
+            });
+        }).expect("spru::player::Id registration failed");
+
         let type_parameters_index_metafunction = lua.create_function(|_, (table, key): (mlua::Table, mlua::Value)| {
             for pair in table.pairs::<mlua::Value, mlua::Value>() {
                 let (k, v) = pair?;
@@ -81,7 +90,7 @@ impl Internal {
             }
 
             Ok(mlua::Value::Nil)
-        }).expect("Failed to create type parameters equality function");
+        }).expect("Failed to create type parameters index function");
 
         type_parameters_metatable.set(mlua::MetaMethod::Index.name(), type_parameters_index_metafunction)
             .expect("Failed to create type parameters metatable");
@@ -108,9 +117,14 @@ impl Cached {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(serde::Serialize, serde::Deserialize)]
+#[derive_where(Debug, Clone; )]
+#[serde(default)]
+#[serde(bound(serialize = "", deserialize = "State: 'static, Action: 'static"))]
 pub struct Lua<State, Action> {
+    #[serde(skip)]
     cached: Cached,
+    #[serde(skip)]
     _p: std::marker::PhantomData<(State, Action)>,
 }
 
@@ -127,132 +141,157 @@ impl<State: 'static, Action: 'static> Lua<State, Action> {
             _p: std::marker::PhantomData,
         }
     }
-
-    fn exec_internal<Storage, Root, Return>(
-        &self, 
-        ledger: &mut spru::interactor::Ledger<'_, Storage, Action>,
-        root: Option<&Root>,
-        script: &str,
-    ) -> mlua::Result<Return> 
-    where
-        Storage: spru::item::Storage<State = Action::State>,
-        Storage::State: spru_script::ScriptableState<Action, crate::Registry>,
-        Action: spru::Action,
-        Root: crate::IntoLua + 'static,
-        // Required because mlua's setters require &mut (understandably), even though we don't mutate the IdTs themselves
-        Root: Clone,
-        Return: mlua::FromLuaMulti,
-    {
-        // TODO Need to find a way to get caching to work with non-static Storage
-        // right now we are re-registering the whole tree each exec...
-
-        // let mut cache = self.mapping_fn_cache.lock()
-        //     .expect("Lua mapping mutex poisoned");
-
-        // let closure_type = |_: &Storage, _: &Action| { };
-
-        // fn type_id_of_val<T: Any>(_t: &T) -> TypeId {
-        //     TypeId::of::<T>()
-        // }
-
-        // let closure_type_key = type_id_of_val(&closure_type);
-
-        // let mapping_fn = match cache.entry(closure_type_key) {
-        //     std::collections::hash_map::Entry::Occupied(occupied_entry) => occupied_entry.into_mut(),
-        //     std::collections::hash_map::Entry::Vacant(vacant_entry) => {
-        //         let mut registry = LuaRegistry::new(self.lua.clone());
-        //         <Storage::State as ScriptableState<LuaRegistry<Storage, Action>>>::register(&mut registry)?;
-
-        //         vacant_entry.insert(Box::new(registry.into_mapping_fn()))
-        //     },
-        // };
-
-        // let mapping_fn: &MappingFn<Storage, Action> = mapping_fn.downcast_ref()
-        //     .expect("MappingFn type mismatch");
-
-        let registry = crate::Registry::new(self.cached.clone());
-        let mut registration = crate::Registration::new();
-        <Storage::State as spru_script::ScriptableState<Action, crate::Registry>>::register(&registry, &mut registration)?;
-
-        let (get_mapping_fn, set_mapping_fn, method_mapping_fn, create_mapping_fn) = registration.into_mapping_fns();
-
-        // Insert a scoped reference to the spru Ledger for lua to access 
-        let ledger = crate::Ledger::new(ledger, &get_mapping_fn, &set_mapping_fn, &method_mapping_fn, &create_mapping_fn);
-
-        let mut root_clone = root.cloned();
-
-        let r = self.cached.lua().scope(|scope| {
-            let ud = scope.create_userdata(ledger)?;
-            self.cached.lua().globals().set(crate::key::LEDGER_GLOBAL, ud)?;
-
-            // Root must be inserted *after* all our field/method registration,
-            // so we can't set once and forget in the constructor, so make it part of the scope.
-            if let Some(root_clone) = &mut root_clone {
-                let root = scope.create_any_userdata_ref_mut(root_clone)?;
-                self.cached.lua().globals().set(crate::key::ROOT_GLOBAL, root)?;
-            }
-
-            let r = self.cached.lua()
-                .load(script)
-                .eval()?;
-
-            Ok(r)
-        })?;
-
-        Ok(r)
-    }
 }
 
-impl<State, Action, Return> spru_script::LanguageNoRoot<State, Action, Return> for Lua<State, Action> 
+impl<State, Action> spru_script::LanguageBase<State, Action> for Lua<State, Action> 
 where
     State: 'static,
-    Return: mlua::FromLuaMulti,
 {
     type Registry = crate::Registry;
     type Error = mlua::Error;
+}
 
-    /// Execute a script without access to the Game's Root. 
-    /// Mainly useful for the Game Init, where no root exists.
-    fn exec_no_root<Storage, Context, Output>(
-        &self, 
-        interactor: &mut spru::Interactor<'_, Storage, Action, Context, Output>,
-        script: &str,
-    ) -> Result<Return, Self::Error>
-    where
-        Storage: spru::item::Storage<State = State>,
-        State: spru::State + spru_script::ScriptableState<Action, Self::Registry>,
-        Action: spru::Action<State = State>,
+pub trait Context: Sized {
+    type Root;
+
+    fn fill_table<'scope, 'env>(
+        &'env mut self,
+        lua: &mlua::Lua, 
+        scope: &'scope mlua::Scope<'scope, 'env>,
+        table: &mut mlua::Table,
+    ) 
+        -> mlua::Result<()>;
+}
+
+impl<Root> Context for spru::interaction::Context<'_, Root> 
+where 
+    Root: Clone + mlua::MaybeSend + 'static,
+{
+    type Root = Root;
+
+    fn fill_table<'scope, 'env>(
+        &'env mut self,
+        lua: &mlua::Lua, 
+        _scope: &'scope mlua::Scope<'scope, 'env>,
+        table: &mut mlua::Table,
+    ) 
+        -> mlua::Result<()>
     {
-        let ledger = interactor.ledger_mut();
-        self.exec_internal::<Storage, i32, Return>(ledger, None, script)
+        // Root must be inserted *after* all our field/method registration,
+        // so we can't set once and forget in the constructor, so make it part of the scope.
+        let root = lua.create_any_userdata(self.root.clone())?;
+        table.set(crate::key::CONTEXT_ROOT, root)?;
+
+        let player = crate::IntoLua::into_lua(self.player, lua)?;
+        table.set(crate::key::CONTEXT_PLAYER, player)?;
+
+        Ok(())
     }
 }
 
-impl<State, Action, Return, Root> spru_script::Language<State, Action, Return, Root> for Lua<State, Action> 
+pub trait Output {
+    type Ret;
+
+    fn create<'scope, 'env>(
+        &'env mut self,
+        lua: &mlua::Lua, 
+        _scope: &'scope mlua::Scope<'scope, 'env>,
+    ) 
+        -> mlua::Result<mlua::AnyUserData>;
+
+    fn apply_ret(&mut self, _ret: Self::Ret);
+}
+
+impl<Trigger> Output for spru::interaction::Output<Trigger> 
+where 
+    Trigger: crate::FromLuaMulti,
+{
+    type Ret = ();
+
+    fn create<'scope, 'env>(
+        &'env mut self,
+        _lua: &mlua::Lua, 
+        scope: &'scope mlua::Scope<'scope, 'env>,
+    ) 
+        -> mlua::Result<mlua::AnyUserData>
+    {
+        let aud = scope.create_any_userdata(self, |register| {
+            use mlua::UserDataMethods as _;
+            register.add_method_mut(crate::key::OUTPUT_ENQUEUE_TRIGGER, |lua, output, trigger: mlua::MultiValue| {
+                let trigger = Trigger::from_lua_multi(trigger, lua)?;
+                <Self as spru::interactor::EnqueueTrigger>::enqueue_trigger(*output, trigger);
+                Ok(())
+            });
+        })?;
+
+        Ok(aud)
+    }
+
+
+    fn apply_ret(&mut self, _ret: Self::Ret) {
+        
+    }
+}
+
+impl<State, Action, Args, Context, Output> spru_script::Language<State, Action, Args, Context, Output> for Lua<State, Action> 
 where
     State: 'static,
-    // Clone required because mlua's setters require &mut (understandably), even though we don't mutate the IdTs themselves
-    Root: crate::IntoLua + Clone + 'static,
-    Return: mlua::FromLuaMulti,
+    Args: crate::IntoLuaMulti,
+    // `Root: Clone` required because mlua's setters require &mut (understandably), even though we don't mutate the IdTs themselves
+    Context: self::Context<Root: crate::IntoLua + Clone + 'static>,
+    Output: self::Output,
+    Output::Ret: crate::FromLuaMulti,
 {
     /// Execute a script with access to the Game's Root. 
-    fn exec<Storage, Context, Output>(
+    fn exec<Storage>(
         &self, 
         interactor: &mut spru::Interactor<'_, Storage, Action, Context, Output>,
         script: &str,
-    ) -> Result<Return, Self::Error> 
+        args: Args,
+    ) -> Result<(), Self::Error> 
     where
         Storage: spru::item::Storage<State = State>,
-        State: spru::State + spru_script::ScriptableState<Action, Self::Registry>,
+        State: spru::State + spru_script::Scriptable<Action, Self::Registry>,
         Action: spru::Action<State = State>,
-        Context: spru::interactor::GetRoot<Root = Root>,
     {
         let spru::interactor::SplitMut {
             ledger,
             context,
-            output: _output,
+            output,
         } = interactor.split_mut();
+
+        let lua = self.cached.lua();
+
+        let registry = crate::Registry::new(self.cached.clone());
+        let mut registration = crate::Registration::new();
+        <Storage::State as spru_script::Scriptable<Action, crate::Registry>>::register(&registry, &mut registration)?;
+
+        let (get_mapping_fn, set_mapping_fn, method_mapping_fn, create_mapping_fn) = registration.into_mapping_fns();
+
+        let ledger = crate::Ledger::new(ledger, &get_mapping_fn, &set_mapping_fn, &method_mapping_fn, &create_mapping_fn);
+
         
-        self.exec_internal(ledger, Some(context.get_root()), script)
+        let mut context_table = lua.create_table()?;
+
+        let ret: Output::Ret = lua.scope(|scope| {
+            let ledger_userdata = scope.create_userdata(ledger)?;
+            lua.globals().set(crate::key::GLOBAL_LEDGER, ledger_userdata)?;
+
+            context.fill_table(lua, scope, &mut context_table)?;
+            lua.globals().set(crate::key::GLOBAL_CONTEXT, context_table)?;
+
+            let lua_output = Output::create(output, lua, scope)?;
+            lua.globals().set(crate::key::GLOBAL_OUTPUT, lua_output)?;
+
+            let r = lua
+                .load(script)
+                .call::<mlua::MultiValue>(crate::IntoLuaMulti::into_lua_multi(args, lua)?)?;
+
+            crate::FromLuaMulti::from_lua_multi(r, lua)
+        })?;
+
+        output.apply_ret(ret);
+        
+        Ok(())
     }
 }

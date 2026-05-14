@@ -4,15 +4,24 @@ use derive_where::derive_where;
 
 use rand::{Rng, SeedableRng, seq::IndexedRandom};
 use spru::common::error::AnyResult;
+use spru_script::script;
 use tagset::tagset;
 use telety::telety;
 
 use crate::cloned;
 
 #[derive(Debug)]
+#[script(include = [Methods])]
 pub struct Die<D: self::DieKind> {
     die: D,
+    #[get]
+    #[set]
     current_face: D::Face,
+}
+
+#[script(partial = Methods)]
+impl<D: self::DieKind + 'static> Die<D> {
+    
 }
 
 impl<D: self::DieKind> Die<D> {

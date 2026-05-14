@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use spru::{common::error::{AnyError, PseudoError as _}, interactor::with, item::IdT};
+use spru_script::{Wrap, script};
 use spru_util::{cloned, counter, fsm, pile, rotating};
 use tracing::instrument;
 
@@ -8,8 +9,10 @@ use crate::round;
 
 type Interactor<'l, 'r> = spru::reaction::Interactor<'l, 'r, Reaction>;
 
+pub type Trigger = Wrap<TriggerImpl>;
+
 #[derive(Debug, Clone)]
-pub enum Trigger {
+pub enum TriggerImpl {
     StartGame,
     StartRound,
     DrawFromDeck,
@@ -18,7 +21,40 @@ pub enum Trigger {
     EndGame,
 }
 
-impl Trigger {
+#[script(state = false)]
+impl TriggerImpl {
+    #[function(name = start_game)]
+    fn _start_game() -> Trigger {
+        Wrap::new(TriggerImpl::StartGame)
+    }
+
+    #[function(name = start_round)]
+    fn _start_round() -> Trigger {
+        Wrap::new(TriggerImpl::StartRound)
+    }
+    
+    #[function(name = draw_from_deck)]
+    fn _draw_from_deck() -> Trigger {
+        Wrap::new(TriggerImpl::DrawFromDeck)
+    }
+
+    #[function(name = play)]
+    fn _play() -> Trigger {
+        Wrap::new(TriggerImpl::Play)
+    }
+
+    #[function(name = end_round)]
+    fn _end_round() -> Trigger {
+        Wrap::new(TriggerImpl::EndRound)
+    }
+
+    #[function(name = end_game)]
+    fn _end_game() -> Trigger {
+        Wrap::new(TriggerImpl::EndGame)
+    }
+}
+
+impl TriggerImpl {
     #[instrument(skip_all, ret, err)]
     fn start_game(interactor: &mut Interactor) -> spru::action::Result<()> {
         let root = interactor.get_root()?;
@@ -32,7 +68,7 @@ impl Trigger {
         };
         interactor.get_root()?.update(cloned::update(new_root));
 
-        interactor.enqueue_trigger(Trigger::StartRound);
+        interactor.enqueue_trigger(Wrap::new(TriggerImpl::StartRound));
 
         Ok(())
     }
@@ -130,7 +166,7 @@ impl Trigger {
         };
 
         if round_end {
-            interactor.enqueue_trigger(Trigger::EndRound);
+            interactor.enqueue_trigger(Wrap::new(TriggerImpl::EndRound));
         }
 
         Ok(())
@@ -194,12 +230,12 @@ impl Trigger {
         discard.update(pile::clear());
 
         if *round.value() == 7 {
-            interactor.enqueue_trigger(Trigger::EndGame);
+            interactor.enqueue_trigger(Wrap::new(TriggerImpl::EndGame));
         } else {
             // Advance round counter
             round.update(counter::add_checked(1));
 
-            interactor.enqueue_trigger(Trigger::StartRound);
+            interactor.enqueue_trigger(Wrap::new(TriggerImpl::StartRound));
         }
 
         Ok(())
@@ -254,13 +290,13 @@ impl spru::Reaction for Reaction {
         interactor: &mut spru::reaction::Interactor<Self>,
         trigger: Self::Trigger,
     ) -> spru::action::Result<()> {
-        match trigger {
-            Trigger::StartGame => Trigger::start_game(interactor),
-            Trigger::StartRound => Trigger::start_round(interactor),
-            Trigger::DrawFromDeck => Trigger::draw_from_deck(interactor),
-            Trigger::Play => Trigger::play(interactor),
-            Trigger::EndRound => Trigger::end_round(interactor),
-            Trigger::EndGame => Trigger::end_game(interactor),
+        match *trigger {
+            TriggerImpl::StartGame => TriggerImpl::start_game(interactor),
+            TriggerImpl::StartRound => TriggerImpl::start_round(interactor),
+            TriggerImpl::DrawFromDeck => TriggerImpl::draw_from_deck(interactor),
+            TriggerImpl::Play => TriggerImpl::play(interactor),
+            TriggerImpl::EndRound => TriggerImpl::end_round(interactor),
+            TriggerImpl::EndGame => TriggerImpl::end_game(interactor),
         }
     }
 }

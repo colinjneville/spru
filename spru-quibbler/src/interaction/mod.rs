@@ -5,6 +5,7 @@ pub use discard::Discard;
 pub mod play;
 pub use play::Play;
 use spru::item::IdT;
+use spru_script::Wrap;
 use tagset::tagset;
 
 // pub(crate) type Interactor<'l, 'r, Storage> = spru::interaction::Interactor<
@@ -24,6 +25,15 @@ pub enum Error {
     InvalidState,
 }
 
+type LuaInteraction<Args> = spru_script::Interaction<
+    crate::State, 
+    crate::Actions, 
+    IdT<crate::game::Root>, 
+    crate::reaction::Trigger, 
+    spru_script_lua::Lua<crate::State, crate::Actions>,
+    Args,
+>;
+
 #[tagset(derive(Debug, Clone))]
 #[tagset(impl spru::Interaction {
     type State = crate::State;
@@ -37,6 +47,9 @@ pub enum Error {
 #[tagset(Draw)]
 #[tagset(Play)]
 #[tagset(Discard)]
+#[tagset(LuaInteraction<crate::data::Card>)]
+#[tagset(LuaInteraction<Option<Wrap<crate::Play>>>)]
+#[tagset(LuaInteraction<bool>)]
 pub struct Interaction;
 
 pub struct Output;

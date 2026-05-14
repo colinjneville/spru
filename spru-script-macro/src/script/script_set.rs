@@ -91,7 +91,7 @@ impl ScriptSet {
 
 impl super::ScriptImpl for ScriptSet {
     #[vacro_report::scope]
-    fn self_bounds(&self, context: &Context, self_bounds: &mut syn::punctuated::Punctuated<syn::TypeParamBound, syn::Token![+]>)
+    fn self_bounds(&self, _context: &Context, self_bounds: &mut syn::punctuated::Punctuated<syn::TypeParamBound, syn::Token![+]>)
         -> syn::Result<()>
     {
         if let FieldKind::Field(_field) = &self.field_kind {
@@ -112,15 +112,14 @@ impl super::ScriptImpl for ScriptSet {
         let Context {
             type_parameter_state,
             type_parameter_action,
-            parameter_registry,
-            parameter_registration,
             self_type,
+            ..
         } = context;
 
         let field_type = self.field_type()?;
 
         let bound = syn::parse_quote_spanned! { self.span =>
-            ::spru_script::RegistrySetter<#type_parameter_state, #type_parameter_action, #self_type, #field_type>
+            ::spru_script::RegistryStateSet<#type_parameter_state, #type_parameter_action, #self_type, #field_type>
         };
         registry_bounds.push(bound);
 
@@ -179,11 +178,10 @@ impl super::ScriptImpl for ScriptSet {
         -> syn::Result<()> 
     {
         let Context {
-            type_parameter_state,
-            type_parameter_action,
             parameter_registry,
             parameter_registration,
             self_type,
+            ..
         } = context;
 
         let field_name = self.name()?;
@@ -191,7 +189,7 @@ impl super::ScriptImpl for ScriptSet {
         let action_closure = self.action_closure(self_type)?;
 
         let stmt = syn::parse_quote_spanned! { self.span =>
-            #parameter_registry.register_set(#parameter_registration, #field_name, #action_closure)?;
+            #parameter_registry.register_state_set(#parameter_registration, #field_name, #action_closure)?;
         };
 
         stmts.push(stmt);

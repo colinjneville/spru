@@ -20,6 +20,8 @@ telety.workspace = true
 
 derive-where.workspace = true
 
+serde.workspace = true
+
 tracing.workspace = true
 
 [features]

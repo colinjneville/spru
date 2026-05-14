@@ -161,13 +161,13 @@ impl<Storage, Action> Registration<Storage, Action> {
     }
 }
 
-pub struct RegistrationType<'r, T> {
+pub struct RegistrationState<'r, T> {
     lua: &'r mlua::Lua,
     idt_registry: &'r mut mlua::UserDataRegistry<IdT<T>>,
     static_table: Option<mlua::Table>,
 }
 
-impl<'r, T> RegistrationType<'r, T> {
+impl<'r, T> RegistrationState<'r, T> {
     pub(crate) fn new(
         lua: &'r mlua::Lua, 
         idt_registry: &'r mut mlua::UserDataRegistry<IdT<T>>,
@@ -180,23 +180,71 @@ impl<'r, T> RegistrationType<'r, T> {
         })
     }
 
-    pub(crate) fn add_getter(&mut self, ident: &str, f: impl Fn(&mlua::Lua, &IdT<T>) -> mlua::Result<mlua::Value> + Send + 'static) {
+    pub(crate) fn add_getter(&mut self, ident: &str, f: impl Fn(&mlua::Lua, &IdT<T>) -> mlua::Result<mlua::Value> + Send + 'static) -> mlua::Result<()> {
         self.idt_registry.add_field_method_get(ident, f);
+        Ok(())
     }
 
-    pub(crate) fn add_setter(&mut self, ident: &str, f: impl Fn(&mlua::Lua, &mut IdT<T>, mlua::Value) -> mlua::Result<()> + Send + 'static) {
+    pub(crate) fn add_setter(&mut self, ident: &str, f: impl Fn(&mlua::Lua, &mut IdT<T>, mlua::Value) -> mlua::Result<()> + Send + 'static) -> mlua::Result<()> {
         self.idt_registry.add_field_method_set(ident, f);
+        Ok(())
     }
 
-    pub(crate) fn add_method(&mut self, ident: &str, f: impl Fn(&mlua::Lua, &IdT<T>, mlua::MultiValue) -> mlua::Result<mlua::MultiValue> + Send + 'static) {
+    pub(crate) fn add_method(&mut self, ident: &str, f: impl Fn(&mlua::Lua, &IdT<T>, mlua::MultiValue) -> mlua::Result<mlua::MultiValue> + Send + 'static) -> mlua::Result<()> {
         self.idt_registry.add_method(ident, f);
+        Ok(())
     }
 
-    pub(crate) fn add_create(&mut self, ident: &str, f: impl Fn(&mlua::Lua, mlua::MultiValue) -> mlua::Result<mlua::AnyUserData> + Send + 'static) -> mlua::Result<()> {
-        let constructor = self.lua.create_function(f)?;
+    pub(crate) fn add_function(&mut self, ident: &str, f: impl Fn(&mlua::Lua, mlua::MultiValue) -> mlua::Result<mlua::MultiValue> + Send + 'static) -> mlua::Result<()> {
+        let function = self.lua.create_function(f)?;
         if let Some(static_table) = &self.static_table {
-            static_table.set(ident, constructor)?;
+            static_table.set(ident, function)?;
         }
+
+        Ok(())
+    }
+}
+
+pub struct RegistrationType<'r, T> {
+    lua: &'r mlua::Lua,
+    registry: &'r mut mlua::UserDataRegistry<T>,
+    static_table: Option<mlua::Table>,
+}
+
+impl<'r, T> RegistrationType<'r, T> {
+    pub(crate) fn new(
+        lua: &'r mlua::Lua, 
+        registry: &'r mut mlua::UserDataRegistry<T>,
+        static_table: Option<mlua::Table>,
+    ) -> mlua::Result<Self> {
+        Ok(Self {
+            lua,
+            registry,
+            static_table,
+        })
+    }
+
+    pub(crate) fn add_getter(&mut self, ident: &str, f: impl Fn(&mlua::Lua, &T) -> mlua::Result<mlua::Value> + Send + 'static) -> mlua::Result<()> {
+        self.registry.add_field_method_get(ident, f);
+        Ok(())
+    }
+
+    pub(crate) fn add_method(&mut self, ident: &str, f: impl Fn(&mlua::Lua, &T, mlua::MultiValue) -> mlua::Result<mlua::MultiValue> + Send + 'static) -> mlua::Result<()> {
+        self.registry.add_method(ident, f);
+        Ok(())
+    }
+
+    pub(crate) fn add_function(&mut self, ident: &str, f: impl Fn(&mlua::Lua, mlua::MultiValue) -> mlua::Result<mlua::MultiValue> + Send + 'static) -> mlua::Result<()> {
+        let function = self.lua.create_function(f)?;
+        if let Some(static_table) = &self.static_table {
+            static_table.set(ident, function)?;
+        }
+
+        Ok(())
+    }
+
+    pub(crate) fn add_eq(&mut self, f: impl Fn(&mlua::Lua, &T, mlua::Value) -> mlua::Result<bool> + Send + 'static) -> mlua::Result<()> {
+        self.registry.add_meta_method(mlua::MetaMethod::Eq.name(), f);
 
         Ok(())
     }

@@ -18,151 +18,77 @@
 //! and the [GetterFn] to do the desired access. The method then maps the [IdT] type id to get the correct [MappingFn],
 //! which gets the `T` from the ledger and passes it to the [GetterFn]. This returns any lua Value.
 
+mod from_lua;
+pub use from_lua::{FromLua, FromLuaMulti};
 pub(crate) mod func;
-mod game_init;
-pub use game_init::GameInit;
+// mod game_init;
+// pub use game_init::GameInit;
+mod into_lua;
+pub use into_lua::{IntoLua, IntoLuaMulti};
 mod instance;
 pub use instance::Lua;
-mod interaction;
-pub use interaction::Interaction;
+// mod interaction;
+// pub use interaction::Interaction;
 pub(crate) mod key;
 mod ledger;
 use ledger::Ledger;
 mod registration;
-use registration::{Registration, RegistrationType};
+use registration::{Registration, RegistrationState, RegistrationType};
 pub mod registry;
 use registry::Registry;
 
-use spru::item::IdT;
-
-pub trait IntoLua {
-    fn into_lua(self, lua: &mlua::Lua) -> mlua::Result<mlua::Value>;
-}
-
-// Perhaps one day...
-// https://github.com/rust-lang/rfcs/issues/2758
-macro_rules! forward_into_lua {
-    ($( [$($generics:tt)*] $t:ty),+ $(,)?) => {
-        $(
-            impl <$($generics)*> IntoLua for $t {
-                fn into_lua(self, lua: &mlua::Lua) -> mlua::Result<mlua::Value> {
-                    mlua::IntoLua::into_lua(self, lua)
-                }
+macro_rules! lua_multi {
+    () => { 
+        impl IntoLuaMulti for () {
+            fn into_lua_multi(self, _lua: &mlua::Lua) -> mlua::Result<mlua::MultiValue> {
+                Ok(mlua::MultiValue::new())
             }
-        )+
-    }
-}
+        }
 
-// https://docs.rs/mlua/latest/mlua/trait.IntoLua.html#foreign-impls
-forward_into_lua! {
-    [] &str,
-    [] &std::ffi::CStr,
-    [] &std::ffi::OsStr,
-    [] &std::path::Path,
-    // [] &BStr,
-    [] std::borrow::Cow<'_, str>,
-    [] std::borrow::Cow<'_, std::ffi::CStr>,
-    [] bool,
-    [] char,
-    [] f32,
-    [] f64,
-    [] i8,
-    [] i16,
-    [] i32,
-    [] i64,
-    [] i128,
-    [] isize,
-    [] u8,
-    [] u16,
-    [] u32,
-    [] u64,
-    [] u128,
-    [] usize,
-    [] Box<str>,
-    [] std::ffi::CString,
-    [] String,
-    [] std::ffi::OsString,
-    [] std::path::PathBuf,
-
-    [K: Eq + std::hash::Hash + mlua::IntoLua, V: mlua::IntoLua, S: std::hash::BuildHasher] std::collections::HashMap<K, V, S>,
-    [K: Ord + mlua::IntoLua, V: mlua::IntoLua] std::collections::BTreeMap<K, V>,
-    [T: Clone + mlua::IntoLua] &[T],
-    [T: mlua::IntoLua, const N: usize] [T; N],
-    [T: Eq + std::hash::Hash + mlua::IntoLua, S: std::hash::BuildHasher] std::collections::HashSet<T, S>,
-    [T: Ord + mlua::IntoLua] std::collections::BTreeSet<T>,
-    [T: mlua::IntoLua] Option<T>,
-    [T: mlua::IntoLua] Box<[T]>,
-    [T: mlua::IntoLua] Vec<T>,
-}
-
-// TODO https://docs.rs/mlua/latest/mlua/trait.IntoLua.html#implementors
-
-impl<T: 'static> IntoLua for IdT<T> {
-    fn into_lua(self, lua: &mlua::Lua) -> mlua::Result<mlua::Value> {
-        mlua::IntoLua::into_lua(lua.create_any_userdata(self)?, lua)
-    }
-}
-
-pub trait FromLua: Sized {
-    fn from_lua(value: mlua::Value, lua: &mlua::Lua) -> mlua::Result<Self>;
-}
-
-// Perhaps one day...
-// https://github.com/rust-lang/rfcs/issues/2758
-macro_rules! forward_from_lua {
-    ($( [$($generics:tt)*] $t:ty),+ $(,)?) => {
-        $(
-            impl <$($generics)*> FromLua for $t {
-                fn from_lua(value: mlua::Value, lua: &mlua::Lua) -> mlua::Result<Self> {
-                    mlua::FromLua::from_lua(value, lua)
-                }
+        impl FromLuaMulti for () {
+            fn from_lua_multi(_values: mlua::MultiValue, _lua: &mlua::Lua) -> mlua::Result<Self> {
+                Ok(())
             }
-        )+
-    }
+        }
+    };
+    ($n:tt $first:ident $($nn:tt $rest:ident)*) => {
+        impl<$first, $($rest),*> IntoLuaMulti for ($first, $($rest),*) 
+        where
+            $first: IntoLua,
+            $($rest: IntoLua),*
+        {
+            fn into_lua_multi(self, lua: &mlua::Lua) -> mlua::Result<mlua::MultiValue> {
+                let mut multi = mlua::MultiValue::new();
+                multi.push_back(IntoLua::into_lua(self.$n, lua)?);
+                $(
+                    multi.push_back(IntoLua::into_lua(self.$nn, lua)?);
+                )*
+
+                Ok(multi)
+            }
+        }
+
+        impl<$first, $($rest),*> FromLuaMulti for ($first, $($rest),*) 
+        where
+            $first: FromLua,
+            $($rest: FromLua),*
+        {
+            #[allow(non_snake_case)]
+            fn from_lua_multi(mut values: mlua::MultiValue, lua: &mlua::Lua) -> mlua::Result<Self> {
+                let first = FromLua::from_lua(values.pop_front().unwrap_or(mlua::Nil), lua)?;
+                $(let $rest = FromLua::from_lua(values.pop_front().unwrap_or(mlua::Nil), lua)?;)*
+                Ok((
+                    first,
+                    $($rest),*
+                ))
+            }
+        }
+       
+        lua_multi!($($nn $rest)*);
+    };
 }
 
-// https://docs.rs/mlua/latest/mlua/trait.FromLua.html#foreign-impls
-forward_from_lua! {
-    [] bool,
-    [] char,
-    [] f32,
-    [] f64,
-    [] i8,
-    [] i16,
-    [] i32,
-    [] i64,
-    [] i128,
-    [] isize,
-    [] u8,
-    [] u16,
-    [] u32,
-    [] u64,
-    [] u128,
-    [] usize,
-    [] Box<str>,
-    [] std::ffi::CString,
-    [] String,
-    [] std::ffi::OsString,
-    [] std::path::PathBuf,
-    [K: Eq + std::hash::Hash + mlua::FromLua, V: mlua::FromLua, S: std::hash::BuildHasher + Default] std::collections::HashMap<K, V, S>, 
-    [K: Ord + mlua::FromLua, V: mlua::FromLua] std::collections::BTreeMap<K, V>,
-    [T: mlua::FromLua, const N: usize] [T; N],
-    [T: Eq + std::hash::Hash + mlua::FromLua, S: std::hash::BuildHasher + Default] std::collections::HashSet<T, S>,
-    [T: Ord + mlua::FromLua] std::collections::BTreeSet<T>,
-    [T: mlua::FromLua] Option<T>,
-    [T: mlua::FromLua] Box<[T]>,
-    [T: mlua::FromLua] Vec<T>,
-}
-
-// TODO https://docs.rs/mlua/latest/mlua/trait.FromLua.html#implementors
-
-impl<T: 'static> FromLua for IdT<T> {
-    fn from_lua(value: mlua::Value, lua: &mlua::Lua) -> mlua::Result<Self> {
-        let aud = <mlua::AnyUserData as mlua::FromLua>::from_lua(value, lua)?;
-        let idt = *aud.borrow::<Self>()?;
-        Ok(idt)
-    }
-}
+lua_multi!(15 P 14 O 13 N 12 M 11 L 10 K 9 J 8 I 7 H 6 G 5 F 4 E 3 D 2 C 1 B 0 A);
 
 #[cfg(test)]
 
@@ -210,7 +136,7 @@ mod test {
     #[tagset(impl<'de> tagset::serde::DeserializeFromDiscriminant<'de>)]
     #[tagset(impl<'de> tagset::proxy::serde::Deserialize<'de>)]
     #[tagset(impl spru::State)]
-    #[tagset(impl<Action, Registry> spru_script::ScriptableState<Action, Registry>)]
+    #[tagset(impl<Action, Registry> spru_script::Scriptable<Action, Registry>)]
     #[tagset(derive(Debug))]
     #[tagset(X<i32>)]
     #[tagset(X<i64>)]
@@ -238,10 +164,6 @@ mod test {
 
         let lua = crate::Lua::<MyState, MyAction>::new();
 
-        // let game_init = game_init::GameInit::new(lua.script("
-        //     root.b.a
-        // "));
-
         let mut test_interactor = spru::interactor::test_util::TestInteractor::new(storage);
 
         let mut interactor = test_interactor.interactor::<MyAction, _>(());
@@ -255,33 +177,6 @@ mod test {
 
         interactor.flush().unwrap();
 
-        
-        // let interaction = interaction::Interaction::<MyState, MyAction, IdT<Y>, i32>
-        //     ::new(lua, "root.b.a".to_string());
-
-        // spru::Server::init(game_init, player_init, reaction)
-
-
-        // spru::Interaction::apply(&interaction, &mut interactor)
-        //     .unwrap();
-
-        // let mut interactor = test_interactor.interactor::<MyAction, _>(());
-        // let x = interactor
-        //     .create(cloned::create(X { a: 3 }));
-        // let y = interactor
-        //     .create(cloned::create(Y { b: x.id() }));
-        // let root = y.id();
-
-        // interactor.flush().unwrap();
-        
-        // let lua = Instance::new();
-
-        let script = "
-            local c = root.b:multiplier(4)
-            root.b:multiplier(c)
-            return root.b.a
-        ";
-
         let script = "
             local x2 = X[i32].new(5, 7)
             root.b = x2
@@ -294,18 +189,16 @@ mod test {
         ";
 
         let mut interactor = test_interactor.interactor::<MyAction, _>(root);
-        let value: mlua::Value = lua.exec(&mut interactor, script).unwrap();
 
-        // let script2 = lua.script("
-        //     return root.b.a
-        // ");
+        panic!("TODO TestInteractor needs to be made to work with spru_script_lua::Context");
 
-        // let value2: mlua::Value = script2.exec(&mut interactor).unwrap();
-        println!("{}", value.as_integer().unwrap());
 
-        // assert_eq!(value.as_integer().unwrap(), (3 * 4) * (3 * 4));
-        assert_eq!(value.as_integer().unwrap(), 5);
+        // let value: mlua::Value = lua.exec(&mut interactor, script, mlua::Nil).unwrap();
+
+        // // let value2: mlua::Value = script2.exec(&mut interactor).unwrap();
+        // println!("{}", value.as_integer().unwrap());
+
+        // // assert_eq!(value.as_integer().unwrap(), (3 * 4) * (3 * 4));
+        // assert_eq!(value.as_integer().unwrap(), 5);
     }
-
-    
 }

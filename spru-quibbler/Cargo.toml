@@ -28,6 +28,8 @@ anyhow.workspace = true
 serde.workspace = true
 ron.workspace = true
 
+mlua.workspace = true
+
 tracing.workspace = true
 
 wordnik_list = "0.2.1"
@@ -42,3 +44,5 @@ arboard = "3.6.1"
 workspace = true
 features = ["default"]
 
+[build-dependencies]
+copy_to_output.workspace = true

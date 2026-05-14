@@ -2,11 +2,15 @@
 //! Game Items should use the included derive macros or implement the `Scriptable*` traits manually, 
 //! and specific scripting implementations should implement the `Registry*` and `Registration*` traits.
 mod interaction;
+use std::ops;
 
+pub use interaction::Interaction;
 
 use tagset::tagset_meta;
 use telety::telety;
 
+
+/// A pre-parsed path-wise representation of a type, including type arguments. Create using [scriptable_path].
 #[derive(Debug)]
 pub struct ScriptablePath(pub &'static [&'static str], pub &'static [Self]);
 
@@ -16,7 +20,7 @@ pub struct ScriptablePath(pub &'static [&'static str], pub &'static [Self]);
 /// TODO further documentation
 pub use spru_script_macro::script;
 
-/// Parses a rust type path during macro expansion. Used for implementing [ScriptableState::register].
+/// Parses a rust type path during macro expansion. Used for implementing [Scriptable::register].
 /// Not normally needed for manual use.
 pub use spru_script_macro::scriptable_path;
 
@@ -28,17 +32,17 @@ pub use spru_script_macro::scriptable_path;
 #[tagset_meta]
 #[meta(bounds(
     Registry: self::Registry<Self, Action>,
-    for<VAR> Registry: self::RegistryType<Self, Action, VAR>,
+    for<VAR> Registry: self::RegistryState<Self, Action, VAR>,
 ))]
-pub trait ScriptableState<Action, Registry: ?Sized>: spru::State 
+pub trait Scriptable<Action, Registry: ?Sized>: spru::State 
 where
     Registry: self::Registry<Self, Action>,
 {
     /// Registers substates with the scripting implementation.
-    /// [ScriptRegistryType::register_type] should be called for each applicable type.
+    /// [ScriptRegistryState::register_state] should be called for each applicable type.
     #[meta(default {
         foreach!(VAR => {
-            spru_script::RegistryType::<Self, Action, VAR>::register_type::<Storage>(
+            spru_script::RegistryState::<Self, Action, VAR>::register_state::<Storage>(
                 registry, 
                 registration, 
                 Some(spru_script::scriptable_path!(VAR))
@@ -46,13 +50,32 @@ where
         });
         Ok(())
     })]
-    fn register<Storage>(registry: &Registry, registration: &mut Registry::TypeRegistration<'_, Storage>) 
+    fn register<Storage>(registry: &Registry, registration: &mut Registry::Registration<'_, Storage>) 
         -> Result<(), Registry::Error>
     where
         Storage: spru::item::Storage<State = Self>,
     ;
 }
 
+
+pub trait ScriptableState<State, Action, Registry: ?Sized>: Sized + 'static
+where
+    Registry: self::Registry<State, Action>,
+{
+    /// The type being registered, usually `Self`
+    type Type;
+
+    /// Registers members of this type with the scripting implementation.
+    /// [RegistryStateGet::register_state_get], etc. should be called for each field/method.
+    fn register_state<Storage>(
+        registry: &Registry, 
+        registration: &mut Registry::RegistrationState<'_, Storage, Self::Type>, 
+    )
+         -> Result<(), Registry::Error>
+    where
+        Storage: spru::item::Storage<State = State>,
+    ;
+}
 
 pub trait ScriptableType<State, Action, Registry: ?Sized>: Sized + 'static
 where
@@ -62,75 +85,63 @@ where
     type Type;
 
     /// Registers members of this type with the scripting implementation.
-    /// [ScriptRegistryGetter::register_get], etc. should be called for each field/method.
-    fn register<Storage>(
+    /// [RegistryTypeGet::register_type_get], etc. should be called for each field/method.
+    fn register_type(
         registry: &Registry, 
-        registration: &mut Registry::MemberRegistration<'_, Storage, Self::Type>, 
+        registration: &mut Registry::RegistrationType<'_, Self::Type>, 
     )
          -> Result<(), Registry::Error>
-    where
-        Storage: spru::item::Storage<State = State>,
     ;
 }
 
-pub trait LanguageNoRoot<State, Action, Return> {
+pub trait LanguageBase<State, Action> {
     type Registry: Registry<State, Action>;
     type Error;
-    
-    /// Execute a script without access to the Game's Root. 
-    /// Mainly useful for the Game Init, where no root exists.
-    fn exec_no_root<Storage, Context, Output>(
-        &self, 
-        interactor: &mut spru::Interactor<'_, Storage, Action, Context, Output>,
-        script: &str,
-    ) -> Result<Return, Self::Error>
-    where
-        Storage: spru::item::Storage<State = State>,
-        State: spru::State + ScriptableState<Action, Self::Registry>,
-        Action: spru::Action<State = State>,
-    ;
 }
 
-pub trait Language<State, Action, Return, Root>: LanguageNoRoot<State, Action, Return> {
-    /// Execute a script with access to the Game's Root. 
-    fn exec<Storage, Context, Output>(
+pub trait Language<State, Action, Args, Context, Output>: LanguageBase<State, Action> {
+    /// Execute a script.
+    fn exec<Storage>(
         &self, 
         interactor: &mut spru::Interactor<'_, Storage, Action, Context, Output>,
         script: &str,
-    ) -> Result<Return, Self::Error> 
+        args: Args,
+    ) -> Result<(), Self::Error> 
     where
         Storage: spru::item::Storage<State = State>,
-        State: spru::State + ScriptableState<Action, Self::Registry>,
+        State: spru::State + Scriptable<Action, Self::Registry>,
         Action: spru::Action<State = State>,
-        Context: spru::interactor::GetRoot<Root = Root>,
     ;
 }
 
 /// A scripting implementation. Implementations will also implement [ScriptRegistryType] and [ScriptRegistryGetter], etc. based
 /// on the specific types they can support. 
 pub trait Registry<State, Action> {
-    /// The mutable type responsible for performing type registration based on the concrete Storage implementation.
-    type TypeRegistration<'r, Storage>
+    /// The stateful type responsible for performing registration of States/types based on the concrete Storage implementation.
+    type Registration<'r, Storage>
     where
         Storage: spru::item::Storage<State = State>,
     ;
 
-    /// The mutable type responsible for performing field/method registration based on the concrete Storage implementation.
-    type MemberRegistration<'r, Storage, T: 'static>
+    /// The stateful type responsible for performing field/method registration for States based on the concrete Storage implementation.
+    type RegistrationState<'r, Storage, T: 'static>
     where
         Storage: spru::item::Storage<State = State>,
     ;
 
-    /// The error type for the scriping implementation.
+    /// The stateful type responsible for performing field/method registration for other types
+    type RegistrationType<'r, T: 'static>;
+
+    /// The error type for the scripting implementation.
     type Error;
 }
 
 /// Scripting implementations implement this for types they support.
-pub trait RegistryType<State, Action, T>: Registry<State, Action> {
+pub trait RegistryState<State, Action, T>: Registry<State, Action> {
     /// Register a type and all its fields/methods with the scripting implementation.
-    fn register_type<Storage>(
+    fn register_state<Storage>(
         &self, 
-        registration: &mut Self::TypeRegistration<'_, Storage>,
+        registration: &mut Self::Registration<'_, Storage>,
         type_path: Option<ScriptablePath>,
     ) 
         -> Result<(), Self::Error>
@@ -139,10 +150,24 @@ pub trait RegistryType<State, Action, T>: Registry<State, Action> {
     ;
 }
 
+/// Scripting implementations implement this for types they support as immutable non-State types (i.e. just `T`, not `IdT<T>`)
+pub trait RegistryType<State, Action, T>: Registry<State, Action> {
+    /// Register an immutable non-State type.
+    fn register_type<Storage>(
+        &self, 
+        registration: &mut Self::Registration<'_, Storage>, 
+        type_path: Option<ScriptablePath>,
+    )
+        -> Result<(), Self::Error>
+    where
+        Storage: spru::item::Storage<State = State>,
+    ;
+}
+
 /// Scripting implementations implement this for types they support as field getters.
-pub trait RegistryGetter<State, Action, T, U>: Registry<State, Action> {
+pub trait RegistryStateGet<State, Action, T, U>: Registry<State, Action> {
     /// Register a read-only getter for a field.
-    fn register_get<Storage>(&self, registration: &mut Self::MemberRegistration<'_, Storage, T>, ident: &str, getter: fn(&T) -> U)
+    fn register_state_get<Storage>(&self, registration: &mut Self::RegistrationState<'_, Storage, T>, ident: &str, getter: fn(&T) -> U)
         -> Result<(), Self::Error>
     where
         Storage: spru::item::Storage<State = State>,
@@ -150,9 +175,9 @@ pub trait RegistryGetter<State, Action, T, U>: Registry<State, Action> {
 }
 
 /// Scripting implementations implement this for types they support as field setters.
-pub trait RegistrySetter<State, Action, T, U>: Registry<State, Action> {
+pub trait RegistryStateSet<State, Action, T, U>: Registry<State, Action> {
     /// Register a setter for a field.
-    fn register_set<Storage>(&self, registration: &mut Self::MemberRegistration<'_, Storage, T>, ident: &str, setter: fn(&T, U) -> Vec<Action>) 
+    fn register_state_set<Storage>(&self, registration: &mut Self::RegistrationState<'_, Storage, T>, ident: &str, setter: fn(&T, U) -> Vec<Action>) 
         -> Result<(), Self::Error>
     where
         Storage: spru::item::Storage<State = State>,
@@ -160,9 +185,9 @@ pub trait RegistrySetter<State, Action, T, U>: Registry<State, Action> {
 }
 
 /// Scripting implementations implement this for types they support as methods.
-pub trait RegistryMethod<State, Action, T, Args, Ret>: Registry<State, Action> {
+pub trait RegistryStateMethod<State, Action, T, Args, Ret>: Registry<State, Action> {
     /// Register a method.
-    fn register_method<Storage>(&self, registration: &mut Self::MemberRegistration<'_, Storage, T>, ident: &str, method: fn(&T, Args) -> (Ret, Vec<Action>)) 
+    fn register_state_method<Storage>(&self, registration: &mut Self::RegistrationState<'_, Storage, T>, ident: &str, method: fn(&T, Args) -> (Ret, Vec<Action>)) 
         -> Result<(), Self::Error>
     where
         Storage: spru::item::Storage<State = State>,
@@ -171,16 +196,101 @@ pub trait RegistryMethod<State, Action, T, Args, Ret>: Registry<State, Action> {
 
 
 /// Scripting implementations implement this for types they support as constructors.
-pub trait RegistryCreate<State, Action, Create, T, Args>: Registry<State, Action> 
+pub trait RegistryStateCreate<State, Action, Create, T, Args>: Registry<State, Action> 
 where
     Create: spru::action::Create<T = T> + Into<Action>,
 {
     /// Register a constructor.
-    fn register_create<Storage>(&self, registration: &mut Self::MemberRegistration<'_, Storage, T>, ident: &str, create: fn(Args) -> Create) 
+    fn register_state_create<Storage>(&self, registration: &mut Self::RegistrationState<'_, Storage, T>, ident: &str, create: fn(Args) -> Create) 
         -> Result<(), Self::Error>
     where
         Storage: spru::item::Storage<State = State>,
     ;
+}
+
+/// Scripting implementations implement this for types they support as functions.
+pub trait RegistryStateFunction<State, Action, T, Args, Ret>: Registry<State, Action> {
+    /// Register a constructor.
+    fn register_state_function<Storage>(&self, registration: &mut Self::RegistrationState<'_, Storage, T>, ident: &str, create: fn(Args) -> Ret) 
+        -> Result<(), Self::Error>
+    where
+        Storage: spru::item::Storage<State = State>,
+    ;
+}
+
+/// Scripting implementations implement this for types they support as field getters.
+pub trait RegistryTypeGet<State, Action, T, U>: Registry<State, Action> {
+    /// Register a read-only getter for a field.
+    fn register_type_get(&self, registration: &mut Self::RegistrationType<'_, T>, ident: &str, getter: fn(&T) -> U)
+        -> Result<(), Self::Error>
+    ;
+}
+
+/// Scripting implementations implement this for types they support as methods.
+pub trait RegistryTypeMethod<State, Action, T, Args, Ret>: Registry<State, Action> {
+    /// Register a method.
+    fn register_type_method(&self, registration: &mut Self::RegistrationType<'_, T>, ident: &str, method: fn(&T, Args) -> Ret)
+        -> Result<(), Self::Error>
+    ;
+}
+
+/// Scripting implementations implement this for types they support as functions.
+pub trait RegistryTypeFunction<State, Action, T, Args, Ret>: Registry<State, Action> {
+    /// Register a function.
+    fn register_type_function(&self, registration: &mut Self::RegistrationType<'_, T>, ident: &str, method: fn(Args) -> Ret)
+        -> Result<(), Self::Error>
+    ;
+}
+
+/// Scripting implementations implement this for types supporting equality functions.
+pub trait RegistryTypeEq<State, Action, T>: Registry<State, Action> {
+    /// Register an equality function for a type.
+    fn register_type_eq(&self, registration: &mut Self::RegistrationType<'_, T>, eq: fn(&T, &T) -> bool)
+        -> Result<(), Self::Error>
+    ;
+}
+
+#[repr(transparent)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Default, Hash, PartialOrd, Ord)]
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(transparent)]
+pub struct Wrap<T>(pub T);
+
+impl<T> Wrap<T> {
+    pub fn new(value: T) -> Self {
+        Self(value)
+    }
+}
+
+impl<T> ops::Deref for Wrap<T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<T> ops::DerefMut for Wrap<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl<State, Action, Registry: ?Sized, T> ScriptableType<State, Action, Registry> for Wrap<T> 
+where
+    T: ScriptableType<State, Action, Registry>,
+    Registry: crate::Registry<State, Action>,
+{
+    type Type = T::Type;
+
+    fn register_type(
+        registry: &Registry, 
+        registration: &mut Registry::RegistrationType<'_, Self::Type>, 
+    )
+         -> Result<(), Registry::Error>
+     {
+        T::register_type(registry, registration)
+    }
 }
 
 mod private {
@@ -194,6 +304,14 @@ pub trait MethodReturn<Action> : private::Sealed {
     type T;
 
     fn convert(self) -> (Self::T, Vec<Action>);
+
+    fn wrap_convert(self) -> (Wrap<Self::T>, Vec<Action>)
+    where 
+        Self: Sized
+    {
+        let (ret, actions) = self.convert();
+        (Wrap(ret), actions)
+    }
 }
 
 macro_rules! tuple_method_return {

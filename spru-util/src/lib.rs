@@ -10,6 +10,7 @@ pub mod maybe;
 pub mod pile;
 pub mod player_map;
 pub mod rotating;
+pub mod state_cell;
 pub mod storage;
 mod strictness;
 pub use strictness::Strictness;

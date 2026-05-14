@@ -25,7 +25,7 @@ impl spru::game::Init for Init {
         self,
         interactor: &mut spru::game::init::Interactor<Self>,
     ) -> spru::game::init::Result<Self::Root> {
-        let deck = interactor.create(pile::create(card::Card::all())).id();
+        let deck = interactor.create(pile::create(card::all())).id();
         let discard = interactor.create(pile::create([])).id();
         let round = interactor.create(counter::create(0)).id();
         let round_fsm = interactor.create(fsm::default()).id();

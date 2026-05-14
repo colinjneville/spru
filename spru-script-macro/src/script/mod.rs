@@ -1,5 +1,7 @@
 mod script_create;
 use script_create::{ScriptCreate, CreateOptions};
+mod script_function;
+use script_function::{ScriptFunction, FunctionOptions};
 mod script_get;
 use script_get::{ScriptGet, GetOptions};
 mod script_method;
@@ -14,6 +16,17 @@ const ATTR_GET: &str = "get";
 const ATTR_SET: &str = "set";
 const ATTR_METHOD: &str = "method";
 const ATTR_CREATE: &str = "create";
+const ATTR_FUNCTION: &str = "function";
+
+const ERR_STATE_ONLY: &str = "The attribute is only supported for State types";
+
+fn require_state(is_state: bool, span: Span) -> syn::Result<()> {
+    if is_state {
+        Ok(())
+    } else {
+        Err(syn::Error::new(span, ERR_STATE_ONLY))
+    }
+}
 
 struct Context {
     type_parameter_state: syn::TypePath,
@@ -21,6 +34,7 @@ struct Context {
     parameter_registry: syn::Ident,
     parameter_registration: syn::Ident,
     self_type: syn::Type,
+    is_state: bool,
 }
 
 trait ScriptImpl {
@@ -43,6 +57,8 @@ struct Script {
     includes: Vec<syn::Ident>,
     items: Vec<ScriptItem>,
     generics: syn::Generics,
+    is_state: bool,
+    derives: Vec<DeriveTrait>,
 }
 
 impl Script {
@@ -53,7 +69,7 @@ impl Script {
             type_parameter_action,
             parameter_registry,
             parameter_registration,
-            self_type,
+            ..
         } = context;
 
         let mut self_bounds = Default::default();
@@ -75,7 +91,32 @@ impl Script {
             includes,
             items,
             mut generics,
+            is_state,
+            derives,
         } = self;
+
+        // TODO collect & use Spans
+        // Also wouldn't hurt to just have DeriveTrait impl ScriptImpl
+        for derive in derives {
+            match derive {
+                DeriveTrait::Eq => {
+                    let bound = syn::parse_quote_spanned! { self.span => 
+                        PartialEq
+                    };
+                    self_bounds.push(bound);
+
+                    let bound = syn::parse_quote_spanned! { self.span => 
+                        ::spru_script::RegistryTypeEq<#type_parameter_state, #type_parameter_action, #self_type>
+                    };
+                    registry_bounds.push(bound);
+
+                    let stmt = syn::parse_quote_spanned! { self.span => 
+                        #parameter_registry.register_type_eq(#parameter_registration, |a, b| a == b)?;
+                    };
+                    stmts.push(stmt);
+                }
+            }
+        }
 
         let mut impl_generics = generics.clone();
         let mut trait_generics = syn::Generics::default();
@@ -126,6 +167,13 @@ impl Script {
                 #registry_bounds
         });
 
+        let trait_ident;
+        if is_state {
+            trait_ident = syn::Ident::new("ScriptableState", self.span);
+        } else {
+            trait_ident = syn::Ident::new("ScriptableType", self.span);
+        }
+
         for item in &items {
             item.other_bounds(context, &mut impl_generics_where_clause.predicates)?;
         }
@@ -137,7 +185,7 @@ impl Script {
                 Type = #self_type
             });
             generics.make_where_clause().predicates.push(syn::parse_quote_spanned! { span => 
-                #include<#self_type>: spru_script::ScriptableType #args
+                #include<#self_type>: spru_script::#trait_ident #args
             });
         }
 
@@ -149,22 +197,48 @@ impl Script {
             struct #i<T>(T);
         });
 
+        
+        let trait_fn_generics_params;
+        let trait_fn_generics_where_clause;
+        let trait_fn_ident;
+        let registration_type;
+        if is_state {
+            trait_fn_generics_params = quote::quote_spanned! { self.span => 
+                Storage
+            };
+            trait_fn_generics_where_clause = quote::quote_spanned! { self.span =>
+                where
+                    Storage: spru::item::Storage<State = #type_parameter_state>,
+            };
+            trait_fn_ident = syn::Ident::new("register_state", self.span);
+            registration_type = quote::quote_spanned! { self.span =>
+                RegistrationState<'_, Storage, #self_type>
+            };
+        } else {
+            trait_fn_generics_params = TokenStream::new();
+            trait_fn_generics_where_clause = TokenStream::new();
+            trait_fn_ident = syn::Ident::new("register_type", self.span);
+            registration_type = quote::quote_spanned! { self.span =>
+                RegistrationType<'_, #self_type>
+            };
+        }
+
         Ok(quote::quote_spanned! { self.span => 
             #partial_struct
 
             #[allow(unused_parens)]
-            impl #impl_generics_impl spru_script::ScriptableType #trait_generics_type for #impl_type
+            impl #impl_generics_impl spru_script::#trait_ident #trait_generics_type for #impl_type
             #generics_where_clause
             {
                 type Type = #self_type;
                 
-                fn register<Storage>(#parameter_registry: &Registry, #parameter_registration: &mut Registry::MemberRegistration<'_, Storage, #self_type>)
+                fn #trait_fn_ident <#trait_fn_generics_params> (#parameter_registry: &Registry, #parameter_registration: &mut Registry::#registration_type)
                     -> Result<(), Registry::Error> 
-                where
-                    Storage: spru::item::Storage<State = #type_parameter_state>,
+                #trait_fn_generics_where_clause
+                
                 {
                     #(
-                        <#includes<#self_type> as spru_script::ScriptableType #trait_generics_type>::register::<Storage>(
+                        <#includes<#self_type> as spru_script::#trait_ident #trait_generics_type>::#trait_fn_ident::<#trait_fn_generics_params>(
                             #parameter_registry, 
                             #parameter_registration
                         )?;
@@ -229,6 +303,7 @@ enum ScriptItem {
     Set(ScriptSet),
     Create(ScriptCreate),
     Method(ScriptMethod),
+    Function(ScriptFunction),
 }
 
 impl ScriptImpl for ScriptItem {
@@ -240,6 +315,7 @@ impl ScriptImpl for ScriptItem {
             ScriptItem::Set(set) => set.self_bounds(context, self_bounds),
             ScriptItem::Create(create) => create.self_bounds(context, self_bounds),
             ScriptItem::Method(method) => method.self_bounds(context, self_bounds),
+            ScriptItem::Function(function) => function.self_bounds(context, self_bounds),
         }
     }
 
@@ -251,6 +327,7 @@ impl ScriptImpl for ScriptItem {
             ScriptItem::Set(set) => set.registry_bounds(context, registry_bounds),
             ScriptItem::Create(create) => create.registry_bounds(context, registry_bounds),
             ScriptItem::Method(method) => method.registry_bounds(context, registry_bounds),
+            ScriptItem::Function(function) => function.registry_bounds(context, registry_bounds),
         }
     }
 
@@ -262,6 +339,7 @@ impl ScriptImpl for ScriptItem {
             ScriptItem::Set(set) => set.action_bounds(context, action_bounds),
             ScriptItem::Create(create) => create.action_bounds(context, action_bounds),
             ScriptItem::Method(method) => method.action_bounds(context, action_bounds),
+            ScriptItem::Function(function) => function.action_bounds(context, action_bounds),
         }
     }
 
@@ -273,6 +351,7 @@ impl ScriptImpl for ScriptItem {
             ScriptItem::Set(set) => set.other_bounds(context, other_bounds),
             ScriptItem::Create(create) => create.other_bounds(context, other_bounds),
             ScriptItem::Method(method) => method.other_bounds(context, other_bounds),
+            ScriptItem::Function(function) => function.other_bounds(context, other_bounds),
         }
     }
 
@@ -284,6 +363,7 @@ impl ScriptImpl for ScriptItem {
             ScriptItem::Set(set) => set.registration(context, stmts),
             ScriptItem::Create(create) => create.registration(context, stmts),
             ScriptItem::Method(method) => method.registration(context, stmts),
+            ScriptItem::Function(function) => function.registration(context, stmts),
         }
     }
 }
@@ -341,30 +421,37 @@ enum FnAttr {
     Set(SetOptions),
     Method(MethodOptions),
     Create(CreateOptions),
+    Function(FunctionOptions),
 }
 
 impl FnAttr {
-    fn from_attrs(attrs: &[syn::Attribute]) -> syn::Result<Vec<(proc_macro2::Span, Self)>> {
+    fn from_attrs(is_state: bool, attrs: &[syn::Attribute]) -> syn::Result<Vec<(proc_macro2::Span, Self)>> {
         let mut v = vec![];
 
         for attr in attrs {
             let has_args = !matches!(&attr.meta, syn::Meta::Path(_));
-            if attr.meta.path().is_ident("get") {
+            if attr.meta.path().is_ident(ATTR_GET) {
                 let get = has_args.then(|| attr.parse_args())
                     .unwrap_or(Ok(GetOptions { options: Default::default() }))?;
                 v.push((attr.span(), Self::Get(get)));
-            } else if attr.meta.path().is_ident("set") {
+            } else if attr.meta.path().is_ident(ATTR_SET) {
+                require_state(is_state, attr.span())?;
                 let set = has_args.then(|| attr.parse_args())
                     .unwrap_or(Ok(SetOptions { options: Default::default() }))?;
                 v.push((attr.span(), Self::Set(set)));
-            } else if attr.meta.path().is_ident("method") {
+            } else if attr.meta.path().is_ident(ATTR_METHOD) {
                 let method = has_args.then(|| attr.parse_args())
                     .unwrap_or(Ok(MethodOptions { options: Default::default() }))?;
                 v.push((attr.span(), Self::Method(method)));
-            } else if attr.meta.path().is_ident("create") {
+            } else if attr.meta.path().is_ident(ATTR_CREATE) {
+                require_state(is_state, attr.span())?;
                 let create = has_args.then(|| attr.parse_args())
                     .unwrap_or(Ok(CreateOptions { options: Default::default() }))?;
                 v.push((attr.span(), Self::Create(create)));
+            } else if attr.meta.path().is_ident(ATTR_FUNCTION) {
+                let function = has_args.then(|| attr.parse_args())
+                    .unwrap_or(Ok(FunctionOptions { options: Default::default() }))?;
+                v.push((attr.span(), Self::Function(function)));
             }
         }
 
@@ -372,10 +459,26 @@ impl FnAttr {
     }
 }
 
+vacro_parser::define! { DeriveTraits:
+    #(traits*[,]: DeriveTrait {
+        Eq: #{Eq},
+    })
+}
+
+impl Clone for DeriveTrait {
+    fn clone(&self) -> Self {
+        match self {
+            Self::Eq => Self::Eq,
+        }
+    }
+}
+
 vacro_parser::define! { StructOptions:
     #(options*[,]: StructOption {
         Partial: partial = #(partial: syn::Ident),
         Include: include = [#(include*[,]: syn::Ident)],
+        State: state = #(is_state: syn::LitBool),
+        Derive: derive = [#(derive: DeriveTraits)]
     })
 }
 
@@ -401,6 +504,27 @@ impl StructOptions {
         included.into_iter().flatten()
     }
 
+    fn is_state(&self) -> bool {
+        for option in &self.options {
+            if let StructOption::State { is_state } = option {
+                return is_state.value;
+            }
+        }
+
+        true
+    }
+
+    fn derives(&self) -> impl Iterator<Item = &DeriveTrait> {
+        let mut iter = None;
+        for option in &self.options {
+            if let StructOption::Derive { derive } = option {
+                iter = Some(derive.traits.iter());
+            }
+        }
+
+        iter.into_iter().flatten()
+    }
+
     #[vacro_report::scope]
     fn build(self, item_struct: &syn::ItemStruct) -> syn::Result<Script> {
         let mut items = vec![];
@@ -412,6 +536,7 @@ impl StructOptions {
                         span,
                         name_override: get_options.name_override().map(ToString::to_string),
                         field_kind: FieldKind::Field(field.clone()),
+                        wrap: get_options.wrap(),
                     }),
                     FieldAttr::Set(set_options) => ScriptItem::Set(ScriptSet {
                         span,
@@ -434,6 +559,9 @@ impl StructOptions {
 
         let partial_ident = self.partial().cloned();
         let includes = self.include().cloned().collect();
+        let is_state = self.is_state();
+
+        let derives = self.derives().cloned().collect();
 
         Ok(Script {
             span,
@@ -442,6 +570,8 @@ impl StructOptions {
             includes,
             items,
             generics,
+            is_state,
+            derives,
         })
     }
 }
@@ -450,6 +580,8 @@ vacro_parser::define! { ImplOptions:
     #(options*[,]: ImplOption {
         Partial: partial = #(partial: syn::Ident),
         Include: include = [#(include*[,]: syn::Ident)],
+        State: state = #(is_state: syn::LitBool),
+        Derive: derive = [#(derive: DeriveTraits)]
     })
 }
 
@@ -475,16 +607,39 @@ impl ImplOptions {
         included.into_iter().flatten()
     }
 
+    fn is_state(&self) -> bool {
+        for option in &self.options {
+            if let ImplOption::State { is_state } = option {
+                return is_state.value;
+            }
+        }
+        
+        true
+    }
+
+    fn derives(&self) -> impl Iterator<Item = &DeriveTrait> {
+        let mut iter = None;
+        for option in &self.options {
+            if let ImplOption::Derive { derive } = option {
+                iter = Some(derive.traits.iter());
+            }
+        }
+
+        iter.into_iter().flatten()
+    }
+
     fn build(self, item_impl: &syn::ItemImpl) -> syn::Result<Script> {
+        let is_state = self.is_state();
         let mut items = vec![];
         for sub_item in &item_impl.items {
             if let syn::ImplItem::Fn(impl_item_fn) = sub_item {
-                for (span, attr) in FnAttr::from_attrs(&impl_item_fn.attrs)? {
+                for (span, attr) in FnAttr::from_attrs(is_state, &impl_item_fn.attrs)? {
                     let script_item = match attr {
                         FnAttr::Get(get_options) => ScriptItem::Get(ScriptGet {
                             span,
                             name_override: get_options.name_override().map(ToString::to_string),
                             field_kind: FieldKind::Virtual(impl_item_fn.clone()),
+                            wrap: get_options.wrap(),
                         }),
                         FnAttr::Set(set_options) => ScriptItem::Set(ScriptSet {
                             span,
@@ -495,11 +650,17 @@ impl ImplOptions {
                             span, 
                             name_override: method_options.name_override().map(ToString::to_string),
                             method_fn: impl_item_fn.clone(),
+                            wrap: method_options.wrap(),
                         }),
                         FnAttr::Create(create_options) => ScriptItem::Create(ScriptCreate {
                             span,
                             name_override: create_options.name_override().map(ToString::to_string),
                             create_fn: impl_item_fn.clone(),
+                        }),
+                        FnAttr::Function(function_options) => ScriptItem::Function(ScriptFunction {
+                            span,
+                            name_override: function_options.name_override().map(ToString::to_string),
+                            function_fn: impl_item_fn.clone(),
                         }),
                     };
 
@@ -517,6 +678,8 @@ impl ImplOptions {
         let partial_ident = self.partial().cloned();
         let includes = self.include().cloned().collect();
 
+        let derives = self.derives().cloned().collect();
+
         Ok(Script {
             span,
             self_type,
@@ -524,6 +687,8 @@ impl ImplOptions {
             includes,
             items,
             generics,
+            is_state,
+            derives,
         })
     }
 }
@@ -565,6 +730,7 @@ pub(crate) fn script_impl(attr: TokenStream, item: TokenStream) -> syn::Result<T
         parameter_registry: syn::parse_quote! { registry },
         parameter_registration: syn::parse_quote! { registration },
         self_type: script.self_type.clone(),
+        is_state: script.is_state,
     };
 
     let script_impl = script.build(&context)?;
@@ -589,6 +755,7 @@ impl syn::fold::Fold for HelperFold {
                 && !attr.path().is_ident(ATTR_SET) 
                 && !attr.path().is_ident(ATTR_METHOD) 
                 && !attr.path().is_ident(ATTR_CREATE) 
+                && !attr.path().is_ident(ATTR_FUNCTION) 
         );
 
         // Attributes can't be nested, so we don't need to continue down the AST

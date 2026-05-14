@@ -83,6 +83,10 @@ deku = "0.18.1"
 ron = "0.11.0"
 serde_bytes = "0.11.19"
 
+# build.rs
+# A pull request with fixes for workspaces
+copy_to_output = { git = "https://github.com/samwoodhams/copy_to_output", rev = "270cffc" }
+
 [workspace.dependencies.serde]
 version = "1.0.189"
 features = [

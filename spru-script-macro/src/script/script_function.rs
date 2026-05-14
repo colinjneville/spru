@@ -2,24 +2,23 @@ use proc_macro2::Span;
 
 use super::Context;
 
-
-pub(crate) struct ScriptCreate {
+pub(crate) struct ScriptFunction {
     pub span: Span,
     pub name_override: Option<String>,
-    pub create_fn: syn::ImplItemFn,
+    pub function_fn: syn::ImplItemFn,
 }
 
-impl ScriptCreate {
+impl ScriptFunction {
     pub fn name(&self) -> syn::Result<String> {
         let n = self.name_override.clone()
-            .unwrap_or_else(|| self.create_fn.sig.ident.to_string());
+            .unwrap_or_else(|| self.function_fn.sig.ident.to_string());
 
         Ok(n)
     }
 
     #[vacro_report::scope]
     pub fn return_type(&self) -> syn::Result<syn::Type> {
-        Ok(match &self.create_fn.sig.output {
+        Ok(match &self.function_fn.sig.output {
             syn::ReturnType::Default => syn::parse_quote_spanned!(self.span => ()),
             syn::ReturnType::Type(_, ty) => (**ty).clone(),
         })
@@ -28,7 +27,7 @@ impl ScriptCreate {
     pub fn args(&self) -> syn::Result<impl Iterator<Item = syn::Result<&syn::PatType>>> {
         const ERR_CREATE_RECEIVER: &str = "A `#[create]` function cannot have a receiver (`self`) parameter";
 
-        let iter = self.create_fn.sig.inputs
+        let iter = self.function_fn.sig.inputs
             .iter()
             .map(|fn_arg| match fn_arg {
                 syn::FnArg::Receiver(receiver) => Err(syn::Error::new_spanned(receiver, ERR_CREATE_RECEIVER)),
@@ -65,11 +64,11 @@ impl ScriptCreate {
     }
 
     pub fn fn_ident(&self) -> syn::Result<&syn::Ident> {
-        Ok(&self.create_fn.sig.ident)
+        Ok(&self.function_fn.sig.ident)
     }
 }
 
-impl super::ScriptImpl for ScriptCreate {
+impl super::ScriptImpl for ScriptFunction {
     fn self_bounds(&self, context: &Context, self_bounds: &mut syn::punctuated::Punctuated<syn::TypeParamBound, syn::Token![+]>)
         -> syn::Result<()>
     {
@@ -84,16 +83,20 @@ impl super::ScriptImpl for ScriptCreate {
             type_parameter_state,
             type_parameter_action,
             self_type,
+            is_state,
             ..
         } = context;
 
         let arg_types = self.arg_types()?.collect::<syn::Result<Vec<_>>>()?;
         let return_type = self.return_type()?;
 
+        let registry_trait_str = if *is_state { "RegistryStateFunction" } else { "RegistryTypeFunction" };
+        let registry_trait = syn::Ident::new(registry_trait_str, self.span);
+
         // If arg_types has exactly 1 element, this will (intentionally) be interpreted as a single argument, otherwise
         // it will be an empty tuple, or a tuple of multiple arguments.
         let self_bound = syn::parse_quote_spanned! { self.span => 
-            ::spru_script::RegistryStateCreate<#type_parameter_state, #type_parameter_action, #return_type, #self_type, (#(#arg_types),*)>
+            ::spru_script::#registry_trait<#type_parameter_state, #type_parameter_action, #self_type, (#(#arg_types),*), #return_type>
         };
         registry_bounds.push(self_bound);
 
@@ -101,20 +104,9 @@ impl super::ScriptImpl for ScriptCreate {
     }
 
     #[vacro_report::scope]
-    fn action_bounds(&self, context: &Context, action_bounds: &mut syn::punctuated::Punctuated<syn::TypeParamBound, syn::Token![+]>)
+    fn action_bounds(&self, _context: &Context, _action_bounds: &mut syn::punctuated::Punctuated<syn::TypeParamBound, syn::Token![+]>)
         -> syn::Result<()> 
     {
-        let Context {
-            ..
-        } = context;
-
-        let action_type = self.return_type()?;
-
-        let bound = syn::parse_quote_spanned! { self.span => 
-            From<#action_type>
-        };
-        action_bounds.push(bound);
-
         Ok(())
     }
 
@@ -122,19 +114,6 @@ impl super::ScriptImpl for ScriptCreate {
     fn other_bounds(&self, context: &Context, other_bounds: &mut syn::punctuated::Punctuated<syn::WherePredicate, syn::Token![,]>)
         -> syn::Result<()>
     {
-        let Context {
-            self_type,
-            ..
-        } = context;
-
-        let action_type = self.return_type()?;
-
-        let bound = syn::parse_quote_spanned! { self.span => 
-            #action_type: spru::action::Create<T = #self_type>
-        };
-
-        other_bounds.push(bound);
-
         Ok(())
     }
 
@@ -144,10 +123,12 @@ impl super::ScriptImpl for ScriptCreate {
     {
         
         let Context {
+            type_parameter_state,
+            type_parameter_action,
             parameter_registry,
             parameter_registration,
             self_type,
-            ..
+            is_state,
         } = context;
 
         let name = self.name()?;
@@ -159,8 +140,11 @@ impl super::ScriptImpl for ScriptCreate {
 
         let fn_ident = self.fn_ident()?;
 
+        let registry_fn_str = if *is_state { "register_state_function" } else { "register_type_function" };
+        let registry_fn = syn::Ident::new(registry_fn_str, self.span);
+
         let stmt = syn::parse_quote_spanned! { self.span => 
-            #parameter_registry.register_state_create(#parameter_registration, #name, |(#arg_pats)| <#self_type>::#fn_ident(#arg_pats) )?;
+            #parameter_registry.#registry_fn(#parameter_registration, #name, |(#arg_pats)| <#self_type>::#fn_ident(#arg_pats) )?;
         };
         
         stmts.push(stmt);
@@ -169,17 +153,16 @@ impl super::ScriptImpl for ScriptCreate {
     }   
 }
 
-vacro_parser::define! { pub(crate) CreateOptions:
-    #(options*[,]: CreateOption {
+vacro_parser::define! { pub(crate) FunctionOptions:
+    #(options*[,]: FunctionOption {
         Name: name = #(name: syn::Ident),
-        Wrap: wrap = #(wrap: syn::LitBool),
     })
 }
 
-impl CreateOptions {
+impl FunctionOptions {
     pub fn name_override(&self) -> Option<&syn::Ident> {
         for option in &self.options {
-            if let CreateOption::Name { name } = option {
+            if let FunctionOption::Name { name } = option {
                 return Some(name);
             }
         }

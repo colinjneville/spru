@@ -2,7 +2,7 @@ use spru::{interactor::with, item::IdT};
 use spru_util::{fsm, pile};
 use tracing::instrument;
 
-use crate::data;
+use crate::{data, interaction::LuaInteraction, script::{self, Script}};
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Discard {
@@ -51,3 +51,10 @@ impl spru::Interaction for Discard {
         Ok(())
     }
 }
+
+const SCRIPT: Script = crate::script::script!("scripts/discard.lua");
+
+pub fn new(discard: data::Card) -> super::LuaInteraction<data::Card> {
+    super::LuaInteraction::new(spru_script_lua::Lua::new(), SCRIPT.get(), discard)
+}
+

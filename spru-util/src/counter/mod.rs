@@ -141,6 +141,7 @@ pub fn destroy<T>() -> Destroy<T> {
 #[telety(crate::counter)]
 #[tagset(cloned::Create<Counter<T>>)]
 #[tagset(Add<T>)]
+#[tagset(Set<T>)]
 #[tagset(cloned::Destroy<Counter<T>>)]
 #[tagset(reserved(..8))]
 pub struct Actions<T: bounds::AddSigned>;

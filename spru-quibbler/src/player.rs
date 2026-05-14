@@ -2,11 +2,15 @@ use std::fmt;
 
 use rust_fsm::state_machine;
 use spru::{common::error::PseudoError as _, interactor::with, item::IdT};
-use spru_script::script;
-use spru_util::{cloned, counter, fsm, pile, player_map, rotating};
+use spru_script::{Wrap, script};
+use spru_util::{cloned, counter, fsm, pile, player_map, rotating, state_cell};
+
+use crate::data;
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[script(state = false)]
 pub struct Input {
+    #[get]
     pub username: String,
     // ip...
 }
@@ -59,23 +63,25 @@ impl spru::player::Init for Init {
 
         players.update(player_map::add_player(
             player_id,
-            Root {
+            Root::new(RootImpl {
                 data: input,
                 hand,
                 score,
                 fsm,
                 played,
-            },
+            }),
         ));
 
         Ok(())
     }
 }
 
+pub type Root = spru_script::Wrap<RootImpl>;
+
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-// TODO Non-State types currently cannot be registered for scripting
-#[script]
-pub struct Root {
+#[script(state = false)]
+pub struct RootImpl {
+    #[get(wrap = true)]
     pub data: Input,
     #[get]
     pub hand: IdT<pile::Pile<data::Card>>,
@@ -84,7 +90,7 @@ pub struct Root {
     #[get]
     pub fsm: IdT<fsm::Fsm<machine::Impl>>,
     #[get]
-    pub played: IdT<crate::Play>,
+    pub played: IdT<state_cell::StateCell<crate::Play>>,
 }
 
 state_machine! {
@@ -110,4 +116,25 @@ impl fmt::Display for machine::State {
     }
 }
 
-use crate::data;
+#[spru_script::script(state = false, derive = [Eq])]
+impl machine::Input {
+    #[function]
+    fn draw() -> Wrap<Self> {
+        Wrap::new(Self::Draw)
+    }
+
+    #[function]
+    fn discard() -> Wrap<Self> {
+        Wrap::new(Self::Discard)
+    }
+
+    #[function]
+    fn play() -> Wrap<Self> {
+        Wrap::new(Self::Play)
+    }
+
+    #[function]
+    fn pass() -> Wrap<Self> {
+        Wrap::new(Self::Pass)
+    }
+}

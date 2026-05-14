@@ -35,6 +35,11 @@ impl<T: Clone + 'static> Rotating<T> {
         create(vec![], 0)
     }
 
+    #[method]
+    fn rotate(&self, reverse: Option<bool>) -> ((), Rotate<T>) {
+        ((), rotate(reverse.unwrap_or(false)))
+    }
+
     #[get(name = len)]
     fn _len(&self) -> usize {
         self.items.len()
@@ -48,6 +53,11 @@ impl<T: Clone + 'static> Rotating<T> {
     #[get(name = position)]
     fn _position(&self) -> Option<usize> {
         self.position()
+    }
+
+    #[set(name = position)]
+    fn position_set(&self, position: usize) -> (SetPosition<T>, ) {
+        (set_position(position), )
     }
 
     #[get(name = current)]

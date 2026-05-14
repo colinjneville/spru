@@ -1,5 +1,6 @@
 use mlua::ObjectLike as _;
 use spru::item::IdT;
+use spru_script::Wrap;
 
 pub struct Registry {
     cached: crate::instance::Cached,
@@ -18,27 +19,29 @@ impl Registry {
 }
 
 impl<State, Action> spru_script::Registry<State, Action> for Registry {
-    type TypeRegistration<'r, Storage> = crate::Registration<Storage, Action>
+    type Registration<'r, Storage> = crate::Registration<Storage, Action>
     where
         Storage: spru::item::Storage<State = State>,
     ;
 
-    type MemberRegistration<'r, Storage, T: 'static> = crate::RegistrationType<'r, T>
+    type RegistrationState<'r, Storage, T: 'static> = crate::RegistrationState<'r, T>
     where
         Storage: spru::item::Storage<State = State>,
     ;
+
+    type RegistrationType<'r, T: 'static> = crate::RegistrationType<'r, T>;
 
     type Error = mlua::Error;
 }
 
-impl<State, Action, T> spru_script::RegistryType<State, Action, T> for Registry
+impl<State, Action, T> spru_script::RegistryState<State, Action, T> for Registry
 where
     State: spru::State,
     Action: spru::Action,
-    T: spru_script::ScriptableType<State, Action, Self, Type = T>,
+    T: spru_script::ScriptableState<State, Action, Self, Type = T>,
     T: spru::item::storage::Storable<State> + 'static,
 {
-    fn register_type<Storage>(
+    fn register_state<Storage>(
         &self, 
         registration: &mut crate::Registration<Storage, Action>,
         type_path: Option<spru_script::ScriptablePath>,
@@ -46,7 +49,6 @@ where
         -> Result<(), Self::Error> 
     where
         Storage: spru::item::Storage<State = State>,
-        // T: ScriptableType<State, Action, Self> + 'static,
     {
         self.lua().register_userdata_type::<IdT<T>>(|mlua_registry| {
             use mlua::UserDataMethods as _;
@@ -58,7 +60,7 @@ where
                 let id = crate::IntoLua::into_lua(*this, lua)?;
 
                 let ledger = lua.globals()
-                    .get::<mlua::AnyUserData>(crate::key::LEDGER_GLOBAL)
+                    .get::<mlua::AnyUserData>(crate::key::GLOBAL_LEDGER)
                     .expect("Ledger not registered");
 
                 // We overload `get` to check for existance by sending a nil `mapping`
@@ -68,47 +70,6 @@ where
             });
             
             let static_table = if let Some(type_path) = type_path {
-                fn register_path(lua: &mlua::Lua, type_parameters_metatable: &mlua::Table, scriptable_path: &spru_script::ScriptablePath) -> mlua::Result<mlua::Table> {
-                    let &spru_script::ScriptablePath(path, args) = scriptable_path;
-                    let mut keys = vec![];
-                    for &segment in path {
-                        keys.push(mlua::IntoLua::into_lua(segment, lua)?);
-                    }
-
-                    if !args.is_empty() {
-                        let args_table = lua.create_table()?;
-
-                        for arg in args {
-                            let arg_table = register_path(lua, type_parameters_metatable, arg)?;
-                            args_table.push(arg_table)?;
-                        }
-
-                        let key = mlua::IntoLua::into_lua(args_table, lua)?;
-                    
-                        keys.push(key);
-                    }
-
-                    let mut current_table = lua.globals();
-                    for key in keys {
-                        if key.is_table() {
-                            // We've reached type parameters: unlike path strings, tables containing the same tables
-                            // won't index by default - we need a special __index metafunction that compares the keys
-                            // structurally
-                            current_table.set_metatable(Some(type_parameters_metatable.clone()))?;
-                        }
-                        
-                        current_table = if let Ok(table) = current_table.get::<mlua::Table>(&key) {
-                            table
-                        } else {
-                            let table = lua.create_table()?;
-                            current_table.set(&key, table)?;
-                            current_table.get::<mlua::Table>(&key)?
-                        };
-                    }
-
-                    Ok(current_table)
-                }
-
                 let static_table = register_path(self.lua(), self.cached.type_parameters_metatable(), &type_path)
                     .expect("Failed to register type path");
                 Some(static_table)
@@ -116,10 +77,10 @@ where
                 None
             };
 
-            let mut registration = crate::RegistrationType::new(self.lua(), mlua_registry, static_table)
-                .expect("Failed to register type");
+            let mut registration = crate::RegistrationState::new(self.lua(), mlua_registry, static_table)
+                .expect("Failed to register state");
 
-            if let Err(err) = T::register::<Storage>(self, &mut registration) {
+            if let Err(err) = T::register_state::<Storage>(self, &mut registration) {
                 panic!("{err}");
             }
         })?;
@@ -204,14 +165,14 @@ where
     }
 }
 
-impl<State, Action, T: 'static, U> spru_script::RegistryGetter<State, Action, T, U> for Registry
+impl<State, Action, T: 'static, U> spru_script::RegistryStateGet<State, Action, T, U> for Registry
 where 
     State: spru::State,
     Action: spru::Action,
     T: spru::item::storage::Storable<State>,
     U: crate::IntoLua + 'static,
 {
-    fn register_get<Storage>(&self, registration: &mut crate::RegistrationType<'_, T>, ident: &str, getter: fn(&T) -> U)
+    fn register_state_get<Storage>(&self, registration: &mut crate::RegistrationState<'_, T>, ident: &str, getter: fn(&T) -> U)
          -> Result<(), Self::Error> 
     where
         Storage: spru::item::Storage<State = State>,
@@ -220,7 +181,7 @@ where
             let id = crate::IntoLua::into_lua(*this, lua)?;
 
             let ledger = lua.globals()
-                .get::<mlua::AnyUserData>(crate::key::LEDGER_GLOBAL)
+                .get::<mlua::AnyUserData>(crate::key::GLOBAL_LEDGER)
                 .expect("Ledger not registered");
 
             let lua_getter: crate::func::GetFn<T> = Box::new(move |lua, t| {
@@ -233,19 +194,19 @@ where
             Ok(output)
         };
 
-        registration.add_getter(ident, f);
+        registration.add_getter(ident, f)?;
         Ok(())
     }
 }
 
-impl<State, Action, T: 'static, U> spru_script::RegistrySetter<State, Action, T, U> for Registry
+impl<State, Action, T: 'static, U> spru_script::RegistryStateSet<State, Action, T, U> for Registry
 where 
     State: spru::State,
     Action: spru::Action,
     T: spru::item::storage::Storable<State>,
     U: crate::FromLua + 'static,
 {
-    fn register_set<Storage>(&self, registration: &mut crate::RegistrationType<'_, T>, ident: &str, setter: fn(&T, U) -> Vec<Action>)
+    fn register_state_set<Storage>(&self, registration: &mut crate::RegistrationState<'_, T>, ident: &str, setter: fn(&T, U) -> Vec<Action>)
          -> Result<(), Self::Error> 
     where
         Storage: spru::item::Storage<State = State>,
@@ -254,7 +215,7 @@ where
             let id = crate::IntoLua::into_lua(*this, lua)?;
 
             let ledger = lua.globals()
-                .get::<mlua::AnyUserData>(crate::key::LEDGER_GLOBAL)
+                .get::<mlua::AnyUserData>(crate::key::GLOBAL_LEDGER)
                 .expect("Ledger not registered");
 
             let lua_setter: crate::func::SetFn<Action, T> = Box::new(move |lua, t, u| {
@@ -267,20 +228,20 @@ where
             Ok(())
         };
 
-        registration.add_setter(ident, f);
+        registration.add_setter(ident, f)?;
         Ok(())
     }
 }
 
-impl<State, Action, T: 'static, Args, Ret> spru_script::RegistryMethod<State, Action, T, Args, Ret> for Registry
+impl<State, Action, T: 'static, Args, Ret> spru_script::RegistryStateMethod<State, Action, T, Args, Ret> for Registry
 where 
     State: spru::State,
     Action: spru::Action,
     T: spru::item::storage::Storable<State>,
-    Args: mlua::FromLuaMulti + 'static,
-    Ret: mlua::IntoLuaMulti + 'static,
+    Args: crate::FromLuaMulti + 'static,
+    Ret: crate::IntoLuaMulti + 'static,
 {
-    fn register_method<Storage>(&self, registration: &mut crate::RegistrationType<'_, T>, ident: &str, method: fn(&T, Args) -> (Ret, Vec<Action>))
+    fn register_state_method<Storage>(&self, registration: &mut crate::RegistrationState<'_, T>, ident: &str, method: fn(&T, Args) -> (Ret, Vec<Action>))
          -> Result<(), Self::Error> 
     where
         Storage: spru::item::Storage<State = State>,
@@ -289,13 +250,13 @@ where
             let id = crate::IntoLua::into_lua(*this, lua)?;
 
             let ledger = lua.globals()
-                .get::<mlua::AnyUserData>(crate::key::LEDGER_GLOBAL)
+                .get::<mlua::AnyUserData>(crate::key::GLOBAL_LEDGER)
                 .expect("Ledger not registered");
 
             let lua_method: crate::func::MethodFn<Action, T> = Box::new(move |lua, t, args| {
-                let args = mlua::FromLuaMulti::from_lua_multi(args, lua)?;
+                let args = crate::FromLuaMulti::from_lua_multi(args, lua)?;
                 let (ret, actions) = method(t, args);
-                let ret = mlua::IntoLuaMulti::into_lua_multi(ret, lua)?;
+                let ret = crate::IntoLuaMulti::into_lua_multi(ret, lua)?;
                 Ok((ret, actions))
             });
             let lua_method = lua.create_any_userdata(lua_method)?;
@@ -305,21 +266,21 @@ where
             Ok(ret)
         };
 
-        registration.add_method(ident, f);
+        registration.add_method(ident, f)?;
         Ok(())
     }
 }
 
 
-impl<State, Action, Create, T: 'static, Args> spru_script::RegistryCreate<State, Action, Create, T, Args> for Registry
+impl<State, Action, Create, T: 'static, Args> spru_script::RegistryStateCreate<State, Action, Create, T, Args> for Registry
 where 
     State: spru::State,
     Action: spru::Action,
     Create: spru::action::Create<T = T> + Into<Action> + 'static,
     T: spru::item::storage::Storable<State>,
-    Args: mlua::FromLuaMulti + 'static,
+    Args: crate::FromLuaMulti + 'static,
 {
-    fn register_create<Storage>(&self, registration: &mut crate::RegistrationType<'_, T>, ident: &str, create: fn(Args) -> Create)
+    fn register_state_create<Storage>(&self, registration: &mut crate::RegistrationState<'_, T>, ident: &str, create: fn(Args) -> Create)
          -> Result<(), Self::Error> 
     where
         Storage: spru::item::Storage<State = State>,
@@ -327,11 +288,11 @@ where
         let f = move |lua: &mlua::Lua, args: mlua::MultiValue| {
             
             let ledger = lua.globals()
-                .get::<mlua::AnyUserData>(crate::key::LEDGER_GLOBAL)
+                .get::<mlua::AnyUserData>(crate::key::GLOBAL_LEDGER)
                 .expect("Ledger not registered");
 
             let lua_create: crate::func::CreateFn<Action> = Box::new(move |lua, args| {
-                let args = mlua::FromLuaMulti::from_lua_multi(args, lua)?;
+                let args = crate::FromLuaMulti::from_lua_multi(args, lua)?;
                 let action = create(args);
 
                 let idt_fn: crate::func::CreateIdFn = |lua, id| {
@@ -344,12 +305,186 @@ where
 
             let lua_create = lua.create_any_userdata(lua_create)?;
 
-            let create = ledger.call_method::<mlua::AnyUserData>(crate::key::LEDGER_METHOD_CREATE, (lua_create, args))?;
+            let create = ledger.call_method::<mlua::MultiValue>(crate::key::LEDGER_METHOD_CREATE, (lua_create, args))?;
 
             Ok(create)
         };
 
-        registration.add_create(ident, f)?;
+        registration.add_function(ident, f)?;
         Ok(())
     }
+}
+
+impl<State, Action, T: 'static, Args, Ret> spru_script::RegistryStateFunction<State, Action, T, Args, Ret> for Registry
+where 
+    State: spru::State,
+    Action: spru::Action,
+    T: spru::item::storage::Storable<State>,
+    Args: crate::FromLuaMulti + 'static,
+    Ret: crate::IntoLuaMulti + 'static,
+{
+    fn register_state_function<Storage>(&self, registration: &mut crate::RegistrationState<'_, T>, ident: &str, function: fn(Args) -> Ret)
+         -> Result<(), Self::Error> 
+    where
+        Storage: spru::item::Storage<State = State>,
+    {
+        let f = move |lua: &mlua::Lua, args| {
+            function(Args::from_lua_multi(args, lua)?).into_lua_multi(lua)
+        };
+        registration.add_function(ident, f)?;
+        Ok(())
+    }
+}
+
+
+impl<State, Action, T> spru_script::RegistryType<State, Action, T> for Registry
+where
+    State: spru::State,
+    Action: spru::Action,
+    T: spru_script::ScriptableType<State, Action, Registry> + 'static,
+{
+    fn register_type<Storage>(
+        &self, 
+        _registration: &mut crate::Registration<Storage, Action>,
+        type_path: Option<spru_script::ScriptablePath>,
+    ) 
+        -> Result<(), Self::Error> 
+    where
+        Storage: spru::item::Storage<State = State>,
+    {
+        self.lua().register_userdata_type::<T::Type>(|mlua_registry| {
+            let static_table = if let Some(type_path) = type_path {
+                let static_table = register_path(self.lua(), self.cached.type_parameters_metatable(), &type_path)
+                    .expect("Failed to register type path");
+                Some(static_table)
+            } else {
+                None
+            };
+
+            let mut registration = crate::RegistrationType::new(self.lua(), mlua_registry, static_table)
+                .expect("Failed to register type");
+
+            if let Err(err) = T::register_type(self, &mut registration) {
+                panic!("{err}");
+            }
+        })?;
+
+        Ok(())
+    }
+}
+
+impl<State, Action, T: 'static, U> spru_script::RegistryTypeGet<State, Action, T, U> for Registry
+where 
+    State: spru::State,
+    Action: spru::Action,
+    U: crate::IntoLua + 'static,
+{
+    fn register_type_get(&self, registration: &mut crate::RegistrationType<'_, T>, ident: &str, getter: fn(&T) -> U)
+         -> Result<(), Self::Error> 
+    {
+        let f = move |lua: &mlua::Lua, this: &T| {
+            crate::IntoLua::into_lua(getter(this), lua)
+        };
+
+        registration.add_getter(ident, f)?;
+        Ok(())
+    }
+}
+
+impl<State, Action, T: 'static, Args, Ret> spru_script::RegistryTypeMethod<State, Action, T, Args, Ret> for Registry
+where 
+    State: spru::State,
+    Action: spru::Action,
+    Args: crate::FromLuaMulti + 'static,
+    Ret: crate::IntoLuaMulti + 'static,
+{
+    fn register_type_method(&self, registration: &mut crate::RegistrationType<'_, T>, ident: &str, method: fn(&T, Args) -> Ret)
+         -> Result<(), Self::Error> 
+    {
+        let f = move |lua: &mlua::Lua, this: &T, args| {
+            crate::IntoLuaMulti::into_lua_multi(method(this, crate::FromLuaMulti::from_lua_multi(args, lua)?), lua)
+        };
+
+        registration.add_method(ident, f)?;
+        Ok(())
+    }
+}
+
+impl<State, Action, T: 'static, Args, Ret> spru_script::RegistryTypeFunction<State, Action, T, Args, Ret> for Registry
+where 
+    State: spru::State,
+    Action: spru::Action,
+    Args: crate::FromLuaMulti + 'static,
+    Ret: crate::IntoLuaMulti + 'static,
+{
+    fn register_type_function(&self, registration: &mut crate::RegistrationType<'_, T>, ident: &str, method: fn(Args) -> Ret)
+         -> Result<(), Self::Error> 
+    {
+        let f = move |lua: &mlua::Lua, args| {
+            crate::IntoLuaMulti::into_lua_multi(method(crate::FromLuaMulti::from_lua_multi(args, lua)?), lua)
+        };
+
+        registration.add_function(ident, f)?;
+        Ok(())
+    }
+}
+
+impl<State, Action, T: 'static> spru_script::RegistryTypeEq<State, Action, T> for Registry
+where 
+    State: spru::State,
+    Action: spru::Action,
+    Wrap<T>: crate::FromLua,
+{
+    fn register_type_eq(&self, registration: &mut crate::RegistrationType<'_, T>, eq: fn(&T, &T) -> bool)
+         -> Result<(), Self::Error> 
+    {
+        let f = move |lua: &mlua::Lua, a: &T, b| {
+            let b: Wrap<T> = crate::FromLua::from_lua(b, lua)?;
+            Ok(eq(a, &b.0))
+        };
+
+        registration.add_eq(f)?;
+        Ok(())
+    }
+}
+
+fn register_path(lua: &mlua::Lua, type_parameters_metatable: &mlua::Table, scriptable_path: &spru_script::ScriptablePath) -> mlua::Result<mlua::Table> {
+    let &spru_script::ScriptablePath(path, args) = scriptable_path;
+    let mut keys = vec![];
+    for &segment in path {
+        keys.push(mlua::IntoLua::into_lua(segment, lua)?);
+    }
+
+    if !args.is_empty() {
+        let args_table = lua.create_table()?;
+
+        for arg in args {
+            let arg_table = register_path(lua, type_parameters_metatable, arg)?;
+            args_table.push(arg_table)?;
+        }
+
+        let key = mlua::IntoLua::into_lua(args_table, lua)?;
+    
+        keys.push(key);
+    }
+
+    let mut current_table = lua.globals();
+    for key in keys {
+        if key.is_table() {
+            // We've reached type parameters: unlike path strings, tables containing the same tables
+            // won't index by default - we need a special __index metafunction that compares the keys
+            // structurally
+            current_table.set_metatable(Some(type_parameters_metatable.clone()))?;
+        }
+        
+        current_table = if let Ok(table) = current_table.get::<mlua::Table>(&key) {
+            table
+        } else {
+            let table = lua.create_table()?;
+            current_table.set(&key, table)?;
+            current_table.get::<mlua::Table>(&key)?
+        };
+    }
+
+    Ok(current_table)
 }
