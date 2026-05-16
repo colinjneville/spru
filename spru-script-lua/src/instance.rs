@@ -57,48 +57,85 @@ impl Internal {
             });
         }).expect("spru::player::Id registration failed");
 
-        let type_parameters_index_metafunction = lua.create_function(|_, (table, key): (mlua::Table, mlua::Value)| {
-            for pair in table.pairs::<mlua::Value, mlua::Value>() {
-                let (k, v) = pair?;
-
-                if let Some(k_table) = k.as_table() {
-                    // Special-case single parameter types to allow just the type parameter table, 
-                    // instead of a table of the type parameter table (e.g. `X[i32]` instead of `X[[i32]]`).
-                    if k_table.raw_len() == 1 {
-                        if k_table.raw_get::<mlua::Value>(1)? == key {
-                            return Ok(v);
-                        }
-                    }
-
-                    if let Some(key_table) = key.as_table() {
-                        // Compare structural equality of the type parameter tables
-                        if k_table.raw_len() == key_table.raw_len() {
-                            let mut all_match = true;
-                            for i in 1..=k_table.raw_len() {
-                                if k_table.raw_get::<mlua::Value>(i)? != key_table.raw_get::<mlua::Value>(i)? {
-                                    all_match = false;
-                                    break;
-                                }
-                            }
-
-                            if all_match {
-                                return Ok(v);
-                            }
-                        }
-                    }
-                }
-            }
-
-            Ok(mlua::Value::Nil)
-        }).expect("Failed to create type parameters index function");
+        let type_parameters_index_metafunction = lua.create_function(Self::type_parameters_index_metafunction)
+            .expect("Failed to create type parameters index function");
 
         type_parameters_metatable.set(mlua::MetaMethod::Index.name(), type_parameters_index_metafunction)
+            .expect("Failed to create type parameters metatable");
+
+        let type_parameters_tostring_metafunction = lua.create_function(Self::type_parameters_tostring_metafunction)
+            .expect("Failed to create type parameters index function");
+
+        type_parameters_metatable.set(mlua::MetaMethod::ToString.name(), type_parameters_tostring_metafunction)
             .expect("Failed to create type parameters metatable");
 
         Self {
             lua,
             type_parameters_metatable,
         }
+    }
+
+    fn type_parameters_tostring_metafunction(_lua: &mlua::Lua, table: mlua::Table)
+        -> mlua::Result<String>
+    {
+        table.get("__type_path")
+    }
+
+    fn type_parameters_index_metafunction(_lua: &mlua::Lua, (table, key): (mlua::Table, mlua::Value))
+        -> mlua::Result<mlua::Value>
+    {
+        for pair in table.pairs::<mlua::Value, mlua::Value>() {
+            let (k, v) = pair?;
+
+            if let Some(k_table) = k.as_table() {
+                // Special-case single parameter types to allow just the type parameter table, 
+                // instead of a table of the type parameter table (e.g. `X[i32]` instead of `X[[i32]]`).
+                if k_table.raw_len() == 1 {
+                    if k_table.raw_get::<mlua::Value>(1)? == key {
+                        return Ok(v);
+                    }
+                }
+
+                if let Some(key_table) = key.as_table() {
+                    // Compare structural equality of the type parameter tables
+                    if k_table.raw_len() == key_table.raw_len() {
+                        let mut all_match = true;
+                        for i in 1..=k_table.raw_len() {
+                            if k_table.raw_get::<mlua::Value>(i)? != key_table.raw_get::<mlua::Value>(i)? {
+                                all_match = false;
+                                break;
+                            }
+                        }
+
+                        if all_match {
+                            return Ok(v);
+                        }
+                    }
+                }
+            }
+        }
+
+        use mlua::ObjectLike as _;
+
+        let mut message = format!("Unknown type parameter '{}' for '{}'\nAvailable type parameters:", key.to_string()?, table.to_string()?);
+
+        for pair in table.pairs::<mlua::Value, mlua::Value>() {
+            let (k, _v) = pair?;
+
+            let is_pathy = match &k {
+                mlua::Value::Table(_) => true,
+                mlua::Value::String(k_str) if k_str.as_bytes()[0] != b'_' => true,
+                _ => false,
+            };
+
+            if is_pathy {
+                use std::fmt::Write as _;
+
+                write!(message, "\n{}", k.to_string()?).unwrap();
+            }
+        }
+
+        Err(mlua::Error::runtime(message))
     }
 }
 
@@ -189,8 +226,75 @@ where
     }
 }
 
-pub trait Output {
-    type Ret;
+impl<Root> Context for spru::reaction::Context<'_, Root>
+where
+    Root: Clone + mlua::MaybeSend + 'static,
+{
+    type Root = Root;
+    
+    fn fill_table<'scope, 'env>(
+        &'env mut self,
+        lua: &mlua::Lua, 
+        _scope: &'scope mlua::Scope<'scope, 'env>,
+        table: &mut mlua::Table,
+    ) 
+        -> mlua::Result<()> 
+    {
+        // Root must be inserted *after* all our field/method registration,
+        // so we can't set once and forget in the constructor, so make it part of the scope.
+        let root = lua.create_any_userdata(self.root.clone())?;
+        table.set(crate::key::CONTEXT_ROOT, root)?;
+
+        let player = crate::IntoLua::into_lua(self.player, lua)?;
+        table.set(crate::key::CONTEXT_PLAYER, player)?;
+
+        Ok(())
+    }
+}
+
+impl<Root> Context for spru::player::init::Context<'_, Root>
+where
+    Root: Clone + mlua::MaybeSend + 'static,
+{
+    type Root = Root;
+    
+    fn fill_table<'scope, 'env>(
+        &'env mut self,
+        lua: &mlua::Lua, 
+        _scope: &'scope mlua::Scope<'scope, 'env>,
+        table: &mut mlua::Table,
+    ) 
+        -> mlua::Result<()> 
+    {
+        // Root must be inserted *after* all our field/method registration,
+        // so we can't set once and forget in the constructor, so make it part of the scope.
+        let root = lua.create_any_userdata(self.root.clone())?;
+        table.set(crate::key::CONTEXT_ROOT, root)?;
+
+        let player = crate::IntoLua::into_lua(self.player, lua)?;
+        table.set(crate::key::CONTEXT_PLAYER, player)?;
+
+        Ok(())
+    }
+}
+
+impl Context for spru::game::init::Context {
+    type Root = ();
+    
+    fn fill_table<'scope, 'env>(
+        &'env mut self,
+        _lua: &mlua::Lua, 
+        _scope: &'scope mlua::Scope<'scope, 'env>,
+        _table: &mut mlua::Table,
+    ) 
+        -> mlua::Result<()> 
+    {
+        Ok(())
+    }
+}
+
+pub trait Output<Ret> {
+    type RetIn;
 
     fn create<'scope, 'env>(
         &'env mut self,
@@ -199,14 +303,14 @@ pub trait Output {
     ) 
         -> mlua::Result<mlua::AnyUserData>;
 
-    fn apply_ret(&mut self, _ret: Self::Ret);
+    fn apply_ret(&mut self, _ret: Self::RetIn) -> Ret;
 }
 
-impl<Trigger> Output for spru::interaction::Output<Trigger> 
+impl<Ret, Trigger> Output<Ret> for spru::interaction::Output<Trigger> 
 where 
     Trigger: crate::FromLuaMulti,
 {
-    type Ret = ();
+    type RetIn = Ret;
 
     fn create<'scope, 'env>(
         &'env mut self,
@@ -228,19 +332,93 @@ where
     }
 
 
-    fn apply_ret(&mut self, _ret: Self::Ret) {
-        
+    fn apply_ret(&mut self, ret: Self::RetIn) -> Ret {
+        ret
     }
 }
 
-impl<State, Action, Args, Context, Output> spru_script::Language<State, Action, Args, Context, Output> for Lua<State, Action> 
+impl<Trigger, GameOutcome> Output<()> for spru::reaction::Output<Trigger, GameOutcome>
+where
+    Trigger: crate::FromLuaMulti,
+{
+    type RetIn = Option<GameOutcome>;
+
+    fn create<'scope, 'env>(
+        &'env mut self,
+        _lua: &mlua::Lua, 
+        scope: &'scope mlua::Scope<'scope, 'env>,
+    ) 
+        -> mlua::Result<mlua::AnyUserData> 
+    {
+        let aud = scope.create_any_userdata(self, |register| {
+            use mlua::UserDataMethods as _;
+            register.add_method_mut(crate::key::OUTPUT_ENQUEUE_TRIGGER, |lua, output, trigger: mlua::MultiValue| {
+                let trigger = Trigger::from_lua_multi(trigger, lua)?;
+                <Self as spru::interactor::EnqueueTrigger>::enqueue_trigger(*output, trigger);
+                Ok(())
+            });
+        })?;
+
+        Ok(aud)
+    }
+
+    fn apply_ret(&mut self, ret: Option<GameOutcome>) -> () {
+        use spru::interactor::SetGameOutcome as _;
+
+        if let Some(ret) = ret {
+            self.set_game_outcome(ret);
+        }
+    }
+}
+
+impl<Ret> Output<Ret> for spru::player::init::Output {
+    type RetIn = Ret;
+
+    fn create<'scope, 'env>(
+        &'env mut self,
+        _lua: &mlua::Lua, 
+        scope: &'scope mlua::Scope<'scope, 'env>,
+    ) 
+        -> mlua::Result<mlua::AnyUserData>
+    {
+        let aud = scope.create_any_userdata(self, |_register| { })?;
+
+        Ok(aud)
+    }
+
+    fn apply_ret(&mut self, ret: Self::RetIn) -> Ret {
+        ret
+    }
+}
+
+impl<Ret> Output<Ret> for spru::game::init::Output {
+    type RetIn = Ret;
+
+    fn create<'scope, 'env>(
+        &'env mut self,
+        _lua: &mlua::Lua, 
+        scope: &'scope mlua::Scope<'scope, 'env>,
+    ) 
+        -> mlua::Result<mlua::AnyUserData>
+    {
+        let aud = scope.create_any_userdata(self, |_register| { })?;
+
+        Ok(aud)
+    }
+
+    fn apply_ret(&mut self, ret: Self::RetIn) -> Ret {
+        ret
+    }
+}
+
+impl<State, Action, Args, Ret, Context, Output> spru_script::Language<State, Action, Args, Ret, Context, Output> for Lua<State, Action> 
 where
     State: 'static,
     Args: crate::IntoLuaMulti,
     // `Root: Clone` required because mlua's setters require &mut (understandably), even though we don't mutate the IdTs themselves
-    Context: self::Context<Root: crate::IntoLua + Clone + 'static>,
-    Output: self::Output,
-    Output::Ret: crate::FromLuaMulti,
+    Context: self::Context,
+    Output: self::Output<Ret>,
+    Output::RetIn: crate::FromLuaMulti,
 {
     /// Execute a script with access to the Game's Root. 
     fn exec<Storage>(
@@ -248,7 +426,7 @@ where
         interactor: &mut spru::Interactor<'_, Storage, Action, Context, Output>,
         script: &str,
         args: Args,
-    ) -> Result<(), Self::Error> 
+    ) -> Result<Ret, Self::Error> 
     where
         Storage: spru::item::Storage<State = State>,
         State: spru::State + spru_script::Scriptable<Action, Self::Registry>,
@@ -273,7 +451,7 @@ where
         
         let mut context_table = lua.create_table()?;
 
-        let ret: Output::Ret = lua.scope(|scope| {
+        let ret_in: Output::RetIn = lua.scope(|scope| {
             let ledger_userdata = scope.create_userdata(ledger)?;
             lua.globals().set(crate::key::GLOBAL_LEDGER, ledger_userdata)?;
 
@@ -290,8 +468,8 @@ where
             crate::FromLuaMulti::from_lua_multi(r, lua)
         })?;
 
-        output.apply_ret(ret);
+        let ret = output.apply_ret(ret_in);
         
-        Ok(())
+        Ok(ret)
     }
 }

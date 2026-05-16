@@ -18,6 +18,9 @@ spru-script-macro.workspace = true
 tagset.workspace = true
 telety.workspace = true
 
+# for TransparentWrapper
+bytemuck.workspace = true
+
 derive-where.workspace = true
 
 serde.workspace = true

@@ -1,2 +1,2 @@
 pub mod card;
-pub use card::{Card, CardImpl};
+pub use card::Card;

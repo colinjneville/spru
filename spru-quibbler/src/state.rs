@@ -1,3 +1,4 @@
+use spru_script::Wrap;
 use spru_util::{counter, fsm, pile, player_map, rotating, state_cell};
 use tagset::tagset;
 
@@ -17,6 +18,7 @@ use crate::{data, game, player, reaction, round};
             spru_script::RegistryType<Self, Action, data::Card> +
             spru_script::RegistryType<Self, Action, crate::Play> +
             spru_script::RegistryType<Self, Action, reaction::Trigger> +
+            spru_script::RegistryType<Self, Action, game::Outcome> +
         ,
     {
         fn register<Storage>(registry: &Registry, registration: &mut Registry::Registration<'_, Storage>) 
@@ -67,17 +69,22 @@ use crate::{data, game, player, reaction, round};
                 registration, 
                 Some(spru_script::scriptable_path!(reaction::Trigger))
             )?;
+            spru_script::RegistryType::<Self, Action, game::Outcome>::register_type(
+                registry, 
+                registration, 
+                Some(spru_script::scriptable_path!(game::Outcome))
+            )?;
             Ok(())
         }
     }
 )]
 #[tagset(game::Root)]
-#[tagset(player_map::PlayerMap<player::Root>)]
+#[tagset(player_map::PlayerMap<Wrap<player::Root>>)]
 #[tagset(fsm::Fsm<player::machine::Impl>)]
 #[tagset(fsm::Fsm<round::machine::Impl>)]
-#[tagset(pile::Pile<data::Card>)]
+#[tagset(pile::Pile<Wrap<data::Card>>)]
 #[tagset(counter::Counter<u32>)]
 #[tagset(rotating::Rotating<spru::player::Id>)]
-#[tagset(state_cell::StateCell<crate::Play>)]
+#[tagset(state_cell::StateCell<Option<Wrap<crate::Play>>>)]
 #[tagset(derive(Debug))]
 pub struct State;

@@ -35,6 +35,7 @@ where
             State, 
             Action, 
             Args, 
+            (),
             spru::interaction::Context<'r, Root>, 
             spru::interaction::Output<Trigger>, 
             Error: std::error::Error + Send + Sync + 'static

@@ -23,7 +23,7 @@ where
     PlayerState: Clone + 'static,
 {
     #[create]
-    fn new() -> cloned::Create<PlayerMap<PlayerState>> {
+    fn default() -> cloned::Create<PlayerMap<PlayerState>> {
         create()
     }
 
@@ -35,6 +35,24 @@ where
     #[get(name = count)]
     fn _count(&self) -> usize {
         self.count()
+    }
+
+    #[get]
+    fn ids(&self) -> Vec<player::Id> {
+        self.map
+            .iter()
+            .filter_map(|p| 
+                p.as_ref().map(|(id, _state)| *id)
+            ).collect()
+    }
+
+    #[get]
+    fn players(&self) -> Vec<PlayerState> {
+        self.map
+            .iter()
+            .filter_map(|p| 
+                p.as_ref().map(|(_id, state)| state.clone())
+            ).collect()
     }
 
     #[method(name = get)]

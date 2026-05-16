@@ -41,7 +41,7 @@ else
             word_str = word_str .. card.letters
         end
 
-        if not play.check_word(word_str) then
+        if not Play.check_word(word_str) then
             error("Word '" .. word_str .. "' is not valid")
         end
     end

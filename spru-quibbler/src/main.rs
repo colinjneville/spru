@@ -15,7 +15,7 @@ pub mod round;
 pub use play::Play;
 mod player;
 mod reaction;
-pub use reaction::Reaction;
+// pub use reaction::Reaction;
 mod state;
 use spru::{common::error::PseudoError as _, item::Storage as _};
 use spru_bevy::{client::ClientSSS as _, server::ServerSSS as _};
@@ -26,8 +26,13 @@ pub use state::State;
 use bevy::{ecs::system::IntoSystem, prelude};
 use spru_bevy::client::component::Item;
 
-type Client = spru::client::Impl<Interaction, game::Outcome>;
-type Server = spru::server::Impl<Interaction, Reaction, player::Init>;
+type Language = spru_script_lua::Lua<State, Actions>;
+type GameInit = spru_script::GameInit<State, Actions, spru::item::IdT<game::Root>, Language, ()>;
+type PlayerInit = spru_script::PlayerInit<State, Actions, spru::item::IdT<game::Root>, Language, Wrap<player::Input>>;
+type Client = spru::client::Impl<Interaction, Wrap<game::Outcome>>;
+
+type Reaction = spru_script::Reaction<State, Actions, spru::item::IdT<game::Root>, Wrap<reaction::Trigger>, Wrap<game::Outcome>, Language>;
+type Server = spru::server::Impl<Interaction, Reaction, PlayerInit>;
 type Common = <Client as spru::Client>::Common;
 
 fn main() {
@@ -90,9 +95,9 @@ fn main() {
                     Server::filter_mut(&mut q_server, gid).ok_or("Server not found")?;
 
                 for username in ["Alice", "Bob"] {
-                    from_user.add_player(player::Input {
+                    from_user.add_player(Wrap(player::Input {
                         username: username.to_string(),
-                    });
+                    }));
                 }
 
                 Ok(())
@@ -294,9 +299,9 @@ struct ActiveClientId(Option<spru_bevy::client::component::ClientId>);
 fn startup(mut commands: prelude::Commands) {
     commands.spawn(bevy::prelude::Camera2d);
     commands.queue(spru_bevy::server::command::Init::<Server, _> {
-        game_init: game::Init,
-        player_init: player::Init,
-        reaction: Reaction,
+        game_init: game::init::new(),
+        player_init: player::init::new(),
+        reaction: reaction::new(),
     })
 }
 
@@ -304,9 +309,9 @@ fn print_piles(
     q_piles: prelude::Query<
         (
             &spru_bevy::client::component::ClientId,
-            &Item<spru_util::pile::Pile<data::Card>>,
+            &Item<spru_util::pile::Pile<Wrap<data::Card>>>,
         ),
-        (prelude::Changed<Item<spru_util::pile::Pile<data::Card>>>,),
+        (prelude::Changed<Item<spru_util::pile::Pile<Wrap<data::Card>>>>,),
     >,
 ) {
     for (client_id, pile) in q_piles {
@@ -351,12 +356,12 @@ fn panel_ui(
         &mut spru_bevy::client::component::FromUser<Client>,
     )>,
     q_game_root: prelude::Query<&Item<game::Root>>,
-    q_player_map: prelude::Query<&Item<player_map::PlayerMap<crate::player::Root>>>,
-    q_pile: prelude::Query<&Item<spru_util::pile::Pile<data::Card>>>,
+    q_player_map: prelude::Query<&Item<player_map::PlayerMap<Wrap<crate::player::Root>>>>,
+    q_pile: prelude::Query<&Item<spru_util::pile::Pile<Wrap<data::Card>>>>,
     q_current_turn: prelude::Query<&Item<spru_util::rotating::Rotating<spru::player::Id>>>,
     q_player_fsm: prelude::Query<&Item<spru_util::fsm::Fsm<player::machine::Impl>>>,
     q_counter: prelude::Query<&Item<spru_util::counter::Counter<u32>>>,
-    q_play: prelude::Query<&Item<state_cell::StateCell<Play>>>,
+    q_play: prelude::Query<&Item<state_cell::StateCell<Option<Wrap<Play>>>>>,
     game_id: prelude::Res<GameId>,
     client_ids: prelude::Res<ClientIds>,
     log: prelude::Res<Log>,
@@ -449,12 +454,12 @@ fn panel_ui(
                 if (response.clicked() || confirmed) && !add_player_string.is_empty() {
                     let player_init_in =
                         player::Input::new(std::mem::take(&mut *add_player_string));
-                    server_from_user.add_player(player_init_in);
+                    server_from_user.add_player(Wrap(player_init_in));
                 }
             });
 
             if ui.button("Start game").clicked() {
-                server_from_user.manual_trigger(Wrap::new(reaction::TriggerImpl::StartGame));
+                server_from_user.manual_trigger(Wrap::new(reaction::Trigger::StartGame));
             }
         });
     });
@@ -535,7 +540,7 @@ fn panel_ui(
                 ui.horizontal(|ui| {
                     for card in &**hand {
                         if render_card(ui, card, false).clicked() {
-                            from_user.stage_interaction(interaction::discard::new(card.clone()).into());
+                            from_user.stage_interaction(interaction::discard::new(card.0.clone()).into());
                         }
                     }
                 });
@@ -576,22 +581,24 @@ fn panel_ui(
                         ui.vertical(|ui| {
                             ui.label(format!("{player_username}: {player_score} points"));
                             ui.horizontal(|ui| {
-                                if player_play.word_count() > 0 {
-                                    for word in player_play.words() {
-                                        for card in word {
-                                            render_card(ui, card, false);
+                                if let Some(player_play) = &***player_play {
+                                    if player_play.word_count() > 0 {
+                                        for word in player_play.words() {
+                                            for card in word {
+                                                render_card(ui, card, false);
+                                            }
+                                            ui.add_space(24.);
                                         }
-                                        ui.add_space(24.);
-                                    }
-                                }
+                                    }   
 
-                                if !player_play.is_full() {
-                                    for card in player_play.unused() {
-                                        render_card(ui, card, true);
+                                    if !player_play.is_full() {
+                                        for card in player_play.unused() {
+                                            render_card(ui, card, true);
+                                        }
                                     }
                                 }
                             });
-                            if player_play.is_played() {
+                            if let Some(player_play) = &***player_play {
                                 let play_score = player_play.base_score();
                                 let word_count = player_play.word_count();
                                 let max_word_len = player_play.max_word_len();

@@ -1,10 +1,16 @@
 //! Language-agnostic support for scripting in spru. 
 //! Game Items should use the included derive macros or implement the `Scriptable*` traits manually, 
 //! and specific scripting implementations should implement the `Registry*` and `Registration*` traits.
+mod game_init;
+pub use game_init::GameInit;
 mod interaction;
-use std::ops;
-
 pub use interaction::Interaction;
+mod player_init;
+pub use player_init::PlayerInit;
+mod reaction;
+pub use reaction::Reaction;
+
+use std::ops;
 
 use tagset::tagset_meta;
 use telety::telety;
@@ -99,14 +105,14 @@ pub trait LanguageBase<State, Action> {
     type Error;
 }
 
-pub trait Language<State, Action, Args, Context, Output>: LanguageBase<State, Action> {
+pub trait Language<State, Action, Args, Ret, Context, Output>: LanguageBase<State, Action> {
     /// Execute a script.
     fn exec<Storage>(
         &self, 
         interactor: &mut spru::Interactor<'_, Storage, Action, Context, Output>,
         script: &str,
         args: Args,
-    ) -> Result<(), Self::Error> 
+    ) -> Result<Ret, Self::Error> 
     where
         Storage: spru::item::Storage<State = State>,
         State: spru::State + Scriptable<Action, Self::Registry>,
@@ -255,6 +261,11 @@ pub trait RegistryTypeEq<State, Action, T>: Registry<State, Action> {
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(transparent)]
 pub struct Wrap<T>(pub T);
+
+// SAFETY Wrap is a publically #[repr(transparent)] wrapper around T
+unsafe impl<T> bytemuck::TransparentWrapper<T> for Wrap<T> { }
+
+pub use bytemuck::{TransparentWrapper, TransparentWrapperAlloc};
 
 impl<T> Wrap<T> {
     pub fn new(value: T) -> Self {

@@ -1,5 +1,3 @@
-use std::fmt;
-
 #[derive(Clone, Debug, thiserror::Error)]
 #[error("The Rotating index ({index}/{len}) is invalid")]
 pub struct IndexOutOfRange {

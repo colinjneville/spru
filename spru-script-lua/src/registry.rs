@@ -448,7 +448,36 @@ where
     }
 }
 
+
+
 fn register_path(lua: &mlua::Lua, type_parameters_metatable: &mlua::Table, scriptable_path: &spru_script::ScriptablePath) -> mlua::Result<mlua::Table> {
+    fn path_string(base: String, path: &[&str]) -> String {
+        path.iter()
+            .fold(base, |a, b| if a.is_empty() { b.to_string() } else { format!("{a}.{b}") })
+    }
+
+    fn path_args_string(path_args: &[spru_script::ScriptablePath]) -> String {
+        let mut s = String::new();
+
+        for path_arg in path_args {
+            let c = if s.is_empty() {
+                '['
+            } else {
+                ','
+            };
+            s.push(c);
+            
+            s.push_str(&path_string(String::new(), path_arg.0));
+            s.push_str(&path_args_string(path_arg.1));
+        }
+        
+        if !s.is_empty() {
+            s.push(']');
+        }
+
+        s
+    }
+
     let &spru_script::ScriptablePath(path, args) = scriptable_path;
     let mut keys = vec![];
     for &segment in path {
@@ -457,11 +486,19 @@ fn register_path(lua: &mlua::Lua, type_parameters_metatable: &mlua::Table, scrip
 
     if !args.is_empty() {
         let args_table = lua.create_table()?;
+        
+        args_table.set_metatable(Some(type_parameters_metatable.clone()))?;
 
+        let mut args_str = String::new();
         for arg in args {
+            args_str.push_str(&path_string(String::new(), arg.0));
             let arg_table = register_path(lua, type_parameters_metatable, arg)?;
             args_table.push(arg_table)?;
         }
+
+        let path_str = path_string(String::new(), path);
+        let args_str = path_args_string(args);
+        args_table.set("__type_path", format!("{path_str}{args_str}"))?;
 
         let key = mlua::IntoLua::into_lua(args_table, lua)?;
     
@@ -469,18 +506,19 @@ fn register_path(lua: &mlua::Lua, type_parameters_metatable: &mlua::Table, scrip
     }
 
     let mut current_table = lua.globals();
+    let mut current_path_string = String::new();
+
     for key in keys {
-        if key.is_table() {
-            // We've reached type parameters: unlike path strings, tables containing the same tables
-            // won't index by default - we need a special __index metafunction that compares the keys
-            // structurally
-            current_table.set_metatable(Some(type_parameters_metatable.clone()))?;
-        }
-        
         current_table = if let Ok(table) = current_table.get::<mlua::Table>(&key) {
             table
         } else {
             let table = lua.create_table()?;
+            if let mlua::Value::String(s) = &key {
+                current_path_string = path_string(current_path_string, &[&*(s.to_str()?)]);
+            }
+            table.set("__type_path", current_path_string.clone())?;
+            table.set_metatable(Some(type_parameters_metatable.clone()))?;
+
             current_table.set(&key, table)?;
             current_table.get::<mlua::Table>(&key)?
         };

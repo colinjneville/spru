@@ -3,7 +3,7 @@ use std::marker::PhantomData;
 use bevy::{ecs::system::IntoSystem as _, prelude};
 use derive_where::derive_where;
 
-#[derive_where(Debug, Default)]
+#[derive_where(Debug, Default; )]
 pub struct Plugin<Server: crate::server::ServerSSS> {
     _server: PhantomData<fn() -> Server>,
 }

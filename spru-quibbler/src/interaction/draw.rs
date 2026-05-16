@@ -18,7 +18,7 @@ impl spru::Interaction for Draw {
     type State = crate::State;
     type Action = crate::Actions;
     type Root = IdT<crate::game::Root>;
-    type Trigger = crate::reaction::Trigger;
+    type Trigger = Wrap<crate::reaction::Trigger>;
 
     #[instrument(skip_all, ret, err)]
     fn apply<'l, Storage>(
@@ -48,7 +48,7 @@ impl spru::Interaction for Draw {
 
         match self {
             Draw::Deck => {
-                interactor.enqueue_trigger(Wrap::new(reaction::TriggerImpl::DrawFromDeck));
+                interactor.enqueue_trigger(Wrap::new(reaction::Trigger::DrawFromDeck));
             }
             Draw::Discard => {
                 let card = discard.top().expect("Discard cannot be empty");

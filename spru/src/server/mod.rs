@@ -436,12 +436,16 @@ where
         };
         let interactor = Interactor::new(&mut self.inner.storage, &self.inner.reservation, context);
 
+        let mut player_added = false;
+
         let result = match self
             .inner
             .player_manager
             .add(interactor, reservation_range, init_input)
         {
             Ok(complete) => {
+                player_added = true;
+
                 let added_player_id = complete.context.player;
                 tracing::Span::current().record("player_id", added_player_id.into_u32());
 
@@ -472,7 +476,10 @@ where
                 Ok(messaging.into_output(client_init))
             }
             Err(err) => {
-                self.inner.player_manager.revert_add();
+                if player_added {
+                    self.inner.player_manager.revert_add();
+                }
+                
                 // TODO the reservation is lost here
                 if err.recovery_error.is_some() {
                     Err(error::AddPlayerError::Fatal(self

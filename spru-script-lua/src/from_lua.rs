@@ -42,7 +42,7 @@ forward_from_lua! {
     [] String,
     [] std::ffi::OsString,
     [] std::path::PathBuf,
-    [K: Eq + std::hash::Hash + mlua::FromLua, V: mlua::FromLua, S: std::hash::BuildHasher + Default] std::collections::HashMap<K, V, S>, 
+    // [K: Eq + std::hash::Hash + mlua::FromLua, V: mlua::FromLua, S: std::hash::BuildHasher + Default] std::collections::HashMap<K, V, S>, 
     [K: Ord + mlua::FromLua, V: mlua::FromLua] std::collections::BTreeMap<K, V>,
     [T: mlua::FromLua, const N: usize] [T; N],
     [T: Eq + std::hash::Hash + mlua::FromLua, S: std::hash::BuildHasher + Default] std::collections::HashSet<T, S>,
@@ -62,6 +62,20 @@ impl<T: FromLua> FromLua for Vec<T> {
             v.push(T::from_lua(value?, lua)?);
         }
         Ok(v)
+    }
+}
+
+impl<K: Eq + std::hash::Hash + FromLua, V: FromLua, S: std::hash::BuildHasher + Default> FromLua for std::collections::HashMap<K, V, S> {
+    fn from_lua(value: mlua::Value, lua: &mlua::Lua) -> mlua::Result<Self> {
+        let table: mlua::Table = mlua::FromLua::from_lua(value, lua)?;
+        let mut map = std::collections::HashMap::<K, V, S>::with_capacity_and_hasher(table.len()? as usize, S::default());
+        for r in table.pairs::<mlua::Value, mlua::Value>() {
+            let (k, v) = r?;
+            let k: K = FromLua::from_lua(k, lua)?;
+            let v: V = FromLua::from_lua(v, lua)?;
+            map.insert(k, v);
+        }
+        Ok(map)
     }
 }
 

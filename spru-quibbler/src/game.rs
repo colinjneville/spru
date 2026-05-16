@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use spru::item::IdT;
-use spru_script::script;
+use spru_script::{Wrap, script};
 use spru_util::{cloned, counter, fsm, pile, player_map, rotating};
 
 use crate::{
@@ -25,7 +25,7 @@ impl spru::game::Init for Init {
         self,
         interactor: &mut spru::game::init::Interactor<Self>,
     ) -> spru::game::init::Result<Self::Root> {
-        let deck = interactor.create(pile::create(card::all())).id();
+        let deck = interactor.create(pile::create(card::all().into_iter().map(Wrap))).id();
         let discard = interactor.create(pile::create([])).id();
         let round = interactor.create(counter::create(0)).id();
         let round_fsm = interactor.create(fsm::default()).id();
@@ -51,18 +51,18 @@ impl spru::game::Init for Init {
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-#[script]
+#[script(include = [Impl])]
 pub struct Root {
     #[get]
-    pub deck: IdT<pile::Pile<Card>>,
+    pub deck: IdT<pile::Pile<Wrap<Card>>>,
     #[get]
-    pub discard: IdT<pile::Pile<Card>>,
+    pub discard: IdT<pile::Pile<Wrap<Card>>>,
     #[get]
     pub round: IdT<counter::Counter<u32>>,
     #[get]
     pub round_fsm: IdT<fsm::Fsm<crate::round::machine::Impl>>,
     #[get]
-    pub players: IdT<player_map::PlayerMap<player::Root>>,
+    pub players: IdT<player_map::PlayerMap<Wrap<player::Root>>>,
     #[get]
     pub current_turn: IdT<rotating::Rotating<spru::player::Id>>,
     #[get]
@@ -72,8 +72,55 @@ pub struct Root {
     pub has_started: bool,
 }
 
+#[script(partial = Impl)]
+impl Root {
+    #[create]
+    fn new(
+        deck: IdT<pile::Pile<Wrap<Card>>>,
+        discard: IdT<pile::Pile<Wrap<Card>>>,
+        round: IdT<counter::Counter<u32>>,
+        round_fsm: IdT<fsm::Fsm<crate::round::machine::Impl>>,
+        players: IdT<player_map::PlayerMap<Wrap<player::Root>>>,
+        current_turn: IdT<rotating::Rotating<spru::player::Id>>,
+        current_dealer: IdT<rotating::Rotating<spru::player::Id>>,
+    ) 
+        -> cloned::Create<Root>
+    {
+        cloned::create(Self { 
+            deck, 
+            discard, 
+            round, 
+            round_fsm, 
+            players, 
+            current_turn, 
+            current_dealer, 
+            has_started: false 
+        })
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Outcome {
     pub winners: Vec<spru::player::Id>,
     pub final_scores: HashMap<spru::player::Id, u32>,
 }
+
+#[script(state = false)]
+impl Outcome {
+    #[function]
+    fn new(winners: Vec<spru::player::Id>, final_scores: HashMap<spru::player::Id, u32>) -> Wrap<Self> {
+        Wrap::new(Self {
+            winners,
+            final_scores,
+        })
+    }
+}
+
+pub mod init {
+    const SCRIPT: crate::script::Script = crate::script::script!("scripts/game_init.lua");
+
+    pub fn new() -> crate::GameInit {
+        crate::GameInit::new(spru_script_lua::Lua::new(), SCRIPT.get(), ())
+    }
+}
+

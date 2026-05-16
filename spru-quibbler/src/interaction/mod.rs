@@ -8,15 +8,6 @@ use spru::item::IdT;
 use spru_script::Wrap;
 use tagset::tagset;
 
-// pub(crate) type Interactor<'l, 'r, Storage> = spru::interaction::Interactor<
-//     'l,
-//     'r,
-//     Storage,
-//     crate::Actions,
-//     IdT<crate::game::Root>,
-//     crate::reaction::Trigger,
-// >;
-
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("Out of turn")]
@@ -29,7 +20,7 @@ type LuaInteraction<Args> = spru_script::Interaction<
     crate::State, 
     crate::Actions, 
     IdT<crate::game::Root>, 
-    crate::reaction::Trigger, 
+    Wrap<crate::reaction::Trigger>, 
     spru_script_lua::Lua<crate::State, crate::Actions>,
     Args,
 >;
@@ -39,7 +30,7 @@ type LuaInteraction<Args> = spru_script::Interaction<
     type State = crate::State;
     type Action = crate::Actions;
     type Root = IdT<crate::game::Root>;
-    type Trigger = crate::reaction::Trigger;
+    type Trigger = Wrap<crate::reaction::Trigger>;
 })]
 #[tagset(impl tagset::proxy::serde::Serialize)]
 #[tagset(impl<'de> tagset::serde::DeserializeFromDiscriminant<'de>)]
@@ -47,7 +38,7 @@ type LuaInteraction<Args> = spru_script::Interaction<
 #[tagset(Draw)]
 #[tagset(Play)]
 #[tagset(Discard)]
-#[tagset(LuaInteraction<crate::data::Card>)]
+#[tagset(LuaInteraction<Wrap<crate::data::Card>>)]
 #[tagset(LuaInteraction<Option<Wrap<crate::Play>>>)]
 #[tagset(LuaInteraction<bool>)]
 pub struct Interaction;

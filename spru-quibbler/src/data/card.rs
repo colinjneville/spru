@@ -1,17 +1,15 @@
 use std::fmt;
 
-use spru_script::script;
-
-pub type Card = spru_script::Wrap<CardImpl>;
+use spru_script::{Wrap, script};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 #[script(state = false, include = [Methods], derive = [Eq])]
-pub struct CardImpl {
+pub struct Card {
     face_index: usize,
 }
 
 #[script(state = false, partial = Methods)]
-impl CardImpl {
+impl Card {
     #[get]
     fn letters(&self) -> String {
         self.face().letters_str().to_string()
@@ -21,9 +19,14 @@ impl CardImpl {
     fn points(&self) -> u32 {
         self.face().points()
     }
+
+    #[function]
+    fn all() -> Vec<Wrap<Card>> {
+        spru_script::TransparentWrapperAlloc::wrap_vec(self::all())
+    }
 }
 
-impl CardImpl {
+impl Card {
     fn new(face_index: usize) -> Self {
         Self { face_index }
     }
@@ -61,7 +64,7 @@ impl CardImpl {
     }
 }
 
-impl fmt::Display for CardImpl {
+impl fmt::Display for Card {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", str::from_utf8(self.face().letters).unwrap())
     }
@@ -71,7 +74,7 @@ pub fn all() -> Vec<Card> {
     let mut cards = vec![];
     for (i, face_count) in FACES.iter().enumerate() {
         for _ in 0..face_count.count {
-            cards.push(Card::new(CardImpl { face_index: i }));
+            cards.push(Card::new(i));
         }
     }
     cards

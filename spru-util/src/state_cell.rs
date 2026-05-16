@@ -1,6 +1,6 @@
 use std::ops;
 
-use spru_script::{Wrap, script};
+use spru_script::script;
 
 use crate::cloned;
 
@@ -24,8 +24,8 @@ where
     T: Clone + 'static,
 {
     #[create]
-    fn new(value: Wrap<T>) -> cloned::Create<StateCell<T>> {
-        cloned::create(StateCell(value.0))
+    fn new(value: T) -> cloned::Create<StateCell<T>> {
+        cloned::create(StateCell(value))
     }
 
     #[method]
@@ -34,13 +34,13 @@ where
     }
 
     #[get]
-    fn value(&self) -> Wrap<T> {
-        Wrap::new(self.0.clone())
+    fn value(&self) -> T {
+        self.0.clone()
     }
 
     #[set(name = value)]
-    fn value_set(&self, value: Wrap<T>) -> (cloned::Update<StateCell<T>>, ) {
-        (cloned::update(StateCell(value.0)), )
+    fn value_set(&self, value: T) -> (cloned::Update<StateCell<T>>, ) {
+        (cloned::update(StateCell(value)), )
     }
 }
 

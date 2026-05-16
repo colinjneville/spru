@@ -21,14 +21,10 @@
 mod from_lua;
 pub use from_lua::{FromLua, FromLuaMulti};
 pub(crate) mod func;
-// mod game_init;
-// pub use game_init::GameInit;
 mod into_lua;
 pub use into_lua::{IntoLua, IntoLuaMulti};
 mod instance;
 pub use instance::Lua;
-// mod interaction;
-// pub use interaction::Interaction;
 pub(crate) mod key;
 mod ledger;
 use ledger::Ledger;

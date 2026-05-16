@@ -1,4 +1,5 @@
 use spru::{interactor::with, item::IdT};
+use spru_script::Wrap;
 use spru_util::{fsm, pile};
 use tracing::instrument;
 
@@ -19,7 +20,7 @@ impl spru::Interaction for Discard {
     type State = crate::State;
     type Action = crate::Actions;
     type Root = IdT<crate::game::Root>;
-    type Trigger = crate::reaction::Trigger;
+    type Trigger = Wrap<crate::reaction::Trigger>;
 
     #[instrument(skip_all, ret, err)]
     fn apply<Storage>(
@@ -43,10 +44,10 @@ impl spru::Interaction for Discard {
 
         let hand_index = hand
             .iter()
-            .position(|i| i == &self.discard)
+            .position(|i| i.0 == self.discard)
             .ok_or(crate::anyhow!("Card is not in hand"))?;
         hand.update(pile::remove(hand_index));
-        discard.update(pile::push_top(self.discard.clone()));
+        discard.update(pile::push_top(Wrap(self.discard.clone())));
 
         Ok(())
     }
@@ -54,7 +55,7 @@ impl spru::Interaction for Discard {
 
 const SCRIPT: Script = crate::script::script!("scripts/discard.lua");
 
-pub fn new(discard: data::Card) -> super::LuaInteraction<data::Card> {
-    super::LuaInteraction::new(spru_script_lua::Lua::new(), SCRIPT.get(), discard)
+pub fn new(discard: data::Card) -> super::LuaInteraction<Wrap<data::Card>> {
+    super::LuaInteraction::new(spru_script_lua::Lua::new(), SCRIPT.get(), Wrap(discard))
 }
 

@@ -115,7 +115,8 @@ impl<T: Clone + 'static> Pile<T> {
 
     #[method]
     fn pop_top_many(&self, count: usize) -> (Vec<T>, PopTopMany<T>) {
-        (self.items.0[0..count].to_vec(), pop_top_many(count))
+        let count = count.min(self.items.len());
+        (self.items.0[..count].to_vec(), pop_top_many(count))
     }
 
     #[method]
@@ -138,7 +139,8 @@ impl<T: Clone + 'static> Pile<T> {
 
     #[method]
     fn try_pop_top_many(&self, count: usize) -> (Vec<T>, PopTopMany<T>) {
-        (self.items.0.get(0..count).unwrap_or(&[]).to_vec(), try_pop_top_many(count))
+        let count = count.min(self.items.len());
+        (self.items.0.get(..count).unwrap_or(&[]).to_vec(), try_pop_top_many(count))
     }
 
     #[method]

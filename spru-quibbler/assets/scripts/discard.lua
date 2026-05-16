@@ -6,7 +6,6 @@ p.fsm:transition(player.Machine.discard())
 
 local hand_index = nil
 for key, value in ipairs(p.hand.items) do
-    print(key)
     if value == discarded then
         hand_index = key - 1
         break

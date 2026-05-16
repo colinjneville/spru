@@ -89,6 +89,16 @@ impl<T: Clone + 'static> Rotating<T> {
     fn _remove(&self, position: usize) -> (Option<T>, Remove<T>) {
         (self.items.get(position).cloned(), remove(position))
     }
+
+    #[method(name = push)]
+    fn _push(&self, item: T) -> ((), Insert<T>) {
+        self._insert(self.len(), item)
+    }
+
+    #[method(name = pop)]
+    fn _pop(&self) -> (Option<T>, Remove<T>) {
+        self._remove(self.len().saturating_sub(1))
+    }
 }
 
 impl<T> Rotating<T> {

@@ -51,7 +51,7 @@ forward_into_lua! {
     [] std::path::PathBuf,
 
     // TODO These need to hand-written to use `T: crate::IntoLua`...
-    [K: Eq + std::hash::Hash + mlua::IntoLua, V: mlua::IntoLua, S: std::hash::BuildHasher] std::collections::HashMap<K, V, S>,
+    // [K: Eq + std::hash::Hash + mlua::IntoLua, V: mlua::IntoLua, S: std::hash::BuildHasher] std::collections::HashMap<K, V, S>,
     [K: Ord + mlua::IntoLua, V: mlua::IntoLua] std::collections::BTreeMap<K, V>,
     [T: Clone + mlua::IntoLua] &[T],
     [T: mlua::IntoLua, const N: usize] [T; N],
@@ -81,6 +81,16 @@ impl<F: FnOnce(&mlua::Lua) -> mlua::Result<mlua::Value>> mlua::IntoLua for Defer
 impl IntoLua for mlua::Value {
     fn into_lua(self, _lua: &mlua::Lua) -> mlua::Result<mlua::Value> {
         Ok(self)
+    }
+}
+
+impl<K: Eq + std::hash::Hash + IntoLua, V: IntoLua, S: std::hash::BuildHasher> IntoLua for std::collections::HashMap<K, V, S> {
+    fn into_lua(self, lua: &mlua::Lua) -> mlua::Result<mlua::Value> {
+        Ok(mlua::Value::Table(
+            lua.create_table_from(self.into_iter().map(|(k, v)| {
+                (deferred_into_lua(k), deferred_into_lua(v))
+            }))?
+        ))
     }
 }
 

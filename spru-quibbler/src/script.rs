@@ -17,10 +17,10 @@ macro_rules! script {
         {
             // No boxed statics, no type infered statics, no named closures, so we are left with this...
             fn __load_script() -> String {
-                Script::read($path)
+                $crate::script::Script::read($path)
             }
             
-            Script::new(__load_script)
+            $crate::script::Script::new(__load_script)
         }
     };
 }

@@ -5,7 +5,7 @@ use spru_script::Wrap;
 use spru_util::{cloned, counter, fsm, pile, rotating, state_cell};
 use tracing::instrument;
 
-use crate::{data, player, reaction::{Trigger, TriggerImpl}, round, script::Script};
+use crate::{data, player, reaction::Trigger, round, script::Script};
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Play {
@@ -22,7 +22,7 @@ impl spru::Interaction for Play {
     type State = crate::State;
     type Action = crate::Actions;
     type Root = IdT<crate::game::Root>;
-    type Trigger = crate::reaction::Trigger;
+    type Trigger = Wrap<crate::reaction::Trigger>;
 
     #[instrument(skip_all, ret, err)]
     fn apply<Storage>(
@@ -94,9 +94,9 @@ impl spru::Interaction for Play {
 
             interactor
                 .get(player.played)?
-                .update(state_cell::update(play.clone()));
+                .update(state_cell::update(Some(Wrap(play.clone()))));
 
-            interactor.enqueue_trigger(Wrap::new(TriggerImpl::Play));
+            interactor.enqueue_trigger(Wrap::new(Trigger::Play));
         } else {
             round_fsm.update(fsm::transition(round::machine::Input::Pass));
             player_fsm.update(fsm::transition(player::machine::Input::Pass));
@@ -114,5 +114,5 @@ impl spru::Interaction for Play {
 const SCRIPT: Script = crate::script::script!("scripts/play.lua");
 
 pub fn new(play: Option<crate::Play>) -> super::LuaInteraction<Option<Wrap<crate::Play>>> {
-    super::LuaInteraction::new(spru_script_lua::Lua::new(), SCRIPT.get(), play.map(Wrap::new))
+    super::LuaInteraction::new(spru_script_lua::Lua::new(), SCRIPT.get(), play.map(Wrap))
 }

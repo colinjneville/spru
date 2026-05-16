@@ -9,21 +9,16 @@ use crate::data;
 #[script(state = false, include = [Methods])]
 pub struct Play {
     #[get]
-    words: Vec<Vec<data::Card>>,
+    words: Vec<Vec<Wrap<data::Card>>>,
     #[get]
-    unused: Vec<data::Card>,
+    unused: Vec<Wrap<data::Card>>,
 }
 
 #[script(state = false, partial = Methods)]
 impl Play {
     #[function(name = new)]
-    fn _new(words: Vec<Vec<data::Card>>, unused: Vec<data::Card>) -> Wrap<Play> {
-        Wrap::new(Self::new(words, unused))
-    }
-
-    #[get(name = is_played)]
-    fn _is_played(&self) -> bool {
-        self.is_played()
+    fn _new(words: Vec<Vec<Wrap<data::Card>>>, unused: Vec<Wrap<data::Card>>) -> Wrap<Play> {
+        Wrap::new(Self { words, unused })
     }
 
     #[get(name = is_full)]
@@ -37,9 +32,9 @@ impl Play {
     }
 
     #[get(name = words)]
-    fn _words(&self) -> Vec<Vec<data::Card>> {
+    fn _words(&self) -> Vec<Vec<Wrap<data::Card>>> {
         self.words()
-            .map(<[data::Card]>::to_vec)
+            .map(|c| c.into_iter().cloned().map(Wrap).collect::<Vec<_>>())
             .collect()
     }
 
@@ -54,8 +49,8 @@ impl Play {
     }
 
     #[get(name = unused)]
-    fn _unused(&self) -> Vec<data::Card> {
-        self.unused().to_vec()
+    fn _unused(&self) -> Vec<Wrap<data::Card>> {
+        spru_script::TransparentWrapperAlloc::wrap_vec(self.unused().to_vec())
     }
 
     #[function]
@@ -69,11 +64,13 @@ impl Play {
 
 impl Play {
     pub(crate) fn new(words: Vec<Vec<data::Card>>, unused: Vec<data::Card>) -> Self {
-        Self { words, unused }
-    }
+        let words = words.into_iter()
+            .map(spru_script::TransparentWrapperAlloc::wrap_vec)
+            .collect();
+        
+        let unused = spru_script::TransparentWrapperAlloc::wrap_vec(unused);
 
-    pub fn is_played(&self) -> bool {
-        !(self.words.is_empty() && self.unused.is_empty())
+        Self { words, unused }
     }
 
     pub fn is_full(&self) -> bool {
@@ -95,7 +92,9 @@ impl Play {
     }
 
     pub fn words(&self) -> impl Iterator<Item = &[data::Card]> {
-        self.words.iter().map(Vec::as_slice)
+        self.words.iter()
+            .map(Vec::as_slice)
+            .map(spru_script::TransparentWrapper::peel_slice)
     }
 
     pub fn word_count(&self) -> usize {
@@ -111,13 +110,13 @@ impl Play {
     }
 
     pub fn unused(&self) -> &[data::Card] {
-        self.unused.as_slice()
+        spru_script::TransparentWrapper::peel_slice(self.unused.as_slice())
     }
 
-    pub fn parsed(hand: &pile::Pile<data::Card>, s: &[u8]) -> Result<Self, u8> {
+    pub fn parsed(hand: &pile::Pile<Wrap<data::Card>>, s: &[u8]) -> Result<Self, u8> {
         let mut remaining_cards = HashMap::new();
         for card in hand {
-            *remaining_cards.entry(&card.0).or_insert(0) += 1;
+            *remaining_cards.entry(card.0.clone()).or_insert(0) += 1;
         }
 
         let mut words = vec![];
@@ -131,13 +130,13 @@ impl Play {
                 }
             } else {
                 let second = iter.peek().copied();
-                let (first_card, second_card) = data::CardImpl::get_matching(first, second);
+                let (first_card, second_card) = data::Card::get_matching(first, second);
                 if let Some(second_card) = second_card
                     && let Some(card_count) = remaining_cards.get_mut(&second_card)
                     && *card_count > 0
                 {
                     *card_count -= 1;
-                    current_word.push(data::Card::new(second_card.clone()));
+                    current_word.push(second_card.clone());
                     // Skip next letter, as we used a double letter card
                     iter.next();
 
@@ -148,7 +147,7 @@ impl Play {
                     && *card_count > 0
                 {
                     *card_count -= 1;
-                    current_word.push(data::Card::new(first_card.clone()));
+                    current_word.push(first_card.clone());
 
                     continue;
                 }
@@ -165,7 +164,7 @@ impl Play {
         let mut unused = vec![];
         for (card, count) in remaining_cards {
             for _ in 0..count {
-                unused.push(data::Card::new(card.clone()));
+                unused.push(card.clone());
             }
         }
 

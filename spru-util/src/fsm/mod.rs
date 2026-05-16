@@ -51,13 +51,13 @@ where
     #[method]
     fn transition(&self, input: Wrap<FSM::Input>) -> (Option<Wrap<FSM::Output>>, Transition<FSM>) {
         let output = <FSM as rust_fsm::StateMachineImpl>::output(&self.0, &input.0);
-        (output.map(Wrap::new), transition(input.0))
+        (output.map(Wrap), transition(input.0))
     }
 
     #[method]
     fn try_transition(&self, input: Wrap<FSM::Input>) -> (Option<Wrap<FSM::Output>>, Transition<FSM>) {
         let output = <FSM as rust_fsm::StateMachineImpl>::output(&self.0, &input.0);
-        (output.map(Wrap::new), try_transition(input.0))
+        (output.map(Wrap), try_transition(input.0))
     }
 
     #[method]

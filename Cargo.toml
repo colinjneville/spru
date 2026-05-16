@@ -33,6 +33,8 @@ thiserror = "2.0.12"
 anyhow = "1.0.100"
 append-only-vec = "0.1.8"
 
+bytemuck = "1.25.0"
+
 derive_more = "1.0.0"
 derive-where = { version = "1.6.0", features = ["serde"] }
 num-traits = "0.2.17"

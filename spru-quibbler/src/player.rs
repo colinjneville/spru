@@ -63,7 +63,7 @@ impl spru::player::Init for Init {
 
         players.update(player_map::add_player(
             player_id,
-            Root::new(RootImpl {
+            Wrap::new(Root {
                 data: input,
                 hand,
                 score,
@@ -76,21 +76,35 @@ impl spru::player::Init for Init {
     }
 }
 
-pub type Root = spru_script::Wrap<RootImpl>;
-
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-#[script(state = false)]
-pub struct RootImpl {
+#[script(state = false, include = [Impl])]
+pub struct Root {
     #[get(wrap = true)]
     pub data: Input,
     #[get]
-    pub hand: IdT<pile::Pile<data::Card>>,
+    pub hand: IdT<pile::Pile<Wrap<data::Card>>>,
     #[get]
     pub score: IdT<counter::Counter<u32>>,
     #[get]
     pub fsm: IdT<fsm::Fsm<machine::Impl>>,
     #[get]
-    pub played: IdT<state_cell::StateCell<crate::Play>>,
+    pub played: IdT<state_cell::StateCell<Option<Wrap<crate::Play>>>>,
+}
+
+#[script(state = false, partial = Impl)]
+impl Root {
+    #[function]
+    fn new(
+        data: Wrap<Input>, 
+        hand: IdT<pile::Pile<Wrap<data::Card>>>,
+        score: IdT<counter::Counter<u32>>,
+        fsm: IdT<fsm::Fsm<machine::Impl>>,
+        played: IdT<state_cell::StateCell<Option<Wrap<crate::Play>>>>,
+    ) 
+        -> Wrap<Root> 
+    {
+        Wrap::new(Self { data: data.0, hand, score, fsm, played, })
+    }
 }
 
 state_machine! {
@@ -138,3 +152,12 @@ impl machine::Input {
         Wrap::new(Self::Pass)
     }
 }
+
+pub mod init {
+    const SCRIPT: crate::script::Script = crate::script::script!("scripts/player_init.lua");
+
+    pub fn new() -> crate::PlayerInit {
+        crate::PlayerInit::new(spru_script_lua::Lua::new(), SCRIPT.get())
+    }
+}
+
