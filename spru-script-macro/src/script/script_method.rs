@@ -87,7 +87,7 @@ impl ScriptMethod {
         let arg_pats = self.arg_pats()?;
         let arg_types = self.arg_types()?;
         let pat_type = syn::parse_quote_spanned! { self.span =>
-            (#(#arg_pats),*): (#(#arg_types),*)
+            (#(#arg_pats, )*): (#(#arg_types, )*)
         };
 
         Ok(pat_type)
@@ -126,7 +126,7 @@ impl super::ScriptImpl for ScriptMethod {
         // If arg_types has exactly 1 element, this will (intentionally) be interpreted as a single argument, otherwise
         // it will be an empty tuple, or a tuple of multiple arguments.
         let self_bound = syn::parse_quote_spanned! { self.span => 
-            ::spru_script::#registry_trait<#type_parameter_state, #type_parameter_action, #self_type, (#(#arg_types),*), #return_type>
+            ::spru_script::#registry_trait<#type_parameter_state, #type_parameter_action, #self_type, (#(#arg_types, )*), #return_type>
         };
         registry_bounds.push(self_bound);
 
@@ -199,7 +199,7 @@ impl super::ScriptImpl for ScriptMethod {
         };
 
         let stmt = syn::parse_quote_spanned! { self.span => 
-            #parameter_registry.#registry_fn(#parameter_registration, #name, |this, (#(#arg_pats),*)| {
+            #parameter_registry.#registry_fn(#parameter_registration, #name, |this, (#(#arg_pats, )*)| {
                 #fn_body
             })?;
         };

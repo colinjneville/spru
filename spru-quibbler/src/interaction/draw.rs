@@ -64,8 +64,14 @@ impl spru::Interaction for Draw {
     }
 }
 
-const SCRIPT: Script = crate::script::script!("scripts/draw.lua");
+const SCRIPT: Script = crate::script::script!("lua/draw.lua");
 
 pub fn new(is_deck: bool) -> super::LuaInteraction<bool> {
     super::LuaInteraction::new(spru_script_lua::Lua::new(), SCRIPT.get(), is_deck)
+}
+
+const SCRIPT_RHAI: Script = crate::script::script!("rhai/draw.rhai");
+
+pub fn new_rhai(is_deck: bool) -> super::RhaiInteraction<bool> {
+    super::RhaiInteraction::new(spru_script_rhai::Rhai::default(), SCRIPT_RHAI.get(), is_deck)
 }

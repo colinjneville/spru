@@ -37,6 +37,8 @@ static LUA_CACHE: LuaCache = LuaCache::new();
 #[derive(Debug)]
 pub(crate) struct Internal {
     lua: mlua::Lua,
+    // TODO this should just be moved to Registry, since the current model is type registration is
+    // only ever a one-time event.
     type_parameters_metatable: mlua::Table,
 }
 

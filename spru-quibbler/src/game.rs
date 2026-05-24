@@ -75,7 +75,7 @@ pub struct Root {
 #[script(partial = Impl)]
 impl Root {
     #[create]
-    fn new(
+    fn create(
         deck: IdT<pile::Pile<Wrap<Card>>>,
         discard: IdT<pile::Pile<Wrap<Card>>>,
         round: IdT<counter::Counter<u32>>,
@@ -108,7 +108,7 @@ pub struct Outcome {
 #[script(state = false)]
 impl Outcome {
     #[function]
-    fn new(winners: Vec<spru::player::Id>, final_scores: HashMap<spru::player::Id, u32>) -> Wrap<Self> {
+    fn create(winners: Vec<spru::player::Id>, final_scores: HashMap<spru::player::Id, u32>) -> Wrap<Self> {
         Wrap::new(Self {
             winners,
             final_scores,
@@ -117,7 +117,7 @@ impl Outcome {
 }
 
 pub mod init {
-    const SCRIPT: crate::script::Script = crate::script::script!("scripts/game_init.lua");
+    const SCRIPT: crate::script::Script = crate::script::script!("lua/game_init.lua");
 
     pub fn new() -> crate::GameInit {
         crate::GameInit::new(spru_script_lua::Lua::new(), SCRIPT.get(), ())

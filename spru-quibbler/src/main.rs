@@ -525,12 +525,12 @@ fn panel_ui(
                 ui.separator();
                 ui.horizontal(|ui| {
                     if ui.button("Draw from deck").clicked() {
-                        from_user.stage_interaction(interaction::draw::new(true).into());
+                        from_user.stage_interaction(interaction::draw::new_rhai(true).into());
                     }
                     if let Some(discard_top) = discard.top() {
                         let button_message = format!("Draw '{}' from discard ({} points)", discard_top.face().letters_str(), discard_top.face().points);
                         if ui.button(button_message).clicked() {
-                            from_user.stage_interaction(interaction::draw::new(false).into());
+                            from_user.stage_interaction(interaction::draw::new_rhai(false).into());
                         }
                     }
                 });

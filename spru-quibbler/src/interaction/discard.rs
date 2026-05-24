@@ -53,7 +53,7 @@ impl spru::Interaction for Discard {
     }
 }
 
-const SCRIPT: Script = crate::script::script!("scripts/discard.lua");
+const SCRIPT: Script = crate::script::script!("lua/discard.lua");
 
 pub fn new(discard: data::Card) -> super::LuaInteraction<Wrap<data::Card>> {
     super::LuaInteraction::new(spru_script_lua::Lua::new(), SCRIPT.get(), Wrap(discard))

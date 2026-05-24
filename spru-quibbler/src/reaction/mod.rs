@@ -299,7 +299,7 @@ impl spru::Reaction for Reaction {
     }
 }
 
-const SCRIPT: Script = crate::script::script!("scripts/reaction.lua");
+const SCRIPT: Script = crate::script::script!("lua/reaction.lua");
 
 pub fn new() -> crate::Reaction {
     crate::Reaction::new(spru_script_lua::Lua::new(), SCRIPT.get())

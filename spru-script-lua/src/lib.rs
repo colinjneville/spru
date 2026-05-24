@@ -107,7 +107,7 @@ mod test {
     #[spru_script::script(partial = XFun)]
     impl<T> X<T> {
         #[create]
-        fn new((value, _i): (T, i32)) -> spru_util::cloned::Create<X<T>> {
+        fn create(value: T) -> spru_util::cloned::Create<X<T>> {
             spru_util::cloned::create(Self { a: value })
         }
 
@@ -162,7 +162,7 @@ mod test {
 
         let mut test_interactor = spru::interactor::test_util::TestInteractor::new(storage);
 
-        let mut interactor = test_interactor.interactor::<MyAction, _>(());
+        let mut interactor = test_interactor.interactor::<MyAction, _, ()>(&());
         let x32 = interactor
             .create(cloned::create(X { a: 3i32 }));
         let x64 = interactor
@@ -175,26 +175,23 @@ mod test {
 
         let script = "
             local x2 = X[i32].new(5, 7)
-            root.b = x2
-            print(root.b.a)
-            print(root.b:exists())
-            local aa = root.b.a
-            root.b:destroy()
-            print(root.b:exists())
+            context.root.b = x2
+            print(context.root.b.a)
+            print(context.root.b:exists())
+            local aa = context.root.b.a
+            context.root.b:destroy()
+            print(context.root.b:exists())
             return aa
         ";
 
-        let mut interactor = test_interactor.interactor::<MyAction, _>(root);
+        let mut interactor = test_interactor.interactor::<MyAction, _, ()>(&root);
 
-        panic!("TODO TestInteractor needs to be made to work with spru_script_lua::Context");
+        let value: mlua::Value = lua.exec(&mut interactor, script, mlua::Nil).unwrap();
 
+        // let value2: mlua::Value = script2.exec(&mut interactor).unwrap();
+        println!("{}", value.as_integer().unwrap());
 
-        // let value: mlua::Value = lua.exec(&mut interactor, script, mlua::Nil).unwrap();
-
-        // // let value2: mlua::Value = script2.exec(&mut interactor).unwrap();
-        // println!("{}", value.as_integer().unwrap());
-
-        // // assert_eq!(value.as_integer().unwrap(), (3 * 4) * (3 * 4));
-        // assert_eq!(value.as_integer().unwrap(), 5);
+        // assert_eq!(value.as_integer().unwrap(), (3 * 4) * (3 * 4));
+        assert_eq!(value.as_integer().unwrap(), 5);
     }
 }

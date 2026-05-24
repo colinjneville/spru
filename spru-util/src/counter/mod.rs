@@ -39,14 +39,14 @@ where
     T: CounterType + Ord + bounds::AddSigned + Default + 'static,
 {
     #[create]
-    fn new(value: T) -> cloned::Create<Counter<T>> {
+    fn create(value: T) -> cloned::Create<Counter<T>> {
         create(value)
     }
 
     // TODO how should bounds be handled in script?
 
     #[create]
-    fn default() -> cloned::Create<Counter<T>> {
+    fn dflt() -> cloned::Create<Counter<T>> {
         create(T::default())
     }
 

@@ -16,8 +16,8 @@ pub struct Play {
 
 #[script(state = false, partial = Methods)]
 impl Play {
-    #[function(name = new)]
-    fn _new(words: Vec<Vec<Wrap<data::Card>>>, unused: Vec<Wrap<data::Card>>) -> Wrap<Play> {
+    #[function]
+    fn create(words: Vec<Vec<Wrap<data::Card>>>, unused: Vec<Wrap<data::Card>>) -> Wrap<Play> {
         Wrap::new(Self { words, unused })
     }
 

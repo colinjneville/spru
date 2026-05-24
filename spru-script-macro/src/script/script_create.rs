@@ -58,7 +58,7 @@ impl ScriptCreate {
         let arg_types = self.arg_types()?.collect::<syn::Result<Vec<_>>>()?;
 
         let pat_type = syn::parse_quote_spanned! { self.span =>
-            (#(#arg_pats),*): (#(#arg_types),*)
+            (#(#arg_pats, )*): (#(#arg_types, )*)
         };
 
         Ok(pat_type)
@@ -90,10 +90,8 @@ impl super::ScriptImpl for ScriptCreate {
         let arg_types = self.arg_types()?.collect::<syn::Result<Vec<_>>>()?;
         let return_type = self.return_type()?;
 
-        // If arg_types has exactly 1 element, this will (intentionally) be interpreted as a single argument, otherwise
-        // it will be an empty tuple, or a tuple of multiple arguments.
         let self_bound = syn::parse_quote_spanned! { self.span => 
-            ::spru_script::RegistryStateCreate<#type_parameter_state, #type_parameter_action, #return_type, #self_type, (#(#arg_types),*)>
+            ::spru_script::RegistryStateCreate<#type_parameter_state, #type_parameter_action, #return_type, #self_type, (#(#arg_types, )*)>
         };
         registry_bounds.push(self_bound);
 
@@ -155,6 +153,7 @@ impl super::ScriptImpl for ScriptCreate {
         let mut arg_pats = syn::punctuated::Punctuated::<_, syn::Token![,]>::new();
         for arg_pat in self.arg_pats()? {
             arg_pats.push(arg_pat?);
+            arg_pats.push_punct(Default::default());
         }
 
         let fn_ident = self.fn_ident()?;

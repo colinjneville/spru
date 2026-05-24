@@ -41,3 +41,9 @@ impl machine::Input {
         Wrap::new(Self::Score)
     }
 }
+
+impl Clone for machine::Output {
+    fn clone(&self) -> Self {
+        match *self { }
+    }
+}

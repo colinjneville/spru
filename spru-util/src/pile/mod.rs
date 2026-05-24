@@ -20,12 +20,12 @@ pub struct Pile<T> {
 #[script(partial = Methods)]
 impl<T: Clone + 'static> Pile<T> {
     #[create]
-    fn default() -> Create<T> {
+    fn dflt() -> Create<T> {
         create(vec![])
     }
 
     #[create]
-    fn new(items: Vec<T>) -> Create<T> {
+    fn create(items: Vec<T>) -> Create<T> {
         create(items)
     }
 

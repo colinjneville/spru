@@ -94,7 +94,7 @@ pub struct Root {
 #[script(state = false, partial = Impl)]
 impl Root {
     #[function]
-    fn new(
+    fn create(
         data: Wrap<Input>, 
         hand: IdT<pile::Pile<Wrap<data::Card>>>,
         score: IdT<counter::Counter<u32>>,
@@ -130,6 +130,12 @@ impl fmt::Display for machine::State {
     }
 }
 
+impl Clone for machine::Output {
+    fn clone(&self) -> Self {
+        match *self { }
+    }
+}
+
 #[spru_script::script(state = false, derive = [Eq])]
 impl machine::Input {
     #[function]
@@ -154,7 +160,7 @@ impl machine::Input {
 }
 
 pub mod init {
-    const SCRIPT: crate::script::Script = crate::script::script!("scripts/player_init.lua");
+    const SCRIPT: crate::script::Script = crate::script::script!("lua/player_init.lua");
 
     pub fn new() -> crate::PlayerInit {
         crate::PlayerInit::new(spru_script_lua::Lua::new(), SCRIPT.get())

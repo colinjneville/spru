@@ -129,7 +129,7 @@ function end_game()
         end
     end
 
-    return game.Outcome.new(winners, final_scores)
+    return game.Outcome.create(winners, final_scores)
 end
 
 if trigger == reaction.Trigger.start_game() then

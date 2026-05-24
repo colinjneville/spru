@@ -29,12 +29,12 @@ where
     FSM::State: Clone,
 {
     #[create]
-    fn new(initial_state: Wrap<FSM::State>) -> Create<FSM> {
+    fn create(initial_state: Wrap<FSM::State>) -> Create<FSM> {
         create(initial_state.0)
     }
 
     #[create]
-    fn default() -> Create<FSM> {
+    fn dflt() -> Create<FSM> {
         default()
     }
 

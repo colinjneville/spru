@@ -25,13 +25,13 @@ pub struct Rotating<T> {
 
 #[script(partial = Methods)]
 impl<T: Clone + 'static> Rotating<T> {
-    #[create(name = new)]
-    fn _new(items: Vec<T>, position: usize) -> Create<T> {
+    #[create]
+    fn create(items: Vec<T>, position: usize) -> Create<T> {
         create(items,position)
     }
 
     #[create]
-    fn default() -> Create<T> {
+    fn dflt() -> Create<T> {
         create(vec![], 0)
     }
 

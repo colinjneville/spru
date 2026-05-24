@@ -17,7 +17,7 @@ use telety::telety;
 
 
 /// A pre-parsed path-wise representation of a type, including type arguments. Create using [scriptable_path].
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct ScriptablePath(pub &'static [&'static str], pub &'static [Self]);
 
 /// Implements [ScriptableType] for the type. Apply to the struct definition and/or impl blocks.
@@ -399,3 +399,20 @@ macro_rules! tuple_set_return {
 }
 
 tuple_set_return!(15 P 14 O 13 N 12 M 11 L 10 K 9 J 8 I 7 H 6 G 5 F 4 E 3 D 2 C 1 B 0 A);
+
+impl<State, Action, Registry> ScriptableType<State, Action, Registry> for spru::player::Id 
+where
+    Registry: RegistryTypeEq<State, Action, Self>,
+{
+    type Type = Self;
+
+    fn register_type(
+        registry: &Registry, 
+        registration: &mut Registry::RegistrationType<'_, Self::Type>, 
+    )
+         -> Result<(), Registry::Error>
+    {
+        registry.register_type_eq(registration, Self::eq)?;
+        Ok(())
+    }
+}

@@ -1,6 +1,6 @@
 local play = ...
 local player_id = context.player
-local p = context.root.players:get(player_id);
+local p = context.root.players:get(player_id)
 
 if play == nil then
     context.root.round_fsm:transition(round.Machine.pass())
@@ -50,7 +50,7 @@ else
 
     p.played.value = play
 
-    output:enqueue_trigger(reaction.Trigger.play());
+    output:enqueue_trigger(reaction.Trigger.play())
 end
 
 context.root.current_turn:rotate(false)

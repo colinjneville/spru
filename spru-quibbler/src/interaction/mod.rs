@@ -25,6 +25,15 @@ type LuaInteraction<Args> = spru_script::Interaction<
     Args,
 >;
 
+type RhaiInteraction<Args> = spru_script::Interaction<
+    crate::State, 
+    crate::Actions, 
+    IdT<crate::game::Root>, 
+    Wrap<crate::reaction::Trigger>, 
+    spru_script_rhai::Rhai<crate::State, crate::Actions>,
+    Args,
+>;
+
 #[tagset(derive(Debug, Clone))]
 #[tagset(impl spru::Interaction {
     type State = crate::State;
@@ -41,6 +50,9 @@ type LuaInteraction<Args> = spru_script::Interaction<
 #[tagset(LuaInteraction<Wrap<crate::data::Card>>)]
 #[tagset(LuaInteraction<Option<Wrap<crate::Play>>>)]
 #[tagset(LuaInteraction<bool>)]
+#[tagset(RhaiInteraction<Wrap<crate::data::Card>>)]
+#[tagset(RhaiInteraction<Option<Wrap<crate::Play>>>)]
+#[tagset(RhaiInteraction<bool>)]
 pub struct Interaction;
 
 pub struct Output;

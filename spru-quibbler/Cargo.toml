@@ -13,6 +13,7 @@ spru-util.workspace = true
 spru-bevy.workspace = true
 spru-script.workspace = true
 spru-script-lua.workspace = true
+spru-script-rhai.workspace = true
 
 tagset.workspace = true
 telety.workspace = true

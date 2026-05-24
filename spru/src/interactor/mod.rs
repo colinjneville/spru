@@ -411,26 +411,22 @@ pub mod test_util {
             }
         }
 
-        pub fn interactor<Action, Root>(&mut self, root: Root) -> Interactor<'_, Storage, Action, TestContext<Root>, ()> {
+        pub fn interactor<'root, Action, Root, Trigger>(&mut self, root: &'root Root) -> Interactor<'_, Storage, Action, crate::interaction::Context<'root, Root>, crate::interaction::Output<Trigger>> {
             let ledger = Ledger {
                 storage: &mut self.storage,
                 items_status: Default::default(),
                 reservation: &self.reservation,
             };
-            Interactor { ledger, context: TestContext { root }, output: RefCell::new(()) }
-        }
-    }
-
-    #[derive(Debug)]
-    pub struct TestContext<Root> {
-        root: Root,
-    }
-
-    impl<Root> GetRoot for TestContext<Root> {
-        type Root = Root;
-    
-        fn get_root(&self) -> &Self::Root {
-            &self.root
+            Interactor { 
+                ledger, 
+                context: crate::interaction::Context { 
+                    root, 
+                    player: player::Id(0),
+                }, 
+                output: RefCell::new(crate::interaction::Output { 
+                    triggers: Default::default(),
+                }),
+            }
         }
     }
 }

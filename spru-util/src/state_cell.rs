@@ -24,7 +24,7 @@ where
     T: Clone + 'static,
 {
     #[create]
-    fn new(value: T) -> cloned::Create<StateCell<T>> {
+    fn create(value: T) -> cloned::Create<StateCell<T>> {
         cloned::create(StateCell(value))
     }
 
