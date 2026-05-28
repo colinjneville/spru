@@ -16,6 +16,7 @@ spru-util.workspace = true
 spru.workspace = true
 spru-macro.workspace = true
 spru-script.workspace = true
+spru-script-rhai-macro.workspace = true
 
 tagset.workspace = true
 telety.workspace = true

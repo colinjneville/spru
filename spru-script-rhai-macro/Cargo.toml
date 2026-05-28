@@ -1,9 +1,9 @@
 [package]
-name = "spru-script-macro"
+name = "spru-script-rhai-macro"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.95"
-description = "Proc macros for spru-script. Not intended for public use."
+description = "A rhai implementation of spru-script."
 license.workspace = true
 repository.workspace = true
 
@@ -13,9 +13,6 @@ proc-macro = true
 [dependencies]
 proc-macro2.workspace = true
 quote.workspace = true
-syn = { workspace = true, features = ["fold"] }
-
-vacro-parser.workspace = true
-vacro-report.workspace = true
+syn.workspace = true
 
 spru-script-impl-types.workspace = true

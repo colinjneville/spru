@@ -6,11 +6,16 @@ members = [
 	"spru-macro", 
 	"spru-quibbler", 
     "spru-script",
+    "spru-script-impl", 
+    "spru-script-impl-macro",
+    "spru-script-impl-lua",
+    "spru-script-impl-types", 
+    "spru-script-rhai",
+    "spru-script-rhai-macro",
     "spru-script-lua",
     "spru-script-macro",
-    "spru-script-rhai",
 	"spru-test",
-	"spru-util",
+	"spru-util", 
 ]
 
 [workspace.package]
@@ -24,8 +29,13 @@ spru-util = { version = "0.1", path = "./spru-util" }
 spru-bevy = { version = "0.1", path = "./spru-bevy" }
 spru-script-macro = { version = "0.1", path = "./spru-script-macro" }
 spru-script = { version = "0.1", path = "./spru-script" }
+# Path intentionally not provided so that we can patch the specific script impl 
+spru-script-impl = { version = "0.1", git = "https://github.com/colinjneville/spru.git" }
+spru-script-impl-macro = { version = "0.1", path = "./spru-script-impl-macro" }
+spru-script-impl-types = { version = "0.1", path = "./spru-script-impl-types" }
 spru-script-lua = { version = "0.1", path = "./spru-script-lua" }
 spru-script-rhai = { version = "0.1", path = "./spru-script-rhai" }
+spru-script-rhai-macro = { version = "0.1", path = "./spru-script-rhai-macro" }
 
 telety = "0.4"
 tagset = "0.1.3"

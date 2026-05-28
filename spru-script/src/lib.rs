@@ -15,9 +15,11 @@ use std::ops;
 use tagset::tagset_meta;
 use telety::telety;
 
+pub use spru_script_impl::scriptable;
+
 
 /// A pre-parsed path-wise representation of a type, including type arguments. Create using [scriptable_path].
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ScriptablePath(pub &'static [&'static str], pub &'static [Self]);
 
 /// Implements [ScriptableType] for the type. Apply to the struct definition and/or impl blocks.

@@ -45,5 +45,8 @@ arboard = "3.6.1"
 workspace = true
 features = ["default"]
 
+[patch."https://github.com/colinjneville/spru.git"]
+spru-script-impl = { path = "../spru-script-rhai" }
+
 [build-dependencies]
 copy_to_output.workspace = true

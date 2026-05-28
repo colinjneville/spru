@@ -1,0 +1,20 @@
+[package]
+name = "spru-script-impl-macro"
+edition = "2024"
+rust-version = "1.95"
+description = "A rhai implementation of spru-script."
+license.workspace = true
+repository.workspace = true
+
+[lib]
+proc-macro = true
+
+[dependencies]
+proc-macro2.workspace = true
+quote.workspace = true
+syn.workspace = true
+
+spru-script-impl-types.workspace = true
+
+[features]
+report-unavailable = []
