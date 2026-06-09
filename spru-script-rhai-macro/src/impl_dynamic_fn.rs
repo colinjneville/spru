@@ -422,6 +422,8 @@ struct Receiver {
     lookup: Vec<syn::Stmt>,
     statics_map_get: syn::Stmt,
     statics_map_insert: syn::Stmt,
+    format_getter_name: syn::Stmt,
+    is_self_check: syn::Stmt,
 }
 
 impl Receiver {
@@ -463,6 +465,18 @@ impl Receiver {
         let statics_map_insert: syn::Stmt = syn::parse_quote_spanned! { span => 
             statics_map.insert(name.into(), fn_ptr.into());
         };
+
+        let format_getter_name: syn::Stmt = syn::parse_quote_spanned! { span => 
+            let getter_name = format!("get${name}");
+        };
+
+        let is_self_check: syn::Stmt = syn::parse_quote_spanned! { span =>
+            if let Ok(current) = ctx.call_fn_raw(&getter_name, true, true, &mut [&mut rhai::Dynamic::from(#param_ident.clone())]) 
+                && ctx.call_fn("==", (a.clone(), current)).ok() == Some(true) 
+            { 
+                return Ok(());
+            }
+        };
         
         Self {
             param_ident,
@@ -478,6 +492,8 @@ impl Receiver {
             lookup,
             statics_map_get,
             statics_map_insert,
+            format_getter_name,
+            is_self_check,
         }
     }
 
@@ -533,6 +549,18 @@ impl Receiver {
             .then_some(&self.statics_map_insert)
             .into_iter()
     }
+
+    fn format_getter_name(&self, member_kind: &MemberKind) -> impl Iterator<Item = &syn::Stmt> + Clone {
+        (member_kind.is_state && matches!(&member_kind.return_kind, ReturnKind::Actions))
+            .then_some(&self.format_getter_name)
+            .into_iter()
+    }
+
+    fn is_self_check(&self, member_kind: &MemberKind) -> impl Iterator<Item = &syn::Stmt> + Clone {
+        (member_kind.is_state && matches!(&member_kind.return_kind, ReturnKind::Actions))
+            .then_some(&self.is_self_check)
+            .into_iter()
+    }
 }
 
 #[vacro_report::scope]
@@ -549,6 +577,8 @@ fn make_register_fn(member_kind: &MemberKind, receiver: &Receiver, tuple_args: &
         let receiver_pat = receiver.pat(member_kind);
         let receiver_ident = receiver.ident(member_kind);
         let receiver_lookup = receiver.lookup(member_kind);
+        let receiver_format_getter_name = receiver.format_getter_name(member_kind);
+        let receiver_is_self_check = receiver.is_self_check(member_kind);
 
         let args_pats = tuple_args.pats(conversion_bitset);
         let args_conversions = tuple_args.conversions(conversion_bitset);
@@ -559,6 +589,7 @@ fn make_register_fn(member_kind: &MemberKind, receiver: &Receiver, tuple_args: &
 
         syn::parse_quote_spanned! { span => 
             {
+                #(#receiver_format_getter_name)*
                 let reg = #registration;
                 let closure = 
                     move |
@@ -568,6 +599,8 @@ fn make_register_fn(member_kind: &MemberKind, receiver: &Receiver, tuple_args: &
                     |
                         -> Result<_, Box<rhai::EvalAltResult>>  
                     {
+                        #(#receiver_is_self_check)*
+
                         #(#receiver_get_ledger)*
                         #(#receiver_lookup)*
                         #(#args_conversions)*
@@ -734,11 +767,6 @@ pub(crate) fn impl_dynamic_fn(input: TokenStream) -> syn::Result<TokenStream> {
             }
 
             let return_conversions = if return_kind.has_return_value() { yes_return_def.as_slice() } else { no_return_def.as_slice() };
-
-            // let receiver_type_param = has_receiver.then_some(if *is_state { &state_receiver_type_param_def } else { &type_receiver_type_param_def });
-            // let receiver_param = has_receiver.then_some(if *is_state { &state_receiver_param_def } else { &type_receiver_param_def });
-
-            // let receiver = has_receiver.then_some(&receiver_def);
 
             for &return_conversion in return_conversions {
                 let bitset_max = if param_count < converted_params_limit { 1usize << param_count } else { 1 };

@@ -96,32 +96,3 @@ fn script() {
 
     assert_eq!(a, 7i64);
 }
-
-// #[test]
-// fn chaining() {
-//     let mut rhai = rhai::Engine::new();
-//     #[derive(Clone)]
-//     struct A(B);
-//     #[derive(Clone)]
-//     struct B(i64);
-//     let a_b = rhai::FuncRegistration::new_getter("b").with_purity(true);
-//     a_b.register_into_engine(&mut rhai, |a: &mut A| a.0.clone());
-//     let a_b = rhai::FuncRegistration::new_setter("b").with_purity(true);
-//     a_b.register_into_engine(&mut rhai, |a: &mut A, b: B| println!("set A.b"));
-//     let b_c = rhai::FuncRegistration::new_getter("b").with_purity(true);
-//     b_c.register_into_engine(&mut rhai, |b: &mut B| b.0);
-//     let b_c = rhai::FuncRegistration::new_setter("c").with_purity(true);
-//     b_c.register_into_engine(&mut rhai, |b: &mut B, c: i64| println!("set B.c = {c}"));
-//     let b_c_method = rhai::FuncRegistration::new("set_c").with_purity(true);
-//     b_c_method.register_into_engine(&mut rhai, |b: &mut B, c: i64| println!("set method B.c = {c}"));
-//     rhai.register_fn("new_a", || A(B(0)));
-
-//     let script = r#"
-//         let a = new_a();
-//         let b = a.b;
-//         b.c = 5;
-//         b.set_c(6);
-//     "#;
-
-//     let _: rhai::Dynamic = rhai.eval(script).unwrap();
-// }
