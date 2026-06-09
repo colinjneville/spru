@@ -21,9 +21,9 @@ fn just_plugins() -> impl std::process::Termination {
     let exit = bevy::app::App::new()
         .add_plugins((
             headless_plugins_with_logging(),
-            spru_bevy::client::Plugin::<minimal::Client>::default(),
-            spru_bevy::server::Plugin::<minimal::Server>::default(),
-            spru_bevy::local::Plugin::<minimal::Server, minimal::Client>::default(),
+            spru_bevy::client::Plugin::<minimal::MyClient>::default(),
+            spru_bevy::server::Plugin::<minimal::MyServer>::default(),
+            spru_bevy::local::Plugin::<minimal::MyServer, minimal::MyClient>::default(),
         ))
         .add_systems(prelude::FixedUpdate, (exit_after_delay(2, true),))
         .run();
@@ -34,25 +34,25 @@ fn just_plugins() -> impl std::process::Termination {
 #[test]
 fn local_multiplayer() -> impl std::process::Termination {
     fn setup(mut commands: prelude::Commands) {
-        commands.queue(spru_bevy::server::command::Init::<minimal::Server, _> {
+        commands.queue(spru_bevy::server::command::Init::<minimal::MyServer, _> {
             game_init: minimal::GameInit(minimal::LobbyInfo),
-            player_init: minimal::PlayerInit,
-            reaction: minimal::Reaction,
+            player_init: minimal::MyPlayerInit,
+            reaction: minimal::MyReaction,
         })
     }
 
     let exit = bevy::app::App::new()
         .add_plugins((
             headless_plugins_with_logging(),
-            spru_bevy::client::Plugin::<minimal::Client>::default(),
-            spru_bevy::server::Plugin::<minimal::Server>::default(),
-            spru_bevy::local::Plugin::<minimal::Server, minimal::Client>::default(),
+            spru_bevy::client::Plugin::<minimal::MyClient>::default(),
+            spru_bevy::server::Plugin::<minimal::MyServer>::default(),
+            spru_bevy::local::Plugin::<minimal::MyServer, minimal::MyClient>::default(),
         ))
         .add_observer(
-            |server_init: prelude::On<spru_bevy::server::event::Init<minimal::Server>>,
+            |server_init: prelude::On<spru_bevy::server::event::Init<minimal::MyServer>>,
              mut q_server: prelude::Query<(
                 &spru_bevy::common::component::GameId,
-                &mut spru_bevy::server::component::FromUser<minimal::Server>,
+                &mut spru_bevy::server::component::FromUser<minimal::MyServer>,
             )>|
              -> prelude::Result {
                 let game_id = *server_init
@@ -60,7 +60,7 @@ fn local_multiplayer() -> impl std::process::Termination {
                     .result
                     .as_ref()
                     .map_err(ToString::to_string)?;
-                let (_, mut from_user) = minimal::Server::filter_mut(&mut q_server, game_id)
+                let (_, mut from_user) = minimal::MyServer::filter_mut(&mut q_server, game_id)
                     .ok_or("server not found")?;
                 from_user.add_player(minimal::PlayerColor::Blue);
                 from_user.add_player(minimal::PlayerColor::Red);
@@ -68,11 +68,11 @@ fn local_multiplayer() -> impl std::process::Termination {
             },
         )
         .add_observer(
-            |client_init: prelude::On<spru_bevy::client::event::Init<minimal::Client>>,
+            |client_init: prelude::On<spru_bevy::client::event::Init<minimal::MyClient>>,
              mut q_client: prelude::Query<(
                 &spru_bevy::common::component::GameId,
                 &spru_bevy::client::component::ClientId,
-                &mut spru_bevy::client::component::FromUser<minimal::Client>,
+                &mut spru_bevy::client::component::FromUser<minimal::MyClient>,
             )>|
              -> prelude::Result {
                 let game_id = client_init.event().game_id;
@@ -82,7 +82,7 @@ fn local_multiplayer() -> impl std::process::Termination {
                     .as_ref()
                     .map_err(ToString::to_string)?;
                 let (_, _, mut from_user) =
-                    minimal::Client::filter_mut(&mut q_client, game_id, client_id)
+                    minimal::MyClient::filter_mut(&mut q_client, game_id, client_id)
                         .ok_or("Client not found")?;
                 from_user.stage_interaction(minimal::Interaction);
                 from_user.revert_all_interactions();
@@ -93,7 +93,7 @@ fn local_multiplayer() -> impl std::process::Termination {
         )
         .add_observer(
             |game_complete: prelude::On<
-                spru_bevy::server::event::GameComplete<minimal::Server>,
+                spru_bevy::server::event::GameComplete<minimal::MyServer>,
             >,
              mut exit: prelude::MessageWriter<prelude::AppExit>|
              -> prelude::Result {

@@ -78,7 +78,7 @@ pub(crate) fn init<Server: super::ServerSSS, GameInit>(
 
     commands: &mut prelude::Commands,
 ) where
-    GameInit: spru::game::Init<State = Server::State, Action = Server::Action, Root = Server::Root>,
+    GameInit: spru::game::Init<Action = Server::Action, Root = Server::Root>,
 {
     let result = (|| {
         let server = Server::init(game_init, player_init, reaction)?;

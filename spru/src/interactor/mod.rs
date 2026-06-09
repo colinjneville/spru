@@ -154,6 +154,8 @@ impl<Action> ItemStatus<Action> {
         Action: crate::Action<State = Storage::State>,
         Storage: item::Storage,
     {
+        let _span = tracing::trace_span!("flush_actions", id = id.into_u32()).entered();
+
         for pending_do in mem::take(self.pending_do.get_mut()) {
             let context = action::Context::new(storage, id, self.version_change());
             let undo = pending_do.apply(context)?;
@@ -175,6 +177,8 @@ impl<Action> ItemStatus<Action> {
         Action: crate::Action<State = Storage::State>,
         Storage: item::Storage,
     {
+        let _span = tracing::trace_span!("revert_actions", id = id.into_u32()).entered();
+
         // Only undo the version with the first change if there are multiple
         let mut version_change = self.version_change.undo();
         for undo in self.flushed_undo.into_iter().rev() {
@@ -206,7 +210,7 @@ impl<Action> ItemStatus<Action> {
                 packed_do.append(do_action);
             }
 
-            let mut flushed_undo = self.flushed_undo.into_iter();
+            let mut flushed_undo = self.flushed_undo.into_iter().rev();
             let first_undo = flushed_undo
                 .next()
                 .expect("do and undo must have same length");
@@ -661,7 +665,7 @@ impl<'l, Storage, Action, Context, Output> Interactor<'l, Storage, Action, Conte
         let Self {
             ledger:
                 Ledger {
-                    storage: _st,
+                    storage: _storage,
                     items_status,
                     reservation: _reservation,
                 },
@@ -775,15 +779,6 @@ impl<'i, Storage, Action, T> Existing<'i, Storage, Action, T> {
         self
     }
 
-    // // TODO this isn't well-tested yet
-    // #[doc(hidden)]
-    // pub fn update_immediate<Update>(self, update: Update) -> WithUpdate<T, Update> {
-    //     WithUpdate {
-    //         id: self.id(),
-    //         update,
-    //     }
-    // }
-
     /// Destroy the item. See [action::Destroy].
     pub fn destroy<Destroy>(self, destroy: Destroy)
     where
@@ -802,12 +797,3 @@ impl<'i, Storage, Action, T> ops::Deref for Existing<'i, Storage, Action, T> {
         self.item.get()
     }
 }
-
-// // TODO this isn't well-tested yet
-// #[doc(hidden)]
-// #[must_use]
-// #[derive(Debug)]
-// pub struct WithUpdate<T, Update> {
-//     id: IdT<T>,
-//     update: Update,
-// }

@@ -1,8 +1,7 @@
 use std::{collections::HashMap, mem};
 
 use spru::{interactor::with, item::IdT};
-use spru_script::Wrap;
-use spru_util::{cloned, counter, fsm, pile, rotating, state_cell};
+use spru_util::{counter, fsm, rotating, state_cell};
 use tracing::instrument;
 
 use crate::{data, player, reaction::Trigger, round, script::Script};
@@ -19,10 +18,9 @@ impl Play {
 }
 
 impl spru::Interaction for Play {
-    type State = crate::State;
     type Action = crate::Actions;
     type Root = IdT<crate::game::Root>;
-    type Trigger = Wrap<crate::reaction::Trigger>;
+    type Trigger = crate::reaction::Trigger;
 
     #[instrument(skip_all, ret, err)]
     fn apply<Storage>(
@@ -30,7 +28,7 @@ impl spru::Interaction for Play {
         interactor: &mut spru::interaction::Interactor<Storage, Self>,
     ) -> spru::interaction::Result<()>
     where
-        Storage: spru::item::Storage<State = Self::State>,
+        Storage: spru::item::Storage<State = crate::State>,
     {
         let player_id = interactor.context().player;
 
@@ -94,9 +92,9 @@ impl spru::Interaction for Play {
 
             interactor
                 .get(player.played)?
-                .update(state_cell::update(Some(Wrap(play.clone()))));
+                .update(state_cell::update(Some(play.clone())));
 
-            interactor.enqueue_trigger(Wrap::new(Trigger::Play));
+            interactor.enqueue_trigger(Trigger::Play);
         } else {
             round_fsm.update(fsm::transition(round::machine::Input::Pass));
             player_fsm.update(fsm::transition(player::machine::Input::Pass));
@@ -111,14 +109,9 @@ impl spru::Interaction for Play {
     }
 }
 
-const SCRIPT: Script = crate::script::script!("lua/play.lua");
+const SCRIPT: Script = crate::script::script!("rhai/play.rhai");
 
-pub fn new(play: Option<crate::Play>) -> super::LuaInteraction<Option<Wrap<crate::Play>>> {
-    super::LuaInteraction::new(spru_script_lua::Lua::new(), SCRIPT.get(), play.map(Wrap))
-}
-
-const SCRIPT_RHAI: Script = crate::script::script!("rhai/play.rhai");
-
-pub fn new_rhai(play: Option<crate::Play>) -> super::RhaiInteraction<Option<Wrap<crate::Play>>> {
-    super::RhaiInteraction::new(spru_script_rhai::Rhai::default(), SCRIPT_RHAI.get(), play.map(Wrap))
+pub fn new(play: Option<crate::Play>) -> super::RhaiInteraction<Option<crate::Play>> {
+    let language = spru_script::Rhai::<crate::Actions, crate::Lexicon>::default();
+    super::RhaiInteraction::new(language, SCRIPT.get(), play)
 }

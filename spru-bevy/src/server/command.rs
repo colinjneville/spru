@@ -11,7 +11,7 @@ pub struct Init<Server: super::ServerSSS, GameInit> {
 impl<Server, GameInit> prelude::Command<()> for Init<Server, GameInit>
 where
     Server: super::ServerSSS,
-    GameInit: spru::game::Init<State = Server::State, Action = Server::Action, Root = Server::Root>
+    GameInit: spru::game::Init<Action = Server::Action, Root = Server::Root>
         + Send
         + Sync
         + 'static,

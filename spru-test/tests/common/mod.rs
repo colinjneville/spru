@@ -17,13 +17,13 @@ pub(crate) fn minimal_spru() {
     let mut rng = rand::rng();
 
     let mut runner = SyncRunner::<
-        minimal::Server,
-        minimal::Client,
-        spru_util::storage::Standalone<minimal::State>,
+        minimal::MyServer,
+        minimal::MyClient,
+        spru_util::storage::Standalone<minimal::MyState>,
     >::new(
         minimal::GameInit(minimal::LobbyInfo),
-        minimal::PlayerInit,
-        minimal::Reaction,
+        minimal::MyPlayerInit,
+        minimal::MyReaction,
     )
     .unwrap();
 

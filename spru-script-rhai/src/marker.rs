@@ -7,3 +7,5 @@ pub struct Set;
 pub struct Method;
 pub struct Function;
 pub struct Create;
+
+pub struct Eq;

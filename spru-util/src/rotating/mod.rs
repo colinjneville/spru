@@ -11,15 +11,15 @@ use telety::telety;
 use crate::cloned;
 
 /// A 'wheel' of values which loops around at both ends. Can represent turn order, round phases,
-#[telety(crate::rotating)]
+// #[telety(crate::rotating)]
 #[derive(Debug, Clone)]
 #[derive_where(Default)]
 #[derive(serde::Serialize, serde::Deserialize)]
 #[script(include = [Methods])]
 pub struct Rotating<T> {
-    #[get]
+    // #[get]
     items: Vec<T>,
-    #[get]
+    // #[get]
     position: usize,
 }
 
@@ -36,8 +36,13 @@ impl<T: Clone + 'static> Rotating<T> {
     }
 
     #[method]
-    fn rotate(&self, reverse: Option<bool>) -> ((), Rotate<T>) {
-        ((), rotate(reverse.unwrap_or(false)))
+    fn rotate(&self) -> ((), Rotate<T>) {
+        ((), rotate(false))
+    }
+
+    #[method]
+    fn rotate_reverse(&self) -> ((), Rotate<T>) {
+        ((), rotate(true))
     }
 
     #[get(name = len)]

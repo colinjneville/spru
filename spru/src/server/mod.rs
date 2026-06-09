@@ -101,11 +101,10 @@ pub trait Server: crate::sealed::Sealed + Sized {
     type Root: Clone;
 
     /// A type describing any initialization done for a new player. See [player::Init].
-    type PlayerInit: crate::player::Init<State = Self::State, Action = Self::Action, Root = Self::Root>;
+    type PlayerInit: crate::player::Init<Action = Self::Action, Root = Self::Root>;
 
     /// A type describing all kinds of moves a player can make. See [Interaction](trait@crate::Interaction).
     type Interaction: crate::Interaction<
-            State = Self::State,
             Action = Self::Action,
             Root = Self::Root,
             Trigger = <Self::Reaction as crate::Reaction>::Trigger,
@@ -113,7 +112,6 @@ pub trait Server: crate::sealed::Sealed + Sized {
 
     /// A type describing all possible server-side processing. See [Reaction](trait@crate::Reaction).
     type Reaction: crate::Reaction<
-            State = Self::State,
             Action = Self::Action,
             Root = Self::Root,
             GameOutcome: Clone,
@@ -121,7 +119,7 @@ pub trait Server: crate::sealed::Sealed + Sized {
 
     /// The common types shared between a connected [Client](crate::Client) and [Server].
     type Common: crate::Common<
-            State = Self::State,
+            State = <Self::Action as crate::Action>::State,
             Action = Self::Action,
             Root = Self::Root,
             GameOutcome = <Self::Reaction as crate::Reaction>::GameOutcome,
@@ -137,7 +135,7 @@ pub trait Server: crate::sealed::Sealed + Sized {
         reaction: Self::Reaction,
     ) -> Result<Self, error::InitError>
     where
-        GameInit: game::Init<State = Self::State, Action = Self::Action, Root = Self::Root>;
+        GameInit: game::Init<Action = Self::Action, Root = Self::Root>;
 
     /// Create a new server from a loaded [Save].
     /// NOTE: this is not yet implemented!
@@ -192,8 +190,8 @@ pub trait Server: crate::sealed::Sealed + Sized {
 
 /// A [Server] implementation for the given [Interaction](trait@crate::Interaction), [Reaction](trait@crate::Reaction), and [player::Init]
 pub type Impl<Interaction, Reaction, PlayerInit> = ServerImpl<
-    <<Interaction as crate::Interaction>::State as tagset::TagSet>::Repr,
-    <Interaction as crate::Interaction>::State,
+    <<<Interaction as crate::Interaction>::Action as crate::Action>::State as tagset::TagSet>::Repr,
+    <<Interaction as crate::Interaction>::Action as crate::Action>::State,
     <Interaction as crate::Interaction>::Action,
     <Interaction as crate::Interaction>::Root,
     Interaction,
@@ -210,19 +208,17 @@ impl<Interaction, Reaction, PlayerInit> Server for Impl<Interaction, Reaction, P
 where
     Interaction: crate::Interaction<Action: Clone, Root: Clone> + Clone,
     Reaction: crate::Reaction<
-            State = Interaction::State,
             Action = Interaction::Action,
             Root = Interaction::Root,
             Trigger = Interaction::Trigger,
             GameOutcome: Clone,
         >,
     PlayerInit: crate::player::Init<
-            State = Interaction::State,
             Action = Interaction::Action,
             Root = Interaction::Root,
         >,
 {
-    type State = Interaction::State;
+    type State = <<Interaction as crate::Interaction>::Action as crate::Action>::State;
     type Action = Interaction::Action;
     type Root = Interaction::Root;
     type PlayerInit = PlayerInit;
@@ -230,9 +226,6 @@ where
     type Reaction = Reaction;
 
     type Common = crate::common::Impl<
-        Self::State,
-        Self::Action,
-        Self::Root,
         Self::Interaction,
         <Self::Reaction as crate::Reaction>::GameOutcome,
     >;
@@ -244,7 +237,7 @@ where
         reaction: Self::Reaction,
     ) -> Result<Self, error::InitError>
     where
-        GameInit: game::Init<State = Self::State, Action = Self::Action, Root = Self::Root>,
+        GameInit: game::Init<Action = Self::Action, Root = Self::Root>,
     {
         let player_manager = player::Manager::new(player_init);
 
@@ -556,13 +549,12 @@ where
     Action: crate::Action<State = State> + Clone,
     Root: Clone,
     Interaction: crate::Interaction<
-            State = State,
             Action = Action,
             Root = Root,
             Trigger = <Reaction as crate::Reaction>::Trigger,
         > + Clone,
-    Reaction: crate::Reaction<State = State, Action = Action, Root = Root, GameOutcome: Clone>,
-    PlayerInit: crate::player::Init<State = State, Action = Action, Root = Root>,
+    Reaction: crate::Reaction<Action = Action, Root = Root, GameOutcome: Clone>,
+    PlayerInit: crate::player::Init<Action = Action, Root = Root>,
 {
     #[instrument(err, skip_all)]
     fn apply_interaction(

@@ -30,6 +30,11 @@ impl Id {
     pub fn force_type<T>(self) -> IdT<T> {
         IdT::new(self)
     }
+
+    // For tracing
+    pub(crate) fn into_u32(self) -> u32 {
+        self.0
+    }
 }
 
 #[cfg(test)]

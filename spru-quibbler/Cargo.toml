@@ -12,7 +12,6 @@ spru.workspace = true
 spru-util.workspace = true
 spru-bevy.workspace = true
 spru-script.workspace = true
-spru-script-lua.workspace = true
 spru-script-rhai.workspace = true
 
 tagset.workspace = true
@@ -29,8 +28,6 @@ anyhow.workspace = true
 serde.workspace = true
 ron.workspace = true
 
-mlua.workspace = true
-
 tracing.workspace = true
 
 wordnik_list = "0.2.1"
@@ -44,9 +41,6 @@ arboard = "3.6.1"
 [dependencies.bevy]
 workspace = true
 features = ["default"]
-
-[patch."https://github.com/colinjneville/spru.git"]
-spru-script-impl = { path = "../spru-script-rhai" }
 
 [build-dependencies]
 copy_to_output.workspace = true

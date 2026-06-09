@@ -8,6 +8,38 @@ pub trait Output<Ret> {
     fn apply_ret(&mut self, ret: Self::RetIn) -> Ret;
 }
 
+impl<Ret> Output<Ret> for spru::game::init::Output {
+    type RetIn = Ret;
+
+    fn apply(&self, _map: &mut rhai::Map) {
+        
+    }
+
+    fn triggers(&mut self, _map: &mut rhai::Map) {
+        
+    }
+
+    fn apply_ret(&mut self, ret: Self::RetIn) -> Ret {
+        ret
+    }
+}
+
+impl<Ret> Output<Ret> for spru::player::init::Output {
+    type RetIn = Ret;
+
+    fn apply(&self, _map: &mut rhai::Map) {
+        
+    }
+
+    fn triggers(&mut self, _map: &mut rhai::Map) {
+        
+    }
+
+    fn apply_ret(&mut self, ret: Self::RetIn) -> Ret {
+        ret
+    }
+}
+
 impl<Trigger, Ret> Output<Ret> for spru::interaction::Output<Trigger>
 where
     Trigger: Clone + Send + Sync + 'static,
@@ -27,6 +59,32 @@ where
     }
 }
 
+impl<Trigger, GameOutcome> Output<()> for spru::reaction::Output<Trigger, GameOutcome>
+where
+    Trigger: Clone + Send + Sync + 'static,
+    GameOutcome: Clone + Send + Sync + 'static,
+{
+    type RetIn = rhai::Dynamic;
+
+    fn apply(&self, map: &mut rhai::Map) {
+        insert_enqueue_trigger(map);
+    }
+
+    fn triggers(&mut self, map: &mut rhai::Map) {
+        apply_enqueued_triggers(map, |trigger| <Self as spru::interactor::EnqueueTrigger>::enqueue_trigger(self, trigger));
+    }
+
+    fn apply_ret(&mut self, ret: Self::RetIn) -> () {
+        use spru::interactor::SetGameOutcome as _;
+
+        if !ret.is_unit() {
+            // TODO we need RetIn to be Dynamic to support returning `()`, but that means we can't error properly here.
+            let go = ret.cast::<GameOutcome>();
+            self.set_game_outcome(go);
+        }
+    }
+}
+
 #[allow(deprecated)]
 fn insert_enqueue_trigger(map: &mut rhai::Map) {
     let enqueue_trigger = rhai::FnPtr::from_fn(
@@ -42,8 +100,10 @@ fn insert_enqueue_trigger(map: &mut rhai::Map) {
 
             let mut queue = queue.as_array_mut()?;
 
+            println!("pushing {} triggers", rest.len());
             for arg in rest {
                 queue.push(arg.take());
+                println!("has {} triggers", queue.len());
             }
 
             Ok(rhai::Dynamic::UNIT)
@@ -61,7 +121,6 @@ where
         .expect("Trigger queue missing");
     let trigger_queue = trigger_queue.as_array_mut()
         .expect("Expected an array");
-
 
     for trigger in &*trigger_queue {
         let trigger = trigger.clone().cast::<Trigger>();

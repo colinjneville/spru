@@ -1,6 +1,5 @@
 mod context;
 pub use context::Context;
-pub(crate) mod func;
 mod instance;
 pub use instance::Rhai;
 pub(crate) mod key;
@@ -9,29 +8,68 @@ mod output;
 pub use output::Output;
 mod settings;
 pub use settings::Settings;
-mod registration;
-pub use registration::{Registration, RegistrationState, RegistrationType};
-mod registry;
-pub use registry::Registry;
 use spru::item::IdT;
 
-use std::{cell::RefCell, marker::PhantomData, sync::{Arc, RwLock, RwLockWriteGuard, atomic::{self, AtomicI64}}};
+use std::{any, marker::PhantomData, sync::{Arc, RwLock, RwLockWriteGuard}};
 
 type RhaiResult<T> = Result<T, rhai::EvalAltResult>;
 
-pub use spru_script_rhai_macro::{postlude, prelude, scriptable};
+pub use spru_script_rhai_macro::scriptable;
 
-#[tagset::tagset_meta]
-pub trait Lexicon {
-    #[meta(default {
-        ::spru_script::prelude!(rhai);
-        foreach!(VAR => {
-            VAR!([VAR]);
-        });
-        ::spru_script::postlude!();
-    })]
-    fn register<Storage, Action>(rhai: &mut rhai::Engine);
+use spru_script_base::ScriptablePath;
+
+// Creates function/method/create traits for converting FromDynamic parameters and IntoDynamic return types
+// The first number is the max number of parameters when converting parameters (O(2^n) implementations),
+// the second number is the max number of parameters when not converting parameters (O(n))
+spru_script_rhai_macro::impl_dynamic_fn!(6, 8);
+
+
+macro_rules! expand_foreach {
+    ($dollar:tt { $($pre:tt)* } [$($t:ident),*] { $($post:tt)* }) => {
+        macro_rules! _expand_foreach {
+            ($dollar t:ident) => {
+                $($pre)* $dollar t $($post)*
+            };
+        }
+        $(_expand_foreach!($t);)*
+    };
 }
+
+expand_foreach!{ $
+    { pub trait } [RegisterTypeNoop, RegisterTypeStd] { {
+        type State: spru::State;
+        
+        fn register<Storage>(&mut self, _registration: &mut Registration2<'_, '_>) 
+        where
+            Storage: spru::item::Storage<State = Self::State>,
+        {
+            
+        }
+    } }
+}
+
+pub trait RegisterMemberNoop {
+    type State: spru::State;
+
+    fn register_member<Storage>(&mut self, _registration: &mut Registration2<'_, '_>, ) 
+    where
+        Storage: spru::item::Storage<State = Self::State>,
+    {
+        // TODO The type does not give a very good indication of what failed to register,
+        // but getting the member name needs some cooperation from the *Wrap types
+        tracing::warn!("Could not register member {ty}", ty = any::type_name::<Self>());
+    }
+}
+
+pub trait RegisterMember0<const BITSET: usize> {
+    type State: spru::State;
+
+    fn register_member<Storage>(&mut self, _registration: &mut Registration2<'_, '_>, ) 
+    where
+        Storage: spru::item::Storage<State = Self::State>;
+}
+
+
 
 #[derive(Debug)]
 #[repr(transparent)]
@@ -48,8 +86,115 @@ impl<Marker, Args> Wrap<Marker, Args> {
     }
 }
 
+pub trait IntoDynamic: 'static {
+    fn into_dynamic(self) -> rhai::Dynamic;
+}
+
+impl<T> IntoDynamic for Option<T> 
+where
+    T: Clone + Send + Sync + 'static,
+{
+    fn into_dynamic(self) -> rhai::Dynamic {
+        match self {
+            Some(some) => rhai::Dynamic::from(some),
+            None => rhai::Dynamic::UNIT,
+        }
+    }
+}
+
+impl<T> IntoDynamic for Vec<T> 
+where
+    T: Clone + Send + Sync + 'static,
+{
+    fn into_dynamic(self) -> rhai::Dynamic {
+        let mut array = rhai::Array::new();
+        for e in self {
+            array.push(rhai::Dynamic::from(e));
+        }
+        rhai::Dynamic::from_array(array)
+    }
+}
+
+pub trait FromDynamic: Sized + 'static {
+    fn from_dynamic(ctx: &rhai::NativeCallContext<'_>, dynamic: rhai::Dynamic) -> Result<Self, Box<rhai::EvalAltResult>>;
+}
+
+impl<T> FromDynamic for Option<T>
+where 
+    T: Clone + Send + Sync + 'static,
+{
+    fn from_dynamic(ctx: &rhai::NativeCallContext<'_>, dynamic: rhai::Dynamic) -> Result<Self, Box<rhai::EvalAltResult>> {
+        if dynamic.is_unit() {
+            return Ok(None);
+        }
+
+        let dynamic = match dynamic.try_cast_result() {
+            Ok(some) => return Ok(Some(some)),
+            Err(dynamic) => dynamic,
+        };
+
+        let dynamic = match dynamic.try_cast_result() {
+            Ok(some) => return Ok(some),
+            Err(dynamic) => dynamic,
+        };
+
+        Err(Box::new(rhai::EvalAltResult::ErrorMismatchDataType(any::type_name::<Option<T>>().to_string(), dynamic.type_name().to_string(), ctx.call_position())))
+    }
+}
+
+impl<T> FromDynamic for Vec<T>
+where 
+    T: Clone + Send + Sync + 'static,
+{
+    fn from_dynamic(ctx: &rhai::NativeCallContext<'_>, dynamic: rhai::Dynamic) -> Result<Self, Box<rhai::EvalAltResult>> {
+        let dynamic = match dynamic.try_cast_result() {
+            Ok(v) => return Ok(v),
+            Err(dynamic) => dynamic,
+        };
+
+        dynamic.into_typed_array()
+            .map_err(|ty| rhai::EvalAltResult::ErrorMismatchDataType(
+                any::type_name::<T>().to_string(), 
+                ty.to_string(), 
+                ctx.call_position(),
+            ))
+            .map_err(Box::new)
+    }
+}
+
+expand_foreach! { $
+    { impl FromDynamic for } [i8, i16, i32, i64, isize, u8, u16, u32, u64, usize] { {
+        fn from_dynamic(ctx: &rhai::NativeCallContext<'_>, dynamic: rhai::Dynamic) -> Result<Self, Box<rhai::EvalAltResult>> {
+            let dynamic = match dynamic.try_cast_result() {
+                Ok(value) => return Ok(value),
+                Err(dynamic) => dynamic,
+            };
+
+            let i = dynamic.as_int()
+                .map_err(|ty| rhai::EvalAltResult::ErrorMismatchDataType(
+                    any::type_name::<Self>().to_string(), 
+                    ty.to_string(), 
+                    ctx.call_position(),
+                ))?;
+
+            i.try_into()
+                .map_err(|_| rhai::EvalAltResult::ErrorRuntime(rhai::Dynamic::from(format!("INT value '{i}' too large for {}", any::type_name::<Self>())), ctx.call_position()))
+                .map_err(Box::new)
+        }
+    } }
+}
+
+expand_foreach! { $
+    { impl IntoDynamic for } [i8, i16, i32, i64, isize, u8, u16, u32, u64, usize] { {
+        fn into_dynamic(self) -> rhai::Dynamic {
+            // TODO this could panic on u64/usize/isize -> i64 (or u32/i64 if INT is i32)
+            rhai::Dynamic::from_int(self as rhai::INT)
+        }
+    } }
+}
+
 macro_rules! wrap_constructors {
-    ($($marker:path => $constructor:ident),* $(,)?) => {
+    ($($marker:ty => $constructor:ident),* $(,)?) => {
         $(
             impl<Args> Wrap<$marker, Args> {
                 pub fn $constructor(args: Args) -> Self {
@@ -62,15 +207,17 @@ macro_rules! wrap_constructors {
 
 wrap_constructors! {
     marker::State => new_state,
+    (marker::State, marker::Get) => new_state_get,
+    (marker::State, marker::Set) => new_state_set,
+    (marker::State, marker::Method) => new_state_method,
+    (marker::State, marker::Function) => new_state_function,
+    (marker::State, marker::Create) => new_state_create,
     marker::Type => new_type,
-    marker::Get => new_get,
-    marker::Set => new_set,
-    marker::Method => new_method,
-    marker::Function => new_function,
-    marker::Create => new_create,
+    (marker::Type, marker::Get) => new_type_get,
+    (marker::Type, marker::Method) => new_type_method,
+    (marker::Type, marker::Function) => new_type_function,
+    (marker::Type, marker::Eq) => new_type_eq,
 }
-
-
 
 pub struct Registration1<'r> {
     rhai: &'r mut rhai::Engine,
@@ -87,7 +234,7 @@ impl<'r> Registration1<'r> {
         }
     }
 
-    pub fn type_registration<'r2>(&'r2 mut self, type_path: Option<spru_script::ScriptablePath>) -> Registration2<'r, 'r2> {
+    pub fn type_registration<'r2>(&'r2 mut self, type_path: Option<ScriptablePath>) -> Registration2<'r, 'r2> {
         let statics_map = type_path.map(|tp| (tp, rhai::Map::new()));
         Registration2 {
             registration: self, 
@@ -95,19 +242,21 @@ impl<'r> Registration1<'r> {
         }
     }
 
-    pub fn apply(self) {
+    pub fn apply(self) -> rhai::Scope<'static> {
         let mut scope = rhai::Scope::new();
         for (base_segment, map) in self.globals {
             scope.push(base_segment, map);
         }
         scope.push(&*crate::key::GLOBAL_TYPE, self.statics_maps);
+
+        scope
     }
 }
 
 
 pub struct Registration2<'r1, 'r2> {
     registration: &'r2 mut Registration1<'r1>,
-    statics_map: Option<(spru_script::ScriptablePath, rhai::Map)>,
+    statics_map: Option<(ScriptablePath, rhai::Map)>,
 }
 
 impl Registration2<'_, '_> {
@@ -121,495 +270,217 @@ impl Registration2<'_, '_> {
 }
 
 pub trait Register {
-    fn register(engine: &mut rhai::Engine) -> RhaiResult<()>;
+    fn register(engine: &mut rhai::Engine);
 }
 
-macro_rules! expand_foreach {
-    ($dollar:tt { $($pre:tt)* } [$($t:ident),*] { $($post:tt)* }) => {
-        macro_rules! _expand_foreach {
-            ($dollar t:ident) => {
-                $($pre)* $dollar t $($post)*
-            };
-        }
-        $(_expand_foreach!($t);)*
-    };
+pub type TypeArgs<Action, T> = (PhantomData<(Action, T)>, );
+pub type TypeWrap<Action, T> = Wrap<marker::Type, TypeArgs<Action, T>>;
+
+impl<Action, T> RegisterTypeNoop for TypeWrap<Action, T> 
+where
+    Action: spru::Action,
+{ 
+    type State = Action::State;
 }
 
-expand_foreach!{ $
-    { pub trait } [RegisterTypeNoop, RegisterTypeStd] { {
-        fn register(&mut self, _registration: &mut Registration1<'_>) -> RhaiResult<()> {
-            Ok(())
-        }
-    } }
-}
-
-type TypeArgs<T> = (PhantomData<T>, );
-
-impl<T> RegisterTypeNoop for Wrap<marker::Type, TypeArgs<T>> { }
-
-impl<T> RegisterTypeStd for &mut Wrap<marker::Type, TypeArgs<T>>
+impl<Action, T> RegisterTypeStd for &mut TypeWrap<Action, T>
 where 
+    Action: spru::Action,
     T: Clone + Send + Sync + 'static,
 {
-    fn register(&mut self, registration: &mut Registration1<'_>) -> RhaiResult<()> {
+    type State = Action::State;
+
+    fn register<Storage>(&mut self, registration: &mut Registration2<'_, '_>) 
+    where
+        Storage: spru::item::Storage<State = Self::State>,
+    {
         let (_, ) = self.take();
-        registration.rhai.register_type::<T>();
-        Ok(())
-    }
-}
+        registration.registration.rhai.register_type::<T>();
 
-expand_foreach! { $
-    { pub trait } [RegisterTypeGetNoop, RegisterTypeGetStd] { {
-        type Action: spru::Action;
+        registration.registration.rhai.register_fn("flatten", flatten::<T>);
+        
+        registration.registration.rhai.register_fn("to_array", to_array::<T>);
 
-        fn register_member<Storage>(&mut self, _registration: &mut Registration2<'_, '_>) -> RhaiResult<()> 
-        where
-            Storage: spru::item::Storage<State = <Self::Action as spru::Action>::State>,
-        {
-            Ok(())
-        }
-    } }
-}
+        if let Some((_, statics_map)) = &mut registration.statics_map {
+            statics_map.insert("none".into(), rhai::Dynamic::from(None::<T>));
 
-type TypeGetArgs<'n, Action, T, U> = (&'n str, fn(&T) -> U, PhantomData<Action>);
-
-impl<Action, T, U> RegisterTypeGetStd for Wrap<(marker::Type, marker::Get), TypeGetArgs<'_, Action, T, U>> 
-where 
-    Action: spru::Action,
-{ 
-    type Action = Action;
-}
-
-impl<Action, T, U> RegisterTypeGetStd for &mut Wrap<(marker::Type, marker::Get), TypeGetArgs<'_, Action, T, U>> 
-where
-    Action: spru::Action,
-    T: Clone + Sync + Send + 'static,
-    U: Clone + Sync + Send + 'static,
-{
-    type Action = Action;
-
-    fn register_member<Storage>(&mut self, registration: &mut Registration2<'_, '_>) -> RhaiResult<()> 
-    where
-        Storage: spru::item::Storage<State = <Self::Action as spru::Action>::State>,
-    {
-        let (name, get, _) = self.take();
-        registration.registration.rhai.register_get(name, move |t: &mut T| get(t));
-        Ok(())
-    }
-}
-
-expand_foreach! {$
-    { pub trait } [RegisterTypeMethodNoop, RegisterTypeMethodStd] { {
-        type Action: spru::Action;
-
-        fn register_member<Storage>(&mut self, _registration: &mut Registration2<'_, '_>) -> RhaiResult<()> 
-        where
-            Storage: spru::item::Storage<State = <Self::Action as spru::Action>::State>,
-        {
-            Ok(())
-        }
-    } }
-}
-
-type TypeMethodArgs<'n, Action, T, Args, Ret> = (&'n str, fn(&T, Args) -> Ret, PhantomData<Action>);
-
-impl<Action, T, Args, Ret> RegisterTypeMethodNoop for Wrap<(marker::Type, marker::Method), TypeMethodArgs<'_, Action, T, Args, Ret>> 
-where
-    Action: spru::Action,
-{ 
-    type Action = Action;
-}
-
-impl<Action, T, Args, Ret> RegisterTypeMethodStd for &mut Wrap<(marker::Type, marker::Method), TypeMethodArgs<'_, Action, T, Args, Ret>> 
-where
-    Action: spru::Action,
-    T: Clone + Send + Sync + 'static,
-    Args: RegisterUnpacked + 'static,
-    Ret: Clone + Send + Sync + 'static,
-{
-    type Action = Action;
-
-    fn register_member<Storage>(&mut self, registration: &mut Registration2<'_, '_>) -> RhaiResult<()> 
-    where
-        Storage: spru::item::Storage<State = <Self::Action as spru::Action>::State>,
-    {
-        let (name, method, _) = self.take();
-        let reg = rhai::FuncRegistration::new(name);
-        Args::register_unpacked(registration.registration.rhai, reg, move |_ctx: rhai::NativeCallContext<'_>, this: &mut T, args: Args| {
-            let ret = method(this, args);
-
-            Ok(ret)
-        });
-            
-        Ok(())
-    }
-}
-
-expand_foreach! {$
-    { pub trait } [RegisterTypeFunctionNoop, RegisterTypeFunctionStd] { {
-        type Action: spru::Action;
-
-        fn register_member<Storage>(&mut self, _registration: &mut Registration2<'_, '_>, ) -> RhaiResult<()> 
-        where
-            Storage: spru::item::Storage<State = <Self::Action as spru::Action>::State>,
-        {
-            Ok(())
-        }
-    } }
-}
-
-type TypeFunctionArgs<'n, Action, Args, Ret> = (&'n str, fn(Args) -> Ret, PhantomData<Action>);
-
-impl<Action, Args, Ret> RegisterTypeFunctionNoop for Wrap<(marker::Type, marker::Function), TypeFunctionArgs<'_, Action, Args, Ret>> 
-where
-    Action: spru::Action,
-{ 
-    type Action = Action;
-}
-
-impl<Action, Args, Ret> RegisterTypeFunctionStd for &mut Wrap<(marker::Type, marker::Function), TypeFunctionArgs<'_, Action, Args, Ret>> 
-where
-    Action: spru::Action,
-    Args: FromArguments + 'static,
-    Ret: Clone + Send + Sync + 'static,
-{
-    type Action = Action;
-    
-    fn register_member<Storage>(&mut self, registration: &mut Registration2<'_, '_>) -> RhaiResult<()> 
-    where
-        Storage: spru::item::Storage<State = <Self::Action as spru::Action>::State>,
-    {
-        let (name, function, _) = self.take();
-        if let Some((_, statics_map)) = registration.statics_map.as_mut() {
             #[allow(deprecated)]
-            let fn_ptr = rhai::FnPtr::from_fn(name, move |ctx, mut args| {
-                // Self parameter is unused
-                args.split_off_first_mut();
-                let args = Args::from_arguments(&ctx, args)?;
-                Ok(rhai::Dynamic::from(function(args)))
-            }).map_err(|e| *e)?;
+            let from_array = rhai::FnPtr::from_fn("from_array", from_array::<T>)
+                .expect("function name must be valid");
 
-            statics_map.insert(name.into(), fn_ptr.into());
+            statics_map.insert(
+                "from_array".into(), 
+                from_array.into(),
+            );
         }
-
-        Ok(())
     }
 }
 
-expand_foreach!{ $
-    { pub trait } [RegisterStateNoop, RegisterStateStd] { {
-        fn register(&mut self, _registration: &mut Registration1<'_>) -> RhaiResult<()> {
-            Ok(())
-        }
-    } }
-}
+pub type TypeEqArgs<Action, T> = (PhantomData<(Action, T)>, );
+pub type TypeEqWrap<Action, T> = Wrap<(marker::Type, marker::Eq), TypeEqArgs<Action, T>>;
 
-type StateArgs<T> = (PhantomData<T>, );
-
-impl<T> RegisterStateNoop for Wrap<marker::State, StateArgs<T>> { }
-
-impl<T> RegisterStateStd for &mut Wrap<marker::State, StateArgs<T>>
+impl<Action, T> RegisterMemberNoop for TypeEqWrap<Action, T>
 where 
-    T: Clone + Send + Sync + 'static,
+    Action: spru::Action,
+{ 
+    type State = Action::State;
+}
+
+impl<Action, T> RegisterMember0<0> for &mut TypeEqWrap<Action, T>
+where
+    Action: spru::Action,
+    T: PartialEq + Clone + Sync + Send + 'static,
 {
-    fn register(&mut self, registration: &mut Registration1<'_>) -> RhaiResult<()> {
+    type State = Action::State;
+
+    fn register_member<Storage>(&mut self, registration: &mut Registration2<'_, '_>) 
+    where
+        Storage: spru::item::Storage<State = Self::State>,
+    {
         let (_, ) = self.take();
-        registration.rhai.register_type::<IdT<T>>();
-        Ok(())
+        registration.registration.rhai.register_fn("==", move |t: &mut T, t2: T| t == &t2);
+        registration.registration.rhai.register_fn("!=", move |t: &mut T, t2: T| t != &t2);
     }
 }
 
-expand_foreach! { $
-    { pub trait } [RegisterStateGetNoop, RegisterStateGetStd] { {
-        type Action: spru::Action;
 
-        fn register_member<Storage>(&mut self, _registration: &mut Registration2<'_, '_>) 
-            -> RhaiResult<()> 
-        where
-            Storage: spru::item::Storage<State = <Self::Action as spru::Action>::State>,
-        {
-            Ok(())
-        }
-    } }
+pub type TypeGetArgs<'n, Action, T, U> = (&'n str, fn(&T) -> U, PhantomData<Action>);
+pub type TypeGetWrap<'n, Action, T, U> = Wrap<(marker::Type, marker::Get), TypeGetArgs<'n, Action, T, U>>;
+
+impl<Action, T, U> RegisterMemberNoop for TypeGetWrap<'_, Action, T, U>
+where 
+    Action: spru::Action,
+{ 
+    type State = Action::State;
 }
 
-type StateGetArgs<'n, Action, T, U> = (&'n str, fn(&T) -> U, PhantomData<Action>);
 
-impl<Action, T, U> RegisterStateGetNoop for Wrap<(marker::State, marker::Get), StateGetArgs<'_, Action, T, U>> 
+pub type TypeMethodArgs<'n, Action, T, Args, Ret> = (&'n str, fn(&T, Args) -> Ret, PhantomData<Action>);
+pub type TypeMethodWrap<'n, Action, T, Args, Ret> = Wrap<(marker::Type, marker::Method), TypeMethodArgs<'n, Action, T, Args, Ret>>;
+
+impl<Action, T, Args, Ret> RegisterMemberNoop for TypeMethodWrap<'_, Action, T, Args, Ret> 
 where
     Action: spru::Action,
 { 
-    type Action = Action;
+    type State = Action::State;
+}
+
+pub type TypeFunctionArgs<'n, Action, Args, Ret> = (&'n str, fn(Args) -> Ret, PhantomData<Action>);
+pub type TypeFunctionWrap<'n, Action, Args, Ret> = Wrap<(marker::Type, marker::Function), TypeFunctionArgs<'n, Action, Args, Ret>>;
+
+impl<Action, Args, Ret> RegisterMemberNoop for TypeFunctionWrap<'_, Action, Args, Ret>
+where
+    Action: spru::Action,
+{ 
+    type State = Action::State;
+}
+
+pub type StateArgs<Action, T> = (PhantomData<(Action, T)>, );
+pub type StateWrap<Action, T> = Wrap<marker::State, StateArgs<Action, T>>;
+
+impl<Action, T> RegisterTypeNoop for StateWrap<Action, T> 
+where
+    Action: spru::Action,
+{
+    type State = Action::State;
+}
+
+impl<Action, T> RegisterTypeStd for &mut StateWrap<Action, T>
+where 
+    Action: spru::Action,
+    T: spru::item::storage::Storable<Action::State> + Clone + Send + Sync + 'static,
+{
+    type State = Action::State;
+
+    fn register<Storage>(&mut self, registration: &mut Registration2<'_, '_>) 
+    where
+        Storage: spru::item::Storage<State = Self::State>,
+    {
+        let (_, ) = self.take();
+        registration.registration.rhai.register_type::<IdT<T>>();
+        registration.registration.rhai.register_fn("==", |idt: &mut IdT<T>, idt2: IdT<T>| *idt == idt2);
+        registration.registration.rhai.register_fn("!=", |idt: &mut IdT<T>, idt2: IdT<T>| *idt != idt2);
+
+        registration.registration.rhai.register_fn("flatten", flatten::<IdT<T>>);
+
+        registration.registration.rhai.register_fn("exists", |ctx: rhai::NativeCallContext<'_>, idt: &mut IdT<T>| {
+            let mut handle = LedgerHandle::from_rhai(&ctx);
+            let ledger = unsafe { handle.get_mut::<Storage, Action>() };
+            ledger.get(*idt).is_ok()
+        });
+        registration.registration.rhai.register_fn("to_array", to_array::<IdT<T>>);
+
+        if let Some((_, statics_map)) = &mut registration.statics_map {
+            statics_map.insert("none".into(), rhai::Dynamic::from(None::<IdT<T>>));
+            
+            #[allow(deprecated)]
+            let from_array = rhai::FnPtr::from_fn("from_array", from_array::<IdT<T>>)
+                .expect("function name must be valid");
+
+            statics_map.insert(
+                "from_array".into(), 
+                from_array.into(),
+            );
+        }
+    }
+}
+
+pub type StateGetArgs<'n, Action, T, U> = (&'n str, fn(&T) -> U, PhantomData<Action>);
+pub type StateGetWrap<'n, Action, T, U> = Wrap<(marker::State, marker::Get), StateGetArgs<'n, Action, T, U>>;
+
+impl<Action, T, U> RegisterMemberNoop for StateGetWrap<'_, Action, T, U>
+where
+    Action: spru::Action,
+{ 
+    type State = Action::State;
 } 
 
-impl<Action, T, U> RegisterStateGetStd for &mut Wrap<(marker::State, marker::Get), StateGetArgs<'_, Action, T, U>> 
+pub type StateSetArgs<'n, Action, T, U, Ret> = (&'n str, fn(&T, U) -> Ret, PhantomData<Action>);
+pub type StateSetWrap<'n, Action, T, U, Ret> = Wrap<(marker::State, marker::Set), StateSetArgs<'n, Action, T, U, Ret>>;
+
+impl<Action, T, U, Ret> RegisterMemberNoop for StateSetWrap<'_, Action, T, U, Ret>
 where
     Action: spru::Action,
-    T: spru::item::storage::Storable<Action::State>,
-    U: Clone + Sync + Send + 'static,
-{
-    type Action = Action;
-
-    fn register_member<Storage>(&mut self, registration: &mut Registration2<'_, '_>) 
-        -> RhaiResult<()> 
-    where
-        Storage: spru::item::Storage<State = <Self::Action as spru::Action>::State>,
+{ 
+    type State = Action::State;
+    
+    fn register_member<Storage>(&mut self,_registration: &mut Registration2<'_,'_>)
+    where 
+        Storage: spru::item::Storage<State = Self::State>,
     {
-        let (name, get, _) = self.take();
-        let f = move |ctx: rhai::NativeCallContext<'_>, this: &mut IdT<T>| -> Result<U, Box<rhai::EvalAltResult>> {
-            let mut handle = crate::LedgerHandle::from_rhai(&ctx);
-            let ledger = unsafe { handle.get_mut::<Storage, Action>() };
-            let item = ledger.get(*this)
-                .map_err(|e| Box::new(rhai::EvalAltResult::ErrorRuntime(format!("{this:?}: {e}").into(), ctx.call_position())))?;
-            Ok(get(&*item))
-        };
-
-        // This roundabout registration is necessary because rhai::Engine::register_get's trait bounds includes
-        // a type rhai doesn't publically expose.
-        rhai::FuncRegistration::new_getter(name)
-            .with_volatility(true)
-            .register_into_engine(registration.registration.rhai, f);
         
-        Ok(())
     }
+    
 }
 
-expand_foreach! { $
-    { pub trait } [RegisterStateSetNoop, RegisterStateSetStd] { {
-        type Action: spru::Action;
+pub type StateMethodArgs<'n, Action, T, Args, Ret> = (&'n str, fn(&T, Args) -> Ret, PhantomData<Action>);
+pub type StateMethodWrap<'n, Action, T, Args, Ret> = Wrap<(marker::State, marker::Method), StateMethodArgs<'n, Action, T, Args, Ret>>;
 
-        fn register_member<Storage>(&mut self, _registration: &mut Registration2<'_, '_>) 
-            -> RhaiResult<()> 
-        where
-            Storage: spru::item::Storage<State = <Self::Action as spru::Action>::State>,
-        {
-            Ok(())
-        }
-    } }
-}
-
-type StateSetArgs<'n, Action, T, U> = (&'n str, fn(&T, U) -> Vec<Action>);
-
-impl<Action, T, U> RegisterStateSetNoop for Wrap<(marker::State, marker::Set), StateSetArgs<'_, Action, T, U>> 
-where
-    Action: spru::Action<State: spru::State>,
-{ 
-    type Action = Action;
-}
-
-impl<Action, T, U> RegisterStateSetStd for &mut Wrap<(marker::State, marker::Set), StateSetArgs<'_, Action, T, U>> 
-where
-    Action: spru::Action<State: spru::State>,
-    T: spru::item::storage::Storable<Action::State>,
-    T: Clone + Send + Sync + 'static,
-    U: Clone + Send + Sync + 'static,
-{
-    type Action = Action;
-
-    fn register_member<Storage>(&mut self, registration: &mut Registration2<'_, '_>) 
-        -> RhaiResult<()>
-    where
-        Storage: spru::item::Storage<State = <Self::Action as spru::Action>::State>,
-    {
-        let (name, set) = self.take();
-        let f = move |ctx: rhai::NativeCallContext<'_>, this: &mut IdT<T>, value: U| -> Result<(), Box<rhai::EvalAltResult>> {
-            let mut handle = crate::LedgerHandle::from_rhai(&ctx);
-            let mut ledger = unsafe { handle.get_mut::<Storage, Action>() };
-            let item = ledger.get(*this)
-                .map_err(|e| Box::new(rhai::EvalAltResult::ErrorRuntime(format!("{this:?}: {e}").into(), ctx.call_position())))?;
-            let actions = set(&*item, value);
-
-            for action in actions {
-                ledger.enqueue_action(this.untyped(), action);
-            }
-            ledger.flush()
-                .map_err(|e| format!("Failed to flush actions: {e}"))?;
-
-            Ok(())
-        };
-
-        rhai::FuncRegistration::new_setter(name)
-            .with_purity(false)
-            .register_into_engine(registration.registration.rhai, f);
-        Ok(())
-    }
-}
-
-expand_foreach! {$
-    { pub trait } [RegisterStateMethodNoop, RegisterStateMethodStd] { {
-        type Action: spru::Action;
-
-        fn register_member<Storage>(&mut self, _registration: &mut Registration2<'_, '_>) -> RhaiResult<()> 
-        where
-            Storage: spru::item::Storage<State = <Self::Action as spru::Action>::State>,
-        {
-            Ok(())
-        }
-    } }
-}
-
-type StateMethodArgs<'n, Action, T, Args, Ret> = (&'n str, fn(&T, Args) -> Ret, PhantomData<Action>);
-
-impl<Action, T, Args, Ret> RegisterStateMethodNoop for Wrap<(marker::State, marker::Method), StateMethodArgs<'_, Action, T, Args, Ret>> 
-where
-    Action: spru::Action<State: spru::State>,
-{ 
-    type Action = Action;
-}
-
-impl<Action, T, Args, Ret> RegisterStateMethodStd for &mut Wrap<(marker::State, marker::Method), StateMethodArgs<'_, Action, T, Args, Ret>> 
-where
-    Action: spru::Action<State: spru::State>,
-    T: spru::item::storage::Storable<Action::State>,
-    T: Clone + Sync + Send + 'static,
-    Args: RegisterUnpacked + Sync + Send + 'static,
-    Ret: spru_script::MethodReturn<Action, T: Clone + Send + Sync + 'static> + 'static
-{
-    type Action = Action;
-
-    fn register_member<Storage>(&mut self, registration: &mut Registration2<'_, '_>) -> RhaiResult<()> 
-    where
-        Storage: spru::item::Storage<State = <Self::Action as spru::Action>::State>,
-    {
-        let (name, method, _) = self.take();
-        let reg = rhai::FuncRegistration::new(name);
-        Args::register_unpacked(registration.registration.rhai, reg, move |ctx: rhai::NativeCallContext<'_>, this: &mut IdT<T>, args: Args| {
-            let mut handle = LedgerHandle::from_rhai(&ctx);
-            let mut ledger = unsafe { handle.get_mut::<Storage, Action>() };
-
-            let item = ledger.get(*this)
-                .map_err(|e| Box::new(rhai::EvalAltResult::ErrorRuntime(format!("{this:?}: {e}").into(), ctx.call_position())))?;
-            let ret = method(&*item, args);
-            let (ret, actions) = ret.convert();
-
-            for action in actions {
-                ledger.enqueue_action(this.untyped(), action);
-            }
-            ledger.flush()
-                .map_err(|e| format!("Failed to flush actions: {e}"))?;
-
-            Ok(ret)
-        });
-            
-        Ok(())
-    }
-}
-
-
-expand_foreach! {$
-    { pub trait } [RegisterStateFunctionNoop, RegisterStateFunctionStd] { {
-        type Action: spru::Action;
-
-        fn register_member<Storage>(&mut self, _registration: &mut Registration2<'_, '_>) -> RhaiResult<()> 
-        where
-            Storage: spru::item::Storage<State = <Self::Action as spru::Action>::State>,
-        {
-            Ok(())
-        }
-    } }
-}
-
-type StateFunctionArgs<'n, Action, Args, Ret> = (&'n str, fn(Args) -> Ret, PhantomData<Action>);
-
-impl<Action, Args, Ret> RegisterStateFunctionNoop for Wrap<(marker::State, marker::Function), StateFunctionArgs<'_, Action, Args, Ret>> 
+impl<Action, T, Args, Ret> RegisterMemberNoop for StateMethodWrap<'_, Action, T, Args, Ret>
 where
     Action: spru::Action,
 { 
-    type Action = Action;
+    type State = Action::State;
 }
 
-impl<Action, Args, Ret> RegisterStateFunctionStd for &mut Wrap<(marker::State, marker::Function), StateFunctionArgs<'_, Action, Args, Ret>>
+pub type StateFunctionArgs<'n, Action, Args, Ret> = (&'n str, fn(Args) -> Ret, PhantomData<Action>);
+pub type StateFunctionWrap<'n, Action, Args, Ret> = Wrap<(marker::State, marker::Function), StateFunctionArgs<'n, Action, Args, Ret>>;
+
+impl<Action, Args, Ret> RegisterMemberNoop for StateFunctionWrap<'_, Action, Args, Ret>
 where
     Action: spru::Action,
-    Args: FromArguments + 'static,
-    Ret: Clone + Send + Sync + 'static,
-{
-    type Action = Action;
-
-    fn register_member<Storage>(&mut self, registration: &mut Registration2<'_, '_>) -> RhaiResult<()> 
-    where
-        Storage: spru::item::Storage<State = <Self::Action as spru::Action>::State>,
-    {
-        let (name, function, _) = self.take();
-        if let Some((_, statics_map)) = registration.statics_map.as_mut() {
-            #[allow(deprecated)]
-            let fn_ptr = rhai::FnPtr::from_fn(name, move |ctx, mut args| {
-                // Self parameter is unused
-                args.split_off_first_mut();
-                let args = Args::from_arguments(&ctx, args)?;
-                Ok(rhai::Dynamic::from(function(args)))
-            }).map_err(|e| *e)?;
-
-            statics_map.insert(name.into(), fn_ptr.into());
-        }
-
-        Ok(())
-    }
+{ 
+    type State = Action::State;
 }
 
+pub type StateCreateArgs<'n, Action, T, Args, Create> = (&'n str, fn(Args) -> Create, PhantomData<(Action, T)>);
+pub type StateCreateWrap<'n, Action, T, Args, Create> = Wrap<(marker::State, marker::Create), StateCreateArgs<'n, Action, T, Args, Create>>;
 
-expand_foreach! {$
-    { pub trait } [RegisterStateCreateNoop, RegisterStateCreateStd] { {
-        type Action: spru::Action;
-
-        fn register_member<Storage>(&mut self, _registration: &mut Registration2<'_, '_>) -> RhaiResult<()> 
-        where
-            Storage: spru::item::Storage<State = <Self::Action as spru::Action>::State>,
-        {
-            Ok(())
-        }
-    } }
-}
-
-type StateCreateArgs<'n, Action, T, Args, Create> = (&'n str, fn(Args) -> Create, PhantomData<(Action, T)>);
-
-impl<Action, T, Args, Create> RegisterStateCreateNoop for Wrap<(marker::State, marker::Create), StateCreateArgs<'_, Action, T, Args, Create>> 
+impl<Action, T, Args, Create> RegisterMemberNoop for StateCreateWrap<'_, Action, T, Args, Create>
 where
     Action: spru::Action
 { 
-    type Action = Action;
-}
-
-impl<Action, T, Args, Create> RegisterStateCreateStd for &mut Wrap<(marker::State, marker::Create), StateCreateArgs<'_, Action, T, Args, Create>> 
-where
-    Action: spru::Action, 
-    T: spru::item::storage::Storable<Action::State>,
-    T: Clone + Send + Sync + 'static,
-    Args: FromArguments + 'static,
-    Create: Into<Action> + 'static,
-{
-    type Action = Action;
-
-    fn register_member<Storage>(&mut self, registration: &mut Registration2<'_, '_>) -> RhaiResult<()>
-    where
-        Storage: spru::item::Storage<State = <Self::Action as spru::Action>::State>,
-    {
-        let (name, create, _) = self.take();
-        if let Some((_, statics_map)) = registration.statics_map.as_mut() {
-            #[allow(deprecated)]
-            let fn_ptr = rhai::FnPtr::from_fn(name, move |ctx, mut args| {
-                // Self parameter is unused
-                args.split_off_first_mut();
-                let args = Args::from_arguments(&ctx, args)?;
-                let action: Action = create(args).into();
-
-                let mut handle = crate::LedgerHandle::from_rhai(&ctx);
-                let mut ledger = unsafe { handle.get_mut::<Storage, Action>() };
-                let id = ledger.enqueue_create(action.into());
-
-                ledger.flush()
-                    .map_err(|e| format!("Create {}: {e}", std::any::type_name::<T>()))?;
-
-                let idt = id.force_type::<T>();
-
-                Ok(rhai::Dynamic::from(idt))
-            }).map_err(|e| *e)?;
-            
-            statics_map.insert(name.into(), fn_ptr.into());
-        }
-
-        Ok(())
-    }
+    type State = Action::State;
 }
 
 // https://rhai.rs/book/patterns/references.html
@@ -677,88 +548,6 @@ impl<'l, 'i, Storage, Action> std::ops::DerefMut for LedgerMut<'l, 'i, Storage, 
     }
 }
 
-#[doc(hidden)]
-pub trait FromArguments: Sized {
-    fn from_arguments(ctx: &rhai::NativeCallContext<'_>, args: &mut [&mut rhai::Dynamic]) -> Result<Self, rhai::EvalAltResult>;
-}
-
-impl FromArguments for () {
-    fn from_arguments(ctx: &rhai::NativeCallContext<'_>, mut args: &mut [&mut rhai::Dynamic]) -> Result<Self, rhai::EvalAltResult> {
-        extra_args_error(ctx, &mut args)?;
-        Ok(())
-    }
-}
-
-#[doc(hidden)]
-pub trait RegisterUnpacked {
-    fn register_unpacked<This, Ret, Func>(rhai: &mut rhai::Engine, reg: rhai::FuncRegistration, f: Func) 
-    where
-        This: Clone + Send + Sync + 'static,
-        Ret: Clone + Send + Sync + 'static,
-        Func: Fn(rhai::NativeCallContext<'_>, &mut This, Self) -> Result<Ret, Box<rhai::EvalAltResult>> + Send + Sync + 'static,
-    ;
-}
-
-impl RegisterUnpacked for () {
-    fn register_unpacked<This, Ret, Func>(rhai: &mut rhai::Engine, reg: rhai::FuncRegistration, f: Func) 
-    where
-        This: Clone + Send + Sync + 'static,
-        Ret: Clone + Send + Sync + 'static,
-        Func: Fn(rhai::NativeCallContext<'_>, &mut This, Self) -> Result<Ret, Box<rhai::EvalAltResult>> + Send + Sync + 'static,
-    {
-        reg.register_into_engine(rhai, move |ctx: rhai::NativeCallContext<'_>, this: &mut This| {
-            f(ctx, this, ())
-        });
-    }
-}
-
-macro_rules! tuple_from_arguments {
-    () => {
-        
-    };
-    ($n:tt $first:ident $($nn:tt $rest:ident)*) => {
-        impl<$first, $($rest, )*> FromArguments for ($first, $($rest),*) 
-        where
-            $first: Clone + Sync + Send + 'static,
-            $($rest: Clone + Sync + Send + 'static),*
-        {
-            #[allow(non_snake_case)]
-            fn from_arguments(ctx: &rhai::NativeCallContext<'_>, mut args: &mut [&mut rhai::Dynamic]) -> Result<Self, rhai::EvalAltResult> {
-                let $first: $first = pop_type(ctx, &mut args)?;
-                $(
-                    let $rest: $rest = pop_type(ctx, &mut args)?;
-                )*
-                Ok(($first, $($rest),*))
-            }
-        }
-
-        impl<$first, $($rest),*> RegisterUnpacked for ($first, $($rest),*)
-        where 
-            $first: Clone + Send + Sync + 'static,
-            $($rest: Clone + Send + Sync + 'static, )*
-        {
-            #[allow(non_snake_case)]
-            fn register_unpacked<This, Ret, Func>(rhai: &mut rhai::Engine, reg: rhai::FuncRegistration, f: Func) 
-                -> ()
-            where
-                This: Clone + Send + Sync + 'static,
-                Ret: Clone + Send + Sync + 'static,
-                Func: Fn(rhai::NativeCallContext<'_>, &mut This, Self) -> Result<Ret, Box<rhai::EvalAltResult>> + Send + Sync + 'static,
-            {
-                reg.register_into_engine(rhai, move |ctx: rhai::NativeCallContext<'_>, this: &mut This, $first: $first, $($rest: $rest),*| {
-                    f(ctx, this, (
-                        $first, $($rest, )*
-                    ))
-                });
-            }
-        }
-
-        tuple_from_arguments!($($nn $rest)*);
-    };
-}
-
-tuple_from_arguments!(15 P 14 O 13 N 12 M 11 L 10 K 9 J 8 I 7 H 6 G 5 F 4 E 3 D 2 C 1 B 0 A);
-
 fn pop_type<T>(ctx: &rhai::NativeCallContext<'_>, args: &mut &mut [&mut rhai::Dynamic]) -> Result<T, rhai::EvalAltResult> 
 where
     T: Clone + Sync + Send + 'static,
@@ -788,10 +577,58 @@ fn extra_args_error(ctx: &rhai::NativeCallContext<'_>, args: &[&mut rhai::Dynami
     }
 }
 
-fn write_scriptable_path(s: &mut String, type_path: &spru_script::ScriptablePath) {
+fn from_array<T>(ctx: rhai::NativeCallContext<'_>, mut args: &mut [&mut rhai::Dynamic]) 
+    -> Result<rhai::Dynamic, Box<rhai::EvalAltResult>> 
+where
+    T: Clone + Send + Sync + 'static,
+{
+    // This will be called from a map, so ignore the `this` arguments
+    let _ = args.split_off_first_mut();
+    let array = pop_type::<rhai::Array>(&ctx, &mut args)?;
+    extra_args_error(&ctx, &mut args)?;
+
+    let mut v = Vec::with_capacity(array.len());
+    for element in array {
+        match element.try_cast_result::<T>() {
+            Ok(t) => {
+                v.push(t);
+            }
+            Err(element) => {
+                return Err(Box::new(rhai::EvalAltResult::ErrorMismatchDataType(
+                    std::any::type_name::<T>().to_string(), 
+                    element.type_name().to_string(), 
+                    ctx.call_position()
+                )));
+            }
+        }
+    }
+    Ok(rhai::Dynamic::from(v))
+}
+
+fn flatten<T>(option: &mut Option<T>) -> rhai::Dynamic 
+where 
+    T: Clone + Send + Sync + 'static,
+{
+    match option {
+        Some(some) => rhai::Dynamic::from(some.clone()),
+        None => rhai::Dynamic::UNIT,
+    }
+}
+
+fn to_array<T>(v: &mut Vec<T>) -> rhai::Array 
+where
+    T: Clone + Send + Sync + 'static,
+{
+    v.iter()
+        .cloned()
+        .map(rhai::Dynamic::from)
+        .collect::<rhai::Array>()
+}
+
+fn write_scriptable_path(s: &mut String, type_path: &ScriptablePath) {
     use std::fmt::Write as _;
 
-    let &spru_script::ScriptablePath(path, type_args) = type_path;
+    let &ScriptablePath(path, type_args) = type_path;
 
     if let Some((first, rest)) = path.split_first() {
         write!(s, "{first}").unwrap();
@@ -808,34 +645,5 @@ fn write_scriptable_path(s: &mut String, type_path: &spru_script::ScriptablePath
             }
             write!(s, ">").unwrap();
         }
-    }
-}
-
-#[cfg(test)]
-mod test {
-    // use super::*;
-    use super::{Wrap, Registration1};
-    #[allow(unused_imports)]
-    use super::{RegisterTypeNoop as _, RegisterTypeStd as _};
-    #[allow(unused_imports)]
-    use super::{RegisterTypeGetNoop as _, RegisterTypeGetStd as _};
-
-    mod m {
-        #[derive(Clone)]
-        pub struct S {
-            pub i: i32,
-        }
-    }
-
-    #[test]
-    fn t() {
-        // let mut rhai = rhai::Engine::new();
-        // let mut reg1 = Registration1::new(&mut rhai);
-        // (&&&Wrap::<m::S>::new()).register_type(&mut reg1).unwrap();
-        // let mut reg2 = reg1.type_registration(Some(spru_script::scriptable_path!(m::S)));
-        // (&&&Wrap::<(m::S, i32)>::new()).register_type_get(&mut reg2, "i", |t| t.i).unwrap();
-        
-        
-        // reg2.apply();
     }
 }

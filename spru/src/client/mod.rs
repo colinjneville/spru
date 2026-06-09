@@ -19,7 +19,6 @@ use std::marker::PhantomData;
 
 /// A [Client] implementation for the given [Interaction](trait@crate::Interaction) and `GameOutcome`
 pub type Impl<Interaction, GameOutcome> = ClientImpl<
-    <Interaction as crate::Interaction>::State,
     <Interaction as crate::Interaction>::Action,
     <Interaction as crate::Interaction>::Root,
     Interaction,
@@ -98,7 +97,7 @@ pub trait Client: crate::sealed::Sealed + Sized {
     type Root: Clone;
 
     /// A type describing all kinds of moves a player can make. See [Interaction](trait@crate::Interaction).
-    type Interaction: crate::Interaction<State = Self::State, Action = Self::Action, Root = Self::Root>;
+    type Interaction: crate::Interaction<Action = Self::Action, Root = Self::Root>;
 
     /// The final result of a game, usually containing the winner
     type GameOutcome;
@@ -192,20 +191,19 @@ pub trait Client: crate::sealed::Sealed + Sized {
     fn pending_interactions(&self) -> impl Iterator<Item = interaction::Pending>;
 }
 
-impl<State, Action, Root, Interaction, GameOutcome> crate::sealed::Sealed
-    for ClientImpl<State, Action, Root, Interaction, GameOutcome>
+impl<Action, Root, Interaction, GameOutcome> crate::sealed::Sealed
+    for ClientImpl<Action, Root, Interaction, GameOutcome>
 {
 }
 
 impl<Interaction, GameOutcome> Client for Impl<Interaction, GameOutcome>
 where
     Interaction: crate::Interaction<
-            State: crate::State,
-            Action: crate::Action<State = Interaction::State>,
+            Action: crate::Action,
             Root: Clone,
         >,
 {
-    type State = Interaction::State;
+    type State = <Interaction::Action as crate::Action>::State;
     type Action = Interaction::Action;
     type Root = Interaction::Root;
     type Interaction = Interaction;
@@ -256,7 +254,6 @@ where
         Ok(Self {
             inner,
             _game_outcome: PhantomData,
-            _state: PhantomData,
         })
     }
 
@@ -414,13 +411,12 @@ where
     }
 }
 
-impl<State, Action, Root, Interaction, GameOutcome>
-    ClientImpl<State, Action, Root, Interaction, GameOutcome>
+impl<Action, Root, Interaction, GameOutcome>
+    ClientImpl<Action, Root, Interaction, GameOutcome>
 where
-    State: crate::State,
-    Action: crate::Action<State = State>,
+    Action: crate::Action,
     Root: Clone,
-    Interaction: crate::Interaction<State = State, Action = Action, Root = Root>,
+    Interaction: crate::Interaction<Action = Action, Root = Root>,
 {
     #[instrument(err, skip_all, fields(local_player_id = self.trace_id()))]
     fn interaction_result<Storage>(
@@ -430,7 +426,7 @@ where
         interaction_result: common::signal::InteractionResult<<Self as Client>::Common>,
     ) -> Result<(), FatalError>
     where
-        Storage: item::Storage<State = State>,
+        Storage: item::Storage<State = Action::State>,
     {
         let common::signal::InteractionResult {
             pending_interaction_id,
@@ -472,7 +468,7 @@ where
         confirmed_transaction: common::signal::ConfirmedTransaction<<Self as Client>::Common>,
     ) -> Result<(), FatalError>
     where
-        Storage: item::Storage<State = State>,
+        Storage: item::Storage<State = Action::State>,
     {
         let common::signal::ConfirmedTransaction {
             confirmed_transaction,
@@ -494,7 +490,7 @@ where
         end_game: common::signal::EndGame<<Self as Client>::Common>,
     ) -> Result<(), FatalError>
     where
-        Storage: item::Storage<State = State>,
+        Storage: item::Storage<State = Action::State>,
     {
         let common::signal::EndGame { game_outcome } = end_game;
         // The game is ending anyway, so if we become desynced, just ignore it
@@ -510,14 +506,13 @@ where
 
 #[doc(hidden)]
 #[derive(Debug)]
-pub struct ClientImpl<State, Action, Root, Interaction, GameOutcome> {
+pub struct ClientImpl<Action, Root, Interaction, GameOutcome> {
     inner: ImplInner<Action, Root, Interaction>,
     _game_outcome: PhantomData<fn() -> GameOutcome>,
-    _state: PhantomData<fn() -> State>,
 }
 
-impl<State, Action, Root, Interaction, GameOutcome>
-    ClientImpl<State, Action, Root, Interaction, GameOutcome>
+impl<Action, Root, Interaction, GameOutcome>
+    ClientImpl<Action, Root, Interaction, GameOutcome>
 {
     fn trace_id(&self) -> u32 {
         self.inner.local_player_id.into_u32()

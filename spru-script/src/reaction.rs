@@ -3,13 +3,13 @@ use std::marker::PhantomData;
 use derive_where::derive_where;
 
 #[derive_where(Debug, Clone, Serialize, Deserialize; Language)]
-pub struct Reaction<State, Action, Root, Trigger, GameOutcome, Language> {
+pub struct Reaction<Root, Trigger, GameOutcome, Language> {
     language: Language,
     script: String,
-    _p: PhantomData<(State, Action, Root, Trigger, GameOutcome)>,
+    _p: PhantomData<(Root, Trigger, GameOutcome)>,
 }
 
-impl<State, Action, Root, Trigger, GameOutcome, Language> Reaction<State, Action, Root, Trigger, GameOutcome, Language> {
+impl<Root, Trigger, GameOutcome, Language> Reaction<Root, Trigger, GameOutcome, Language> {
     pub fn new(language: Language, script: String) -> Self {
         Self {
             language,
@@ -19,25 +19,20 @@ impl<State, Action, Root, Trigger, GameOutcome, Language> Reaction<State, Action
     }
 }
 
-impl<State, Action, Root, Trigger, GameOutcome, Language> spru::Reaction for Reaction<State, Action, Root, Trigger, GameOutcome, Language> 
+impl<Root, Trigger, GameOutcome, Language> spru::Reaction for Reaction<Root, Trigger, GameOutcome, Language> 
 where 
-    State: crate::Scriptable<Action, Language::Registry>,
-    Action: spru::Action<State = State> + 'static,
-    Language: crate::LanguageBase<State, Action> +
-        for<'r> crate::Language<
-            State, 
-            Action, 
+    Language: 
+        for<'r> crate::LanguageExec<
             Trigger, 
             (),
             spru::reaction::Context<'r, Root>, 
             spru::reaction::Output<Trigger, GameOutcome>, 
-            Error: std::error::Error + Send + Sync + 'static
+            Error: std::error::Error + Send + Sync + 'static,
         > +
     ,
     Trigger: Clone,
 {
-    type State = State;
-    type Action = Action;
+    type Action = <Language as crate::Language>::Action;
     type Root = Root;
     type Trigger = Trigger;
     type GameOutcome = GameOutcome;

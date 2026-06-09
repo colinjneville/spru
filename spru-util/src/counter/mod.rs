@@ -28,7 +28,6 @@ impl<T> CounterType for T where
 #[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
 #[script(include = [Methods])]
 pub struct Counter<T> {
-    #[get]
     value: T,
     bounds: RangeType<T>,
 }
@@ -53,6 +52,11 @@ where
     #[method]
     fn destroy(&self) -> ((), cloned::Destroy<Counter<T>>) {
         ((), destroy())
+    }
+
+    #[get(name = value)]
+    fn value_get(&self) -> T {
+        self.value.clone()
     }
 
     #[set(name = value)]
@@ -139,10 +143,10 @@ pub fn destroy<T>() -> Destroy<T> {
 }
 
 #[telety(crate::counter)]
-#[tagset(cloned::Create<Counter<T>>)]
+#[tagset(Create<T>)]
 #[tagset(Add<T>)]
 #[tagset(Set<T>)]
-#[tagset(cloned::Destroy<Counter<T>>)]
+#[tagset(Destroy<T>)]
 #[tagset(reserved(..8))]
 pub struct Actions<T: bounds::AddSigned>;
 
@@ -163,7 +167,7 @@ impl<T: bounds::AddSigned + CounterType + Ord + fmt::Display + 'static> spru::ac
     fn update(&self, value: &mut Self::T) -> AnyResult<impl Into<Option<Self::Undo>>> {
         let prev = value.value.clone();
         let bounded = value.bounds.constrain(self.value);
-        if self.strictness == Strictness::AllOrError && self.value == bounded {
+        if self.strictness == Strictness::AllOrError && self.value != bounded {
             Err(error::ValueOutOfBounds::new(self.value.clone(), value.bounds.clone()).into())
         } else {
             value.value = bounded;

@@ -91,7 +91,7 @@ impl FnAttr {
     }
 }
 
-vacro_parser::define! { DeriveTraits:
+vacro_parser::define! { pub DeriveTraits:
     #(traits*[,]: DeriveTrait {
         Eq: #{Eq},
     })
@@ -110,12 +110,13 @@ vacro_parser::define! { StructOptions:
         Partial: partial = #(partial: syn::Ident),
         Include: include = [#(include*[,]: syn::Ident)],
         State: state = #(is_state: syn::LitBool),
-        Derive: derive = [#(derive: DeriveTraits)]
+        Derive: derive = [#(derive*[,]: spru_script_base_macro::ScriptableOptionDeriveKind)]
     })
 }
 
 impl StructOptions {
     fn partial(&self) -> Option<&syn::Ident> {
+        
         for option in &self.options {
             if let StructOption::Partial { partial } = option {
                 return Some(partial);
@@ -146,11 +147,11 @@ impl StructOptions {
         true
     }
 
-    fn derives(&self) -> impl Iterator<Item = &DeriveTrait> {
+    fn derives(&self) -> impl Iterator<Item = &spru_script_base_macro::ScriptableOptionDeriveKind> {
         let mut iter = None;
         for option in &self.options {
             if let StructOption::Derive { derive } = option {
-                iter = Some(derive.traits.iter());
+                iter = Some(derive.iter());
             }
         }
 
@@ -158,10 +159,10 @@ impl StructOptions {
     }
 
     #[vacro_report::scope]
-    fn build(self, item_struct: &syn::ItemStruct) -> syn::Result<spru_script_impl_types::Scriptable> {
+    fn build(self, item_struct: &syn::ItemStruct) -> syn::Result<spru_script_base_macro::Scriptable> {
         let is_state = self.is_state();
 
-        let mut members =  if is_state {
+        let mut members = if is_state {
             Members::StateMembers(Default::default())
         } else {
             Members::TypeMembers(Default::default())
@@ -178,10 +179,10 @@ impl StructOptions {
                             .unwrap_or(&field_ident);
                         let name = syn::LitStr::new(&name.to_string(), name.span());
                         
-                        let member = spru_script_impl_types::Get { 
+                        let member = spru_script_base_macro::Get { 
                             name,
                             ty: field.ty.clone(), 
-                            kind: spru_script_impl_types::GetKind::Field { 
+                            kind: spru_script_base_macro::GetKind::Field { 
                                 ident: field_ident,
                             },
                         };
@@ -200,10 +201,10 @@ impl StructOptions {
                             .unwrap_or(&field_ident);
                         let name = syn::LitStr::new(&name.to_string(), name.span());
                         
-                        let member = spru_script_impl_types::Set { 
+                        let member = spru_script_base_macro::Set { 
                             name, 
                             ty: field.ty.clone(), 
-                            kind: spru_script_impl_types::SetKind::Field {
+                            kind: spru_script_base_macro::SetKind::Field {
                                 ident: field_ident,
                             }, 
                         };
@@ -232,26 +233,38 @@ impl StructOptions {
             #ident #type_generics
         };
 
-        let partial_ident = self.partial().cloned();
-        // let includes = self.include().cloned().collect();
         let is_state = self.is_state();
 
-        // let derives = self.derives().cloned().collect();
+        let mut options = spru_script_base_macro::ScriptableOptions::default();
 
-        let details = spru_script_impl_types::ScriptableDetails {
+        if self.include().next().is_some() {
+            let include = self.include().cloned().collect();
+            options.include = Some(spru_script_base_macro::ScriptableOptionInclude { include });
+        }
+
+        if let Some(partial) = self.partial().cloned() {
+            options.partial = Some(spru_script_base_macro::ScriptableOptionPartial { partial });
+        }
+
+        if self.derives().next().is_some() {
+            options.derive = Some(spru_script_base_macro::ScriptableOptionDerive { derive: self.derives().cloned().collect() });
+        };
+
+        let details = spru_script_base_macro::ScriptableDetails {
             self_type,
+            options,
             generics,
             where_clause,
         };
 
         let ret = match members {
             Members::StateMembers(state_members) => 
-                spru_script_impl_types::Scriptable::State { state: spru_script_impl_types::ScriptableState {
+                spru_script_base_macro::Scriptable::State { state: spru_script_base_macro::ScriptableState {
                     details,
                     members: state_members,
                 }},
             Members::TypeMembers(type_members) =>
-                spru_script_impl_types::Scriptable::Ty { ty: spru_script_impl_types::ScriptableType {
+                spru_script_base_macro::Scriptable::Ty { ty: spru_script_base_macro::ScriptableType {
                     details,
                     members: type_members,
                 }},
@@ -266,7 +279,7 @@ vacro_parser::define! { ImplOptions:
         Partial: partial = #(partial: syn::Ident),
         Include: include = [#(include*[,]: syn::Ident)],
         State: state = #(is_state: syn::LitBool),
-        Derive: derive = [#(derive: DeriveTraits)]
+        Derive: derive = [#(derive*[,]: spru_script_base_macro::ScriptableOptionDeriveKind)]
     })
 }
 
@@ -302,18 +315,18 @@ impl ImplOptions {
         true
     }
 
-    fn derives(&self) -> impl Iterator<Item = &DeriveTrait> {
+    fn derives(&self) -> impl Iterator<Item = &spru_script_base_macro::ScriptableOptionDeriveKind> {
         let mut iter = None;
         for option in &self.options {
             if let ImplOption::Derive { derive } = option {
-                iter = Some(derive.traits.iter());
+                iter = Some(derive.iter());
             }
         }
 
         iter.into_iter().flatten()
     }
 
-    fn build(self, item_impl: &syn::ItemImpl) -> syn::Result<spru_script_impl_types::Scriptable> {
+    fn build(self, item_impl: &syn::ItemImpl) -> syn::Result<spru_script_base_macro::Scriptable> {
         let is_state = self.is_state();
         let mut members = if is_state { 
             Members::StateMembers(Default::default()) 
@@ -335,10 +348,10 @@ impl ImplOptions {
                                 .unwrap_or(&impl_item_fn.sig.ident);
                             let name = syn::LitStr::new(&name.to_string(), name.span());
 
-                            let member = spru_script_impl_types::Get {
+                            let member = spru_script_base_macro::Get {
                                 name,
                                 ty: (**ty).clone(),
-                                kind: spru_script_impl_types::GetKind::Fn {
+                                kind: spru_script_base_macro::GetKind::Fn {
                                     ident: fn_ident,
                                 },
                             };
@@ -349,20 +362,34 @@ impl ImplOptions {
                             }
                         },
                         FnAttr::Set(set_options) => {
-                            let syn::ReturnType::Type(_, ty) = &impl_item_fn.sig.output else {
+                            let syn::ReturnType::Type(_, ret) = &impl_item_fn.sig.output else {
                                 return Err(syn::Error::new_spanned(&impl_item_fn.sig.output, "A set function must have a return type"));
                             };
+
+                            let arg_err_fn = || syn::Error::new_spanned(&impl_item_fn.sig.inputs, "Expected a single non-receiver parameter");
+
+                            let mut arg_iter = impl_item_fn.sig.inputs.iter()
+                                .filter_map(|arg| match arg {
+                                    syn::FnArg::Receiver(_receiver) => None,
+                                    syn::FnArg::Typed(pat_type) => Some(&*pat_type.ty),
+                                });
+                            let ty = arg_iter.next()
+                                .ok_or_else(arg_err_fn)?;
+                            if arg_iter.next().is_some() {
+                                return Err(arg_err_fn());
+                            }
 
                             let fn_ident = impl_item_fn.sig.ident.clone();
                             let name = set_options.name_override()
                                 .unwrap_or(&impl_item_fn.sig.ident);
                             let name = syn::LitStr::new(&name.to_string(), name.span());
 
-                            let member = spru_script_impl_types::Set {
+                            let member = spru_script_base_macro::Set {
                                 name,
-                                ty: (**ty).clone(),
-                                kind: spru_script_impl_types::SetKind::Fn {
+                                ty: ty.clone(),
+                                kind: spru_script_base_macro::SetKind::Fn {
                                     ident: fn_ident,
+                                    ret: (**ret).clone(),
                                 },
                             };
 
@@ -400,7 +427,7 @@ impl ImplOptions {
 
                             let params = impl_item_fn.sig.inputs.clone();
 
-                            let member = spru_script_impl_types::Method {
+                            let member = spru_script_base_macro::Method {
                                 name,
                                 ident,
                                 ret,
@@ -428,7 +455,7 @@ impl ImplOptions {
 
                             let params = impl_item_fn.sig.inputs.clone();
 
-                            let member = spru_script_impl_types::Create {
+                            let member = spru_script_base_macro::Create {
                                 name,
                                 ident,
                                 action: (**action).clone(),
@@ -448,14 +475,16 @@ impl ImplOptions {
                                 .unwrap_or(&ident);
                             let name = syn::LitStr::new(&name.to_string(), name.span());
 
-                            let ret = impl_item_fn.sig.output.clone();
+                            let syn::ReturnType::Type(_, ret) = &impl_item_fn.sig.output else {
+                                return Err(syn::Error::new_spanned(&impl_item_fn.sig.output, "A function must have a return type"));
+                            };
 
                             let params = impl_item_fn.sig.inputs.clone();
 
-                            let member = spru_script_impl_types::Function {
+                            let member = spru_script_base_macro::Function {
                                 name,
                                 ident,
-                                ret,
+                                ret: (**ret).clone(),
                                 params,
                             };
 
@@ -475,21 +504,37 @@ impl ImplOptions {
         let mut generics = item_impl.generics.clone();
         let where_clause = generics.make_where_clause().clone();
 
-        let details = spru_script_impl_types::ScriptableDetails { 
+        let mut options = spru_script_base_macro::ScriptableOptions::default();
+
+        if self.include().next().is_some() {
+            let include = self.include().cloned().collect();
+            options.include = Some(spru_script_base_macro::ScriptableOptionInclude { include });
+        }
+
+        if let Some(partial) = self.partial().cloned() {
+            options.partial = Some(spru_script_base_macro::ScriptableOptionPartial { partial });
+        }
+
+        if self.derives().next().is_some() {
+            options.derive = Some(spru_script_base_macro::ScriptableOptionDerive { derive: self.derives().cloned().collect() });
+        };
+
+        let details = spru_script_base_macro::ScriptableDetails { 
             self_type: ident, 
+            options,
             generics, 
             where_clause,
         };
         
         let ret = match members {
             Members::StateMembers(state_members) => {
-                spru_script_impl_types::Scriptable::State { state: spru_script_impl_types::ScriptableState {
+                spru_script_base_macro::Scriptable::State { state: spru_script_base_macro::ScriptableState {
                     details,
                     members: state_members,
                 }}
             }
             Members::TypeMembers(type_members) => {
-                spru_script_impl_types::Scriptable::Ty { ty: spru_script_impl_types::ScriptableType {
+                spru_script_base_macro::Scriptable::Ty { ty: spru_script_base_macro::ScriptableType {
                     details,
                     members: type_members,
                 }}
@@ -531,8 +576,8 @@ pub(crate) fn script_impl(attr: TokenStream, item: TokenStream) -> syn::Result<T
 }
 
 enum Members {
-    StateMembers(syn::punctuated::Punctuated<spru_script_impl_types::StateMemberKind, syn::Token![,]>),
-    TypeMembers(syn::punctuated::Punctuated<spru_script_impl_types::TypeMemberKind, syn::Token![,]>),
+    StateMembers(syn::punctuated::Punctuated<spru_script_base_macro::StateMemberKind, syn::Token![,]>),
+    TypeMembers(syn::punctuated::Punctuated<spru_script_base_macro::TypeMemberKind, syn::Token![,]>),
 }
 
 struct HelperFold;

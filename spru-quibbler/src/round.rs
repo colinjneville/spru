@@ -1,10 +1,9 @@
 use rust_fsm::state_machine;
-use spru_script::Wrap;
 
 state_machine! {
     #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Hash)]
     #[derive(serde::Serialize, serde::Deserialize)]
-    pub machine(OptionalPlay)
+    machine_internal(OptionalPlay)
 
     OptionalPlay => {
         // The first play must use all cards in valid words
@@ -18,27 +17,30 @@ state_machine! {
     },
 }
 
+pub mod machine {
+    pub use super::machine_internal::*;
 
-#[spru_script::script(state = false, derive = [Eq])]
-impl machine::Input {
-    #[function]
-    fn full_play() -> Wrap<Self> {
-        Wrap::new(Self::FullPlay)
-    }
+    #[spru_script::script(state = false, derive = [Eq])]
+    impl Input {
+        #[function]
+        fn full_play() -> Self {
+            Self::FullPlay
+        }
 
-    #[function]
-    fn partial_play() -> Wrap<Self> {
-        Wrap::new(Self::PartialPlay)
-    }
+        #[function]
+        fn partial_play() -> Self {
+            Self::PartialPlay
+        }
 
-    #[function]
-    fn pass() -> Wrap<Self> {
-        Wrap::new(Self::Pass)
-    }
+        #[function]
+        fn pass() -> Self {
+            Self::Pass
+        }
 
-    #[function]
-    fn score() -> Wrap<Self> {
-        Wrap::new(Self::Score)
+        #[function]
+        fn score() -> Self {
+            Self::Score
+        }
     }
 }
 

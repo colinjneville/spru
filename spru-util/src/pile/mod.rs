@@ -516,7 +516,7 @@ where
 
         let mut elements = vec![];
 
-        if strictness == Strictness::AllOrError && value.items.len() <= count {
+        if strictness == Strictness::AllOrError && value.items.len() < count {
             Err(error::Empty.into())
         } else {
             for _ in 0..count {
@@ -753,6 +753,7 @@ impl<T: Clone> spru::action::Update for Insert<T> {
     #[allow(refining_impl_trait)]
     fn update(&self, value: &mut Self::T) -> AnyResult<Self::Undo> {
         let index = self.index;
+        
         if index <= value.items.len() {
             value.items.insert(index, self.element.clone());
             Ok(Remove {
@@ -779,6 +780,7 @@ impl<T> spru::action::Update for Remove<T> {
     #[allow(refining_impl_trait)]
     fn update(&self, value: &mut Self::T) -> AnyResult<Self::Undo> {
         let index = self.index;
+
         if index < value.items.len() {
             let element = value.items.remove(index);
             Ok(Insert { index, element })
@@ -832,13 +834,39 @@ mod test {
 
     use crate::pile::Pile;
 
+    struct MyLexicon;
+
+    impl spru_script::Lexicon for MyLexicon {
+        type Language = spru_script::Rhai<MyAction, Self>;
+    
+        fn register<Storage>(registration: &mut <Self::Language as spru_script::Language>::Registration<'_>)
+        where
+            Storage: spru::item::Storage<State = <<Self::Language as spru_script::Language>::Action as spru::Action>::State>,
+        {
+            macro_rules! register {
+                ($registration:ident, $macro_path:path, $type_path:path $(as $rename_path:path)? $(,)?) => {
+                    $macro_path!(<Storage, MyAction> $registration => $type_path $(as $rename_path)?);
+                };
+            }
+
+            // states
+            register!(registration, Pile, Pile<i64> as PileI64);
+
+            let mut registration2 = registration.type_registration(Some(spru_script::scriptable_path!(i64)));
+            use spru_script::RegisterTypeStd as _;
+            (&mut &mut &mut spru_script::Wrap::new_type((PhantomData::<(MyAction, i64)>, )))
+                .register::<Storage>(&mut registration2);
+                
+            registration2.apply();
+        }
+    }
+
     #[tagset(impl tagset::proxy::serde::Serialize)]
     #[tagset(impl<'de> tagset::serde::DeserializeFromDiscriminant<'de>)]
     #[tagset(impl<'de> tagset::proxy::serde::Deserialize<'de>)]
     #[tagset(impl spru::State)]
-    #[tagset(impl<Action, Registry> spru_script::Scriptable<Action, Registry>)]
     #[tagset(derive(Debug))]
-    #[tagset(Pile<i32>)]
+    #[tagset(Pile<i64>)]
     struct MyState;
 
     #[tagset(impl spru::Action {
@@ -848,101 +876,103 @@ mod test {
     #[tagset(impl<'de> tagset::serde::DeserializeFromDiscriminant<'de>)]
     #[tagset(impl<'de> tagset::proxy::serde::Deserialize<'de>)]
     #[tagset(derive(Debug, Clone))]
-    #[tagset(include(super::Actions<i32>))]
-    #[tagset(crate::maybe::Update<crate::fail::Update<Pile<i32>>>)]
-    #[tagset(crate::fail::Update<Pile<i32>>)]
+    #[tagset(include(super::Actions<i64>))]
+    #[tagset(crate::maybe::Update<crate::fail::Update<Pile<i64>>>)]
+    #[tagset(crate::fail::Update<Pile<i64>>)]
     struct MyAction;
 
     #[test]
     fn test_script() {
-        use spru_script::Language as _;
+        use spru_script::LanguageExec as _;
 
         let storage = crate::storage::Standalone::<MyState>::new();
 
-        let lua = spru_script_lua::Lua::<MyState, MyAction>::new();
+        let rhai = spru_script::Rhai::<MyAction, MyLexicon>::new(Default::default());
 
         let mut test_interactor = spru::interactor::test_util::TestInteractor::new(storage);
 
         let script = r#"
-            local output = {}
-            output.insert = table.insert
+            let out = [];
 
-            local deck = Pile[i32].default()
+            let deck = type["PileI64"].dflt();
 
-            -- (/)
-            output:insert(deck:try_pop_bottom())
-            -- (/)
-            output:insert(deck:try_pop_top())
-            -- (/)
-            for i, value in ipairs(deck:try_pop_bottom_many(5)) do
-                output:insert(value)
-            end
-            -- (/)
-            for i, value in ipairs(deck:try_pop_top_many(5)) do
-                output:insert(value)
-            end
+            // (/)
+            out.push(deck.try_pop_bottom());
+            // (/)
+            out.push(deck.try_pop_top());
+            // (/)
+            for value in deck.try_pop_bottom_many(5.to_usize()) {
+                out.push(value);
+            }
+            // (/)
+            for value in deck.try_pop_top_many(5.to_usize()) {
+                out.push(value);
+            }
             
-            deck:push_top(6)
-            deck:push_top(7)
-            deck:push_top_many({8, 9, 10})
-            deck:push_bottom(5)
-            deck:push_bottom(4)
-            deck:push_bottom_many({1, 2, 3})
+            deck.push_top(6);
+            deck.push_top(7);
+            deck.push_top_many(type["i64"].from_array([8, 9, 10]));
+            deck.push_bottom(5);
+            deck.push_bottom(4);
+            deck.push_bottom_many(type["i64"].from_array([1, 2, 3]));
 
-            -- 10...1
-            for i, value in ipairs(deck.items) do
-                output:insert(value)
-            end
+            // 10...1
+            for value in deck.items {
+                out.push(value);
+            }
 
-            -- 10
-            output:insert(deck:pop_top())
-            -- 9
-            output:insert(deck.top)
-            -- 1
-            output:insert(deck:pop_bottom())
-            -- 2
-            output:insert(deck.bottom)
-            -- 9, 8
-            for i, value in ipairs(deck:pop_top_many(2)) do
-                output:insert(value)
-            end
-            -- 2, 3
-            for i, value in ipairs(deck:pop_bottom_many(2)) do
-                output:insert(value)
-            end
+            // 10
+            out.push(deck.pop_top());
+            // 9
+            out.push(deck.top);
+            // 1
+            out.push(deck.pop_bottom());
+            // 2
+            out.push(deck.bottom);
+            // 9, 8
+            for value in deck.pop_top_many(2.to_usize()) {
+                out.push(value);
+            }
+            // 2, 3
+            for value in deck.pop_bottom_many(2.to_usize()) {
+                out.push(value);
+            }
 
-            -- 11
-            deck:set(2, 11)
-            output:insert(deck:get(2))
+            // 11
+            deck.set(2.to_usize(), 11);
+            out.push(deck.get(2.to_usize()));
 
-            -- 21
-            deck.items = {20, 21, 22}
-            output:insert(deck:get(1))
+            // 21
+            deck.items = [20, 21, 22];
+            out.push(deck.get(1.to_usize()));
 
-            -- 21
-            deck:insert(1, 31)
-            output:insert(deck:get(2))
+            // 21
+            deck.insert(1.to_usize(), 31);
+            out.push(deck.get(2.to_usize()));
 
-            -- 31
-            deck:remove(0)
-            output:insert(deck:get(0))
+            // 31
+            deck.remove(0.to_usize());
+            out.push(deck.get(0.to_usize()));
 
-            deck:clear()
+            deck.clear();
 
-            -- (/)
-            output:insert(deck:try_pop_top())
+            // (/)
+            out.push(deck.try_pop_top());
 
-            return output
+            out.drain(|n| n == ());
+            print(out);
+            return out;
         "#;
 
-        // TODO needs trait impls for TestInteractor
+        let mut interactor = test_interactor.interactor::<MyAction, (), ()>(&());
+        let value: rhai::Dynamic = rhai.exec(&mut interactor, script, ())
+            .unwrap();
+        let value = value.into_typed_array::<i64>()
+            .unwrap();
 
-        // let mut interactor = test_interactor.interactor::<MyAction, _>(7);
-        // let value: Vec<i32> = lua.exec(&mut interactor, script).unwrap();
-
-        // assert_eq!(
-        //     value, 
-        //     vec![10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 10, 9, 1, 2, 9, 8, 2, 3, 11, 21, 21, 31, ],
-        // );
+        assert_eq!(
+            value, 
+            vec![10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 10, 9, 1, 2, 9, 8, 2, 3, 11, 21, 21, 31, ],
+        );
     }
 }

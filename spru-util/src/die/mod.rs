@@ -14,14 +14,20 @@ use crate::cloned;
 #[script(include = [Methods])]
 pub struct Die<D: self::DieKind> {
     die: D,
-    #[get]
-    #[set]
     current_face: D::Face,
 }
 
 #[script(partial = Methods)]
-impl<D: self::DieKind + 'static> Die<D> {
-    
+impl<D: self::DieKind<Face: Clone> + 'static> Die<D> {
+    #[get(name = current_face)]
+    fn get_current_face(&self) -> D::Face {
+        self.current_face.clone()
+    }
+
+    #[set(name = current_face)]
+    fn set_current_face(&self, face: D::Face) -> (SetFace<D>, ) {
+        (set_face(face), )
+    }
 }
 
 impl<D: self::DieKind> Die<D> {

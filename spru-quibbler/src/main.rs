@@ -9,6 +9,8 @@ pub mod data;
 pub mod game;
 pub mod interaction;
 pub use interaction::Interaction;
+mod lexicon;
+pub use lexicon::Lexicon;
 pub mod script;
 mod play;
 pub mod round;
@@ -19,19 +21,18 @@ mod reaction;
 mod state;
 use spru::{common::error::PseudoError as _, item::Storage as _};
 use spru_bevy::{client::ClientSSS as _, server::ServerSSS as _};
-use spru_script::Wrap;
 use spru_util::{player_map, state_cell};
 pub use state::State;
 
 use bevy::{ecs::system::IntoSystem, prelude};
 use spru_bevy::client::component::Item;
 
-type Language = spru_script_lua::Lua<State, Actions>;
-type GameInit = spru_script::GameInit<State, Actions, spru::item::IdT<game::Root>, Language, ()>;
-type PlayerInit = spru_script::PlayerInit<State, Actions, spru::item::IdT<game::Root>, Language, Wrap<player::Input>>;
-type Client = spru::client::Impl<Interaction, Wrap<game::Outcome>>;
+type Language = spru_script::Rhai::<self::Actions, self::Lexicon>;
+type GameInit = spru_script::GameInit<spru::item::IdT<game::Root>, Language, ()>;
+type PlayerInit = spru_script::PlayerInit<spru::item::IdT<game::Root>, Language, player::Input>;
+type Client = spru::client::Impl<Interaction, game::Outcome>;
 
-type Reaction = spru_script::Reaction<State, Actions, spru::item::IdT<game::Root>, Wrap<reaction::Trigger>, Wrap<game::Outcome>, Language>;
+type Reaction = spru_script::Reaction<spru::item::IdT<game::Root>, reaction::Trigger, game::Outcome, Language>;
 type Server = spru::server::Impl<Interaction, Reaction, PlayerInit>;
 type Common = <Client as spru::Client>::Common;
 
@@ -95,9 +96,9 @@ fn main() {
                     Server::filter_mut(&mut q_server, gid).ok_or("Server not found")?;
 
                 for username in ["Alice", "Bob"] {
-                    from_user.add_player(Wrap(player::Input {
+                    from_user.add_player(player::Input {
                         username: username.to_string(),
-                    }));
+                    });
                 }
 
                 Ok(())
@@ -309,9 +310,9 @@ fn print_piles(
     q_piles: prelude::Query<
         (
             &spru_bevy::client::component::ClientId,
-            &Item<spru_util::pile::Pile<Wrap<data::Card>>>,
+            &Item<spru_util::pile::Pile<data::Card>>,
         ),
-        (prelude::Changed<Item<spru_util::pile::Pile<Wrap<data::Card>>>>,),
+        (prelude::Changed<Item<spru_util::pile::Pile<data::Card>>>,),
     >,
 ) {
     for (client_id, pile) in q_piles {
@@ -356,12 +357,12 @@ fn panel_ui(
         &mut spru_bevy::client::component::FromUser<Client>,
     )>,
     q_game_root: prelude::Query<&Item<game::Root>>,
-    q_player_map: prelude::Query<&Item<player_map::PlayerMap<Wrap<crate::player::Root>>>>,
-    q_pile: prelude::Query<&Item<spru_util::pile::Pile<Wrap<data::Card>>>>,
+    q_player_map: prelude::Query<&Item<player_map::PlayerMap<crate::player::Root>>>,
+    q_pile: prelude::Query<&Item<spru_util::pile::Pile<data::Card>>>,
     q_current_turn: prelude::Query<&Item<spru_util::rotating::Rotating<spru::player::Id>>>,
     q_player_fsm: prelude::Query<&Item<spru_util::fsm::Fsm<player::machine::Impl>>>,
     q_counter: prelude::Query<&Item<spru_util::counter::Counter<u32>>>,
-    q_play: prelude::Query<&Item<state_cell::StateCell<Option<Wrap<Play>>>>>,
+    q_play: prelude::Query<&Item<state_cell::StateCell<Option<Play>>>>,
     game_id: prelude::Res<GameId>,
     client_ids: prelude::Res<ClientIds>,
     log: prelude::Res<Log>,
@@ -454,12 +455,12 @@ fn panel_ui(
                 if (response.clicked() || confirmed) && !add_player_string.is_empty() {
                     let player_init_in =
                         player::Input::new(std::mem::take(&mut *add_player_string));
-                    server_from_user.add_player(Wrap(player_init_in));
+                    server_from_user.add_player(player_init_in);
                 }
             });
 
             if ui.button("Start game").clicked() {
-                server_from_user.manual_trigger(Wrap::new(reaction::Trigger::StartGame));
+                server_from_user.manual_trigger(reaction::Trigger::StartGame);
             }
         });
     });
@@ -525,12 +526,12 @@ fn panel_ui(
                 ui.separator();
                 ui.horizontal(|ui| {
                     if ui.button("Draw from deck").clicked() {
-                        from_user.stage_interaction(interaction::draw::new_rhai(true).into());
+                        from_user.stage_interaction(interaction::draw::new(true).into());
                     }
                     if let Some(discard_top) = discard.top() {
                         let button_message = format!("Draw '{}' from discard ({} points)", discard_top.face().letters_str(), discard_top.face().points);
                         if ui.button(button_message).clicked() {
-                            from_user.stage_interaction(interaction::draw::new_rhai(false).into());
+                            from_user.stage_interaction(interaction::draw::new(false).into());
                         }
                     }
                 });
@@ -540,7 +541,7 @@ fn panel_ui(
                 ui.horizontal(|ui| {
                     for card in &**hand {
                         if render_card(ui, card, false).clicked() {
-                            from_user.stage_interaction(interaction::discard::new(card.0.clone()).into());
+                            from_user.stage_interaction(interaction::discard::new(card.clone()).into());
                         }
                     }
                 });

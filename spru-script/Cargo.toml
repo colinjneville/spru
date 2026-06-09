@@ -13,14 +13,13 @@ spru = { workspace = true, features = ["test-util"] }
 
 [dependencies]
 spru.workspace = true
+spru-script-base.workspace = true
 spru-script-impl.workspace = true
 spru-script-macro.workspace = true
+spru-script-impl-types.workspace = true
 
 tagset.workspace = true
 telety.workspace = true
-
-# for TransparentWrapper
-bytemuck.workspace = true
 
 derive-where.workspace = true
 
@@ -28,5 +27,8 @@ serde.workspace = true
 
 tracing.workspace = true
 
+spru-script-rhai = { workspace = true, optional = true } 
+
 [features]
-default = []
+default = ["rhai"]
+rhai = ["dep:spru-script-rhai"]

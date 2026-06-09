@@ -2,7 +2,7 @@ use std::fmt;
 
 use rust_fsm::state_machine;
 use spru::{common::error::PseudoError as _, interactor::with, item::IdT};
-use spru_script::{Wrap, script};
+use spru_script::script;
 use spru_util::{cloned, counter, fsm, pile, player_map, rotating, state_cell};
 
 use crate::data;
@@ -25,7 +25,6 @@ impl Input {
 pub struct Init;
 
 impl spru::player::Init for Init {
-    type State = crate::State;
     type Action = crate::Actions;
     type Root = IdT<crate::game::Root>;
     type In = Input;
@@ -63,13 +62,13 @@ impl spru::player::Init for Init {
 
         players.update(player_map::add_player(
             player_id,
-            Wrap::new(Root {
+            Root {
                 data: input,
                 hand,
                 score,
                 fsm,
                 played,
-            }),
+            },
         ));
 
         Ok(())
@@ -82,35 +81,35 @@ pub struct Root {
     #[get(wrap = true)]
     pub data: Input,
     #[get]
-    pub hand: IdT<pile::Pile<Wrap<data::Card>>>,
+    pub hand: IdT<pile::Pile<data::Card>>,
     #[get]
     pub score: IdT<counter::Counter<u32>>,
     #[get]
     pub fsm: IdT<fsm::Fsm<machine::Impl>>,
     #[get]
-    pub played: IdT<state_cell::StateCell<Option<Wrap<crate::Play>>>>,
+    pub played: IdT<state_cell::StateCell<Option<crate::Play>>>,
 }
 
 #[script(state = false, partial = Impl)]
 impl Root {
     #[function]
     fn create(
-        data: Wrap<Input>, 
-        hand: IdT<pile::Pile<Wrap<data::Card>>>,
+        data: Input, 
+        hand: IdT<pile::Pile<data::Card>>,
         score: IdT<counter::Counter<u32>>,
         fsm: IdT<fsm::Fsm<machine::Impl>>,
-        played: IdT<state_cell::StateCell<Option<Wrap<crate::Play>>>>,
+        played: IdT<state_cell::StateCell<Option<crate::Play>>>,
     ) 
-        -> Wrap<Root> 
+        -> Root
     {
-        Wrap::new(Self { data: data.0, hand, score, fsm, played, })
+        Self { data, hand, score, fsm, played, }
     }
 }
 
 state_machine! {
     #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Hash)]
     #[derive(serde::Serialize, serde::Deserialize)]
-    pub machine(ToDraw)
+    machine_internal(ToDraw)
 
     ToDraw(Draw) => ToDiscard,
     ToDiscard(Discard) => ToPlay,
@@ -136,34 +135,39 @@ impl Clone for machine::Output {
     }
 }
 
-#[spru_script::script(state = false, derive = [Eq])]
-impl machine::Input {
-    #[function]
-    fn draw() -> Wrap<Self> {
-        Wrap::new(Self::Draw)
-    }
+pub mod machine {
+    pub use super::machine_internal::*;
 
-    #[function]
-    fn discard() -> Wrap<Self> {
-        Wrap::new(Self::Discard)
-    }
+    #[spru_script::script(state = false, derive = [Eq])]
+    impl Input {
+        #[function]
+        fn draw() -> Self {
+            Self::Draw
+        }
 
-    #[function]
-    fn play() -> Wrap<Self> {
-        Wrap::new(Self::Play)
-    }
+        #[function]
+        fn discard() -> Self {
+            Self::Discard
+        }
 
-    #[function]
-    fn pass() -> Wrap<Self> {
-        Wrap::new(Self::Pass)
+        #[function]
+        fn play() -> Self {
+            Self::Play
+        }
+
+        #[function]
+        fn pass() -> Self {
+            Self::Pass
+        }
     }
 }
 
 pub mod init {
-    const SCRIPT: crate::script::Script = crate::script::script!("lua/player_init.lua");
+    const SCRIPT: crate::script::Script = crate::script::script!("rhai/player_init.rhai");
 
     pub fn new() -> crate::PlayerInit {
-        crate::PlayerInit::new(spru_script_lua::Lua::new(), SCRIPT.get())
+        let language = spru_script::Rhai::<crate::Actions, crate::Lexicon>::default();
+        crate::PlayerInit::new(language, SCRIPT.get())
     }
 }
 

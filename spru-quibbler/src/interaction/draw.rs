@@ -1,7 +1,6 @@
 use spru::common::error::PseudoError as _;
 use spru::{common::error::AnyError, interactor::with};
 use spru::item::IdT;
-use spru_script::Wrap;
 use spru_util::{fsm, maybe, pile};
 use tracing::instrument;
 
@@ -15,10 +14,9 @@ pub enum Draw {
 }
 
 impl spru::Interaction for Draw {
-    type State = crate::State;
     type Action = crate::Actions;
     type Root = IdT<crate::game::Root>;
-    type Trigger = Wrap<crate::reaction::Trigger>;
+    type Trigger = crate::reaction::Trigger;
 
     #[instrument(skip_all, ret, err)]
     fn apply<'l, Storage>(
@@ -26,7 +24,7 @@ impl spru::Interaction for Draw {
         interactor: &mut spru::interaction::Interactor<Storage, Self>,
     ) -> spru::interaction::Result<()>
     where
-        Storage: spru::item::Storage<State = Self::State>,
+        Storage: spru::item::Storage<State = crate::State>,
     {
         let player_id = interactor.context().player;
 
@@ -48,7 +46,7 @@ impl spru::Interaction for Draw {
 
         match self {
             Draw::Deck => {
-                interactor.enqueue_trigger(Wrap::new(reaction::Trigger::DrawFromDeck));
+                interactor.enqueue_trigger(reaction::Trigger::DrawFromDeck);
             }
             Draw::Discard => {
                 let card = discard.top().expect("Discard cannot be empty");
@@ -64,14 +62,9 @@ impl spru::Interaction for Draw {
     }
 }
 
-const SCRIPT: Script = crate::script::script!("lua/draw.lua");
+const SCRIPT: Script = crate::script::script!("rhai/draw.rhai");
 
-pub fn new(is_deck: bool) -> super::LuaInteraction<bool> {
-    super::LuaInteraction::new(spru_script_lua::Lua::new(), SCRIPT.get(), is_deck)
-}
-
-const SCRIPT_RHAI: Script = crate::script::script!("rhai/draw.rhai");
-
-pub fn new_rhai(is_deck: bool) -> super::RhaiInteraction<bool> {
-    super::RhaiInteraction::new(spru_script_rhai::Rhai::default(), SCRIPT_RHAI.get(), is_deck)
+pub fn new(is_deck: bool) -> super::RhaiInteraction<bool> {
+    let language = spru_script::Rhai::<crate::Actions, crate::Lexicon>::default();
+    super::RhaiInteraction::new(language, SCRIPT.get(), is_deck)
 }

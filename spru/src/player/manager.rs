@@ -58,7 +58,7 @@ impl<PlayerInit> Manager<PlayerInit> {
     >
     where
         PlayerInit:
-            player::Init<State: crate::State, Action: crate::Action<State = PlayerInit::State>>,
+            player::Init,
     {
         let id = player::Id(self.player_details.len() as u32);
         interactor.context_mut().player = id;
