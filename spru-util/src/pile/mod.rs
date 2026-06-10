@@ -849,8 +849,7 @@ mod test {
                 };
             }
 
-            // states
-            register!(registration, Pile, Pile<i64> as PileI64);
+            register!(registration, register_Pile, Pile<i64> as PileI64);
 
             let mut registration2 = registration.type_registration(Some(spru_script::scriptable_path!(i64)));
             use spru_script::RegisterTypeStd as _;

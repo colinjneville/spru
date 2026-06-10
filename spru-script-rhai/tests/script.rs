@@ -64,7 +64,7 @@ impl spru_script::Lexicon for MyLexicon {
     where
         Storage: spru::item::Storage<State = MyState>,
     {
-        S!(<Storage, MyAction> registration => S);
+        register_S!(<Storage, MyAction> registration => S);
     }
 }
 

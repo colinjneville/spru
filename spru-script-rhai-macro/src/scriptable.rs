@@ -15,7 +15,8 @@ pub(crate) fn scriptable(input: proc_macro2::TokenStream) -> syn::Result<proc_ma
     let syn::Type::Path(type_path) = &details.self_type else {
         return Err(syn::Error::new_spanned(&details.self_type, "Expected a type path"));
     };
-    let macro_ident = type_path.path.segments.last().map(|ps| &ps.ident);
+    // `MyType` creates macro `register_MyType!`
+    let macro_ident = type_path.path.segments.last().map(|ps| syn::Ident::new(&format!("register_{}", ps.ident), ps.ident.span()));
 
     let action_ty = quote::quote! { Action };
 
@@ -425,6 +426,7 @@ pub(crate) fn scriptable(input: proc_macro2::TokenStream) -> syn::Result<proc_ma
                         (0 $dollar ($dollar t:tt)*) => { }
                     }
 
+                    #[allow(non_snake_case)]
                     #vis use #unique_macro_ident as #macro_ident;
                 }
             }
