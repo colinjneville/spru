@@ -96,3 +96,8 @@ fn script() {
 
     assert_eq!(a, 7i64);
 }
+
+/// ```
+/// asdf
+/// ```
+struct A;

@@ -17,7 +17,19 @@ macro_rules! script {
         {
             // No boxed statics, no type infered statics, no named closures, so we are left with this...
             fn __load_script() -> String {
-                $crate::script::Script::read($path)
+                cfg_select! {
+                    all(target_family = "wasm", target_os = "unknown") => {
+                        // Scripts needs to be packaged into the binary on WASM
+                        include_str!(concat!(
+                            env!("CARGO_MANIFEST_DIR"), 
+                            "/assets/",
+                            $path,
+                        )).to_string()
+                    }
+                    _ => {
+                        $crate::script::Script::read($path)
+                    }
+                }
             }
             
             $crate::script::Script::new(__load_script)
@@ -55,6 +67,7 @@ impl Script {
     }
 
     #[doc(hidden)]
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
     pub(crate) fn read(path: &str) -> String {
         if let Ok(mut full_path) = std::env::current_exe() {
             full_path.pop();
