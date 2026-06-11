@@ -1,14 +1,14 @@
 let trigger = args;
 
-if trigger == type["Trigger"].start_game() {
+if trigger == type.Trigger.start_game() {
     if context.root.has_started {
         throw "The game has already started";
     }
 
     context.root.has_started = true;
 
-    output.enqueue_trigger(type["Trigger"].start_round());
-} else if trigger == type["Trigger"].start_round() {
+    output.enqueue_trigger(type.Trigger.start_round());
+} else if trigger == type.Trigger.start_round() {
     let hand_size = context.root.round.value + 3;
     let player_count = context.root.players.count;
     // TODO This needs to apply a non-method-created Action, which I 
@@ -40,11 +40,11 @@ if trigger == type["Trigger"].start_game() {
     context.root.current_turn.position = context.root.current_dealer.position;
 
     context.root.current_dealer.rotate();
-} else if trigger == type["Trigger"].draw_from_deck() {
+} else if trigger == type.Trigger.draw_from_deck() {
     let p = context.root.players.get(context.player);
     let card = context.root.deck.pop_top();
     p.hand.push_top(card);
-} else if trigger == type["Trigger"].play() {
+} else if trigger == type.Trigger.play() {
     let round_end = for player_root in context.root.players.players {
         if player_root.played.value == () {
             break false;
@@ -52,9 +52,9 @@ if trigger == type["Trigger"].start_game() {
     } ?? true;
 
     if round_end {
-        output.enqueue_trigger(type["Trigger"].end_round());
+        output.enqueue_trigger(type.Trigger.end_round());
     }
-} else if trigger == type["Trigger"].end_round() {
+} else if trigger == type.Trigger.end_round() {
     let max_len = 0;
     let max_words = 0;
     let max_len_winner;
@@ -93,18 +93,18 @@ if trigger == type["Trigger"].start_game() {
     }
 
     // Reset to plays being optional
-    context.root.round_fsm.transition(type["RoundFsmInput"].score());
+    context.root.round_fsm.transition(type.RoundFsmInput.score());
     // Clear the discard pile
     context.root.discard.clear();
 
     // Game ends after 8 rounds
     if context.root.round == 7 {
-        output.enqueue_trigger(type["Trigger"].end_game());
+        output.enqueue_trigger(type.Trigger.end_game());
     } else {
         context.root.round.add_checked(1);
-        output.enqueue_trigger(type["Trigger"].start_round());
+        output.enqueue_trigger(type.Trigger.start_round());
     }
-} else if trigger == type["Trigger"].end_game() {
+} else if trigger == type.Trigger.end_game() {
     let max_score = 0;
     let final_scores = [];
 
@@ -125,7 +125,7 @@ if trigger == type["Trigger"].start_game() {
     }
 
     // TODO
-    type["GameOutcome"].create(winners, final_scores)
+    type.GameOutcome.create(winners, final_scores)
 } else {
     throw "Unknown trigger";
 }

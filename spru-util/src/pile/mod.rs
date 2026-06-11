@@ -852,7 +852,7 @@ mod test {
             register!(registration, register_Pile, Pile<i64> as PileI64);
 
             let mut registration2 = registration.type_registration(Some(spru_script::scriptable_path!(i64)));
-            use spru_script::RegisterTypeStd as _;
+            use spru_script::RegisterType as _;
             (&mut &mut &mut spru_script::Wrap::new_type((PhantomData::<(MyAction, i64)>, )))
                 .register::<Storage>(&mut registration2);
                 
@@ -893,27 +893,27 @@ mod test {
         let script = r#"
             let out = [];
 
-            let deck = type["PileI64"].dflt();
+            let deck = type.PileI64.dflt();
 
             // (/)
             out.push(deck.try_pop_bottom());
             // (/)
             out.push(deck.try_pop_top());
             // (/)
-            for value in deck.try_pop_bottom_many(5.to_usize()) {
+            for value in deck.try_pop_bottom_many(5) {
                 out.push(value);
             }
             // (/)
-            for value in deck.try_pop_top_many(5.to_usize()) {
+            for value in deck.try_pop_top_many(5) {
                 out.push(value);
             }
             
             deck.push_top(6);
             deck.push_top(7);
-            deck.push_top_many(type["i64"].from_array([8, 9, 10]));
+            deck.push_top_many([8, 9, 10]);
             deck.push_bottom(5);
             deck.push_bottom(4);
-            deck.push_bottom_many(type["i64"].from_array([1, 2, 3]));
+            deck.push_bottom_many([1, 2, 3]);
 
             // 10...1
             for value in deck.items {
@@ -929,29 +929,29 @@ mod test {
             // 2
             out.push(deck.bottom);
             // 9, 8
-            for value in deck.pop_top_many(2.to_usize()) {
+            for value in deck.pop_top_many(2) {
                 out.push(value);
             }
             // 2, 3
-            for value in deck.pop_bottom_many(2.to_usize()) {
+            for value in deck.pop_bottom_many(2) {
                 out.push(value);
             }
 
             // 11
-            deck.set(2.to_usize(), 11);
-            out.push(deck.get(2.to_usize()));
+            deck.set(2, 11);
+            out.push(deck.get(2));
 
             // 21
             deck.items = [20, 21, 22];
-            out.push(deck.get(1.to_usize()));
+            out.push(deck.get(1));
 
             // 21
-            deck.insert(1.to_usize(), 31);
-            out.push(deck.get(2.to_usize()));
+            deck.insert(1, 31);
+            out.push(deck.get(2));
 
             // 31
-            deck.remove(0.to_usize());
-            out.push(deck.get(0.to_usize()));
+            deck.remove(0);
+            out.push(deck.get(0));
 
             deck.clear();
 

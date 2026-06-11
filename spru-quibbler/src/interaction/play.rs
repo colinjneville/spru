@@ -1,4 +1,4 @@
-use std::{collections::HashMap, mem};
+use std::collections::HashMap;
 
 use spru::{interactor::with, item::IdT};
 use spru_util::{counter, fsm, rotating, state_cell};

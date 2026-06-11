@@ -64,7 +64,6 @@ struct MemberKind {
 }
 
 struct TupleArgument {
-    ident: syn::Ident,
     ty: syn::Ident,
     unconverted_pat: syn::PatType,
     converted_pat: syn::PatType,
@@ -113,7 +112,6 @@ impl TupleArgument {
         let pop_converted_arg: syn::Stmt = syn::parse_quote_spanned!(span => let #ident: rhai::Dynamic = crate::pop_type(&ctx, &mut args)?; );
 
         Self {
-            ident,
             ty,
             unconverted_pat,
             converted_pat,
@@ -132,8 +130,6 @@ struct TupleArguments {
     args: Vec<TupleArgument>,
     len: usize,
     empty_tuple: syn::Type,
-
-    span: Span,
 }
 
 impl TupleArguments {
@@ -148,7 +144,6 @@ impl TupleArguments {
             args,
             len: 0,
             empty_tuple,
-            span,
         }
     }
 
@@ -178,11 +173,6 @@ impl TupleArguments {
         self.args().last()
             .map(|ta| &ta.tuple_value)
             .unwrap_or(&self.empty_tuple)
-    }
-
-    fn idents(&self) -> impl Iterator<Item = &syn::Ident> + Clone {
-        self.args().iter()
-            .map(|ta| &ta.ident)
     }
 
     fn types(&self) -> impl Iterator<Item = &syn::Ident> + Clone {
@@ -251,7 +241,6 @@ struct Ret {
     apply_actions: Vec<syn::Stmt>,
     flush: syn::Stmt,
     create: Vec<syn::Stmt>,
-    span: Span,
 }
 
 impl Ret {
@@ -312,7 +301,6 @@ impl Ret {
             apply_actions,
             create,
             flush,
-            span,
         }
     }
 
@@ -377,30 +365,17 @@ impl Ret {
 }
 
 struct RegisterTraits {
-    idents: Vec<syn::Ident>,
     mut_ref: TokenStream,
 }
 
 impl RegisterTraits {
     #[vacro_report::scope]
-    fn new(limit: usize, span: Span) -> Self {
-        let idents = (0..limit)
-            .into_iter()
-            .map(|i| syn::Ident::new(&format!("RegisterMember{i}"), span))
-            .collect();
-
+    fn new(span: Span) -> Self {
         let mut_ref = quote::quote_spanned!(span => &mut);
 
         Self {
-            idents,
             mut_ref,
         }
-    }
-
-    fn ident(&self, i: usize) -> &syn::Ident {
-        // &self.idents[i]
-        // TODO I think a single trait is sufficient, if so, these can be removed
-        &self.idents[0]
     }
 
     fn mut_refs(&self, i: usize) -> impl Iterator<Item = &TokenStream> {
@@ -411,8 +386,6 @@ impl RegisterTraits {
 struct Receiver {
     param_ident: syn::Ident,
     param_ty: syn::Ident,
-    type_ty: syn::Type,
-    state_ty: syn::Type,
     type_bound: syn::WherePredicate,
     state_bound: syn::WherePredicate,
     storable_bound: syn::WherePredicate,
@@ -431,8 +404,8 @@ impl Receiver {
     fn new(span: Span) -> Self {
         let param_ident = syn::Ident::new("this", span);
         let param_ty = syn::Ident::new("This", span);
-        let type_ty = syn::parse_quote_spanned!(span => #param_ty);
-        let state_ty = syn::parse_quote_spanned!(span => IdT<#param_ty>);
+        let type_ty: syn::Type = syn::parse_quote_spanned!(span => #param_ty);
+        let state_ty: syn::Type = syn::parse_quote_spanned!(span => IdT<#param_ty>);
         let type_bound = syn::parse_quote_spanned!(span => #type_ty: Clone + Send + Sync + 'static);
         let state_bound = syn::parse_quote_spanned!(span => #state_ty: Clone + Send + Sync + 'static);
         let storable_bound = syn::parse_quote_spanned!(span => #param_ty: spru::item::storage::Storable<Action::State>);
@@ -481,8 +454,6 @@ impl Receiver {
         Self {
             param_ident,
             param_ty,
-            type_ty,
-            state_ty,
             type_bound,
             state_bound,
             storable_bound,
@@ -744,22 +715,18 @@ pub(crate) fn impl_dynamic_fn(input: TokenStream) -> syn::Result<TokenStream> {
     let no_return_def = [None];
     let yes_return_def = [Some(false), Some(true)];
     
-    let register_traits = RegisterTraits::new(unconverted_params_limit + 1, span);
+    let register_traits = RegisterTraits::new(span);
     let mut tuple_args = TupleArguments::new(unconverted_params_limit, span);
     let ret = Ret::new(span);
     let receiver = Receiver::new(span);
 
     for param_count in 0..unconverted_params_limit {
-        let tuple_type = tuple_args.tuple_type();
-
         for member_kind in &member_kinds {
             let MemberKind { 
-                is_state,
                 wrapper_ident,
                 param_kind,
-                has_receiver,
                 return_kind,
-                registration,
+                ..
             } = member_kind;
 
             if param_count < param_kind.min_params() || param_count > param_kind.max_params() {
@@ -788,8 +755,6 @@ pub(crate) fn impl_dynamic_fn(input: TokenStream) -> syn::Result<TokenStream> {
                     let ret_ty2 = ret.ty();
                     let ret_bound = ret.bound(member_kind, return_conversion);
                     
-
-                    let trait_ident = register_traits.ident(total_converted_count);
                     let mut_refs = register_traits.mut_refs(total_converted_count);
 
                     let mut trait_bitset = conversion_bitset;
@@ -802,8 +767,9 @@ pub(crate) fn impl_dynamic_fn(input: TokenStream) -> syn::Result<TokenStream> {
 
                     output = quote::quote_spanned! { span =>
                         #output
+                        #[allow(warnings)]
                         impl<Action, #(#receiver_param_ty, )* #(#args_types, )* #(#ret_ty, )*> 
-                            #trait_ident<#trait_bitset> for 
+                            RegisterMember<#trait_bitset> for 
                             #(#mut_refs)* #wrapper_ident<
                                 '_, 
                                 Action, 

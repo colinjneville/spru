@@ -27,7 +27,7 @@ append-only-vec.workspace = true
 
 derive-where.workspace = true
 
-rhai = { workspace = true, features = ["sync"] }
+rhai = { workspace = true, features = ["serde", "sync"] }
 
 serde.workspace = true
 

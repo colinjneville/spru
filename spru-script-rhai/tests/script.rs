@@ -18,7 +18,7 @@ struct S {
 #[spru_script::script(partial = Impl)]
 impl S {
     #[create]
-    fn create(val: i64, dummy: i64) -> cloned::Create<S> {
+    fn create(val: i64, _dummy: i64) -> cloned::Create<S> {
         cloned::create(Self {
             a: val,
             b: None,
@@ -29,13 +29,6 @@ impl S {
     fn f() -> i64 {
         9i64
     }
-
-    // #[set]
-    // fn b(&self, value: Option<IdT<S>>) -> (spru_util::cloned::Update<Self>, ) {
-    //     let mut a = self.clone();
-    //     a.b = value;
-    //     (spru_util::cloned::update(a), )
-    // }
 }
 
 #[tagset(impl tagset::proxy::serde::Serialize)]
@@ -84,10 +77,8 @@ fn script() {
     let mut interactor = test_interactor.interactor::<MyAction, _, ()>(&root);
 
     let script = r#"
-    let b = type["S"].create(7, 5);
+    let b = type.S.create(7, 5);
     context.root.b = b;
-    // let a = S.f();
-    // a
     context.root.b.a
     "#;
 
@@ -96,8 +87,3 @@ fn script() {
 
     assert_eq!(a, 7i64);
 }
-
-/// ```
-/// asdf
-/// ```
-struct A;

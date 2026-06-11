@@ -1,7 +1,7 @@
 use spru::common::error::PseudoError as _;
 use spru::{common::error::AnyError, interactor::with};
 use spru::item::IdT;
-use spru_util::{fsm, maybe, pile};
+use spru_util::{fsm, pile};
 use tracing::instrument;
 
 use crate::reaction;

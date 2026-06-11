@@ -10,11 +10,6 @@ pub use player_init::PlayerInit;
 mod reaction;
 pub use reaction::Reaction;
 
-use std::ops;
-
-use tagset::tagset_meta;
-use telety::telety;
-
 cfg_select! {
     feature = "rhai" => {
         pub use spru_script_rhai::*;

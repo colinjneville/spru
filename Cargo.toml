@@ -10,7 +10,6 @@ members = [
     "spru-script-base-macro",
     "spru-script-impl", 
     "spru-script-impl-macro",
-    "spru-script-impl-types", 
     "spru-script-rhai",
     "spru-script-rhai-macro",
     "spru-script-macro",
@@ -33,7 +32,6 @@ spru-script-base = { version = "0.1", path = "./spru-script-base" }
 spru-script-base-macro = { version = "0.1", path = "./spru-script-base-macro" }
 spru-script-impl = { version = "0.1", path = "./spru-script-impl" }
 spru-script-impl-macro = { version = "0.1", path = "./spru-script-impl-macro" }
-spru-script-impl-types = { version = "0.1", path = "./spru-script-impl-types" }
 spru-script-rhai = { version = "0.1", path = "./spru-script-rhai" }
 spru-script-rhai-macro = { version = "0.1", path = "./spru-script-rhai-macro" }
 

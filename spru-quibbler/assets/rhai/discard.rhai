@@ -2,7 +2,7 @@ let discarded = args;
 let player_id = context.player;
 let p = context.root.players.get(player_id);
 
-p.fsm.transition(type["PlayerFsmInput"].discard());
+p.fsm.transition(type.PlayerFsmInput.discard());
 
 let hand_index;
 let hand_index = p.hand.items.index_of(discarded);

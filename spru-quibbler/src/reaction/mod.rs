@@ -52,6 +52,7 @@ impl Trigger {
     }
 }
 
+#[allow(unused)]
 impl Trigger {
     #[instrument(skip_all, ret, err)]
     fn start_game(interactor: &mut Interactor) -> spru::action::Result<()> {

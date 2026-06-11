@@ -110,7 +110,8 @@ vacro_parser::define! { StructOptions:
         Partial: partial = #(partial: syn::Ident),
         Include: include = [#(include*[,]: syn::Ident)],
         State: state = #(is_state: syn::LitBool),
-        Derive: derive = [#(derive*[,]: spru_script_base_macro::ScriptableOptionDeriveKind)]
+        Derive: derive = [#(derive*[,]: spru_script_base_macro::ScriptableOptionDeriveKind)],
+        CratePath: crate_path = #(path: syn::Path),
     })
 }
 
@@ -156,6 +157,16 @@ impl StructOptions {
         }
 
         iter.into_iter().flatten()
+    }
+
+    fn crate_path(&self) -> Option<&syn::Path> {
+        for option in &self.options {
+            if let StructOption::CratePath { path } = option {
+                return Some(&path);
+            }
+        }
+
+        None
     }
 
     #[vacro_report::scope]
@@ -222,7 +233,6 @@ impl StructOptions {
             }
         }
 
-        let span = item_struct.span();
         let mut generics = item_struct.generics.clone();
         let where_clause = generics.make_where_clause().clone();
 
@@ -232,8 +242,6 @@ impl StructOptions {
         let self_type = syn::parse_quote! {
             #ident #type_generics
         };
-
-        let is_state = self.is_state();
 
         let mut options = spru_script_base_macro::ScriptableOptions::default();
 
@@ -279,7 +287,8 @@ vacro_parser::define! { ImplOptions:
         Partial: partial = #(partial: syn::Ident),
         Include: include = [#(include*[,]: syn::Ident)],
         State: state = #(is_state: syn::LitBool),
-        Derive: derive = [#(derive*[,]: spru_script_base_macro::ScriptableOptionDeriveKind)]
+        Derive: derive = [#(derive*[,]: spru_script_base_macro::ScriptableOptionDeriveKind)],
+        CratePath: crate_path = #(path: syn::Path),
     })
 }
 
@@ -324,6 +333,16 @@ impl ImplOptions {
         }
 
         iter.into_iter().flatten()
+    }
+
+    fn crate_path(&self) -> Option<&syn::Path> {
+        for option in &self.options {
+            if let ImplOption::CratePath { path } = option {
+                return Some(&path);
+            }
+        }
+
+        None
     }
 
     fn build(self, item_impl: &syn::ItemImpl) -> syn::Result<spru_script_base_macro::Scriptable> {
@@ -500,7 +519,6 @@ impl ImplOptions {
 
         let ident = (*item_impl.self_ty).clone();
 
-        let span = item_impl.span();
         let mut generics = item_impl.generics.clone();
         let where_clause = generics.make_where_clause().clone();
 
@@ -549,29 +567,35 @@ impl ImplOptions {
 pub(crate) fn script_impl(attr: TokenStream, item: TokenStream) -> syn::Result<TokenStream> {
     let item: syn::Item = syn::parse2(item)?;
 
+    let crate_path;
     let scriptable_macro = match &item {
         syn::Item::Struct(s) => {
             let struct_options: StructOptions = syn::parse2(attr)?;
-            Ok(struct_options.build(&s)?)
+            crate_path = struct_options.crate_path().cloned();
+            struct_options.build(&s)?
             
         },
         syn::Item::Impl(i) => {
             let impl_options: ImplOptions = syn::parse2(attr)?;
-            Ok(impl_options.build(&i)?)
+            crate_path = impl_options.crate_path().cloned();
+            impl_options.build(&i)?
         },
-        _ => Err(syn::Error::new_spanned(&item, "The #[script] attribute can only be applied to structs and impl blocks.")),
-    }?;
+        _ => return Err(syn::Error::new_spanned(&item, "The #[script] attribute can only be applied to structs and impl blocks.")),
+    };
 
-    use quote::ToTokens as _;
-    let err = syn::Error::new(Span::call_site(), scriptable_macro.to_token_stream().to_string()).into_compile_error();
+    let crate_path_default: syn::Path = syn::parse_quote! {
+        ::spru_script::scriptable
+    };
+    let crate_path = crate_path.unwrap_or(crate_path_default);
 
     let item = syn::fold::fold_item(&mut HelperFold, item);
+
+    
 
     Ok(quote::quote! {
         #item
 
-        ::spru_script::scriptable!(#scriptable_macro);
-        // #err
+        #crate_path!(#scriptable_macro);
     })
 }
 

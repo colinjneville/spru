@@ -1,4 +1,4 @@
-use std::{any::{Any, TypeId}, sync::{RwLock, RwLockReadGuard, RwLockWriteGuard}};
+use std::{any::{Any, TypeId}, sync::{RwLock, RwLockWriteGuard}};
 
 use append_only_vec::AppendOnlyVec;
 use derive_where::derive_where;
@@ -203,7 +203,7 @@ where
             output,
         } = interactor.split_mut();
 
-        let ledger_handle = crate::LedgerHandle::new(ledger, 0);
+        let ledger_handle = crate::LedgerHandle::new(ledger);
 
         let cached = RHAI_CACHE.get::<Storage, Action, Lexicon>(&self.settings);
         let mut rhai = cached.rhai_mut();

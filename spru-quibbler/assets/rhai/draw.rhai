@@ -8,10 +8,10 @@ if context.root.current_turn.current != player_id {
     throw "It is not this player's turn";
 }
 
-p.fsm.transition(type["PlayerFsmInput"].draw());
+p.fsm.transition(type.PlayerFsmInput.draw());
 
 if is_deck {
-    output.enqueue_trigger(type["Trigger"].draw_from_deck());
+    output.enqueue_trigger(type.Trigger.draw_from_deck());
 } else {
     let card = context.root.discard.pop_top();
     p.hand.push_top(card);

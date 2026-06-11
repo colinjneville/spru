@@ -33,23 +33,13 @@ pub(crate) fn scriptable(input: proc_macro2::TokenStream) -> syn::Result<proc_ma
 
     let type_impl_name = quote::quote! { __type__ };
 
-    let mut prelude = quote::quote_spanned! { span =>
+    let prelude = quote::quote_spanned! { span =>
         // TODO If this list grows substantially, it might be worth only including traits
         // that might actually be used.
         #[allow(unused_imports)]
         use spru_script::{
-            RegisterMember0 as _,
-            RegisterTypeNoop as _, RegisterTypeStd as _, 
-            // RegisterTypeEqNoop as _, RegisterTypeEqStd as _, 
-            // RegisterTypeGetNoop as _, RegisterTypeGetStd as _, RegisterTypeGetField as _, 
-            // RegisterTypeMethodNoop as _, RegisterTypeMethodStd as _, RegisterTypeMethodRet as _,
-            // RegisterTypeFunctionNoop as _, RegisterTypeFunctionStd as _, RegisterTypeFunctionRet as _, 
-            // RegisterStateNoop as _, RegisterStateStd as _, 
-            // RegisterStateGetNoop as _, RegisterStateGetStd as _, RegisterStateGetField as _,
-            // RegisterStateSetNoop as _, RegisterStateSetStd as _, RegisterStateSetField as _, 
-            // RegisterStateMethodNoop as _, RegisterStateMethodStd as _, RegisterStateMethodRet as _, 
-            // RegisterStateFunctionNoop as _, RegisterStateFunctionStd as _, RegisterStateFunctionRet as _, 
-            // RegisterStateCreateNoop as _, RegisterStateCreateStd as _, 
+            RegisterMember as _,
+            RegisterTypeNoop as _, RegisterType as _, 
         };
 
         #[allow(unused_mut)]

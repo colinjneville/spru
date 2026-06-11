@@ -21,6 +21,7 @@ impl Input {
     }
 }
 
+#[allow(unused)]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Init;
 
@@ -78,7 +79,7 @@ impl spru::player::Init for Init {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[script(state = false, include = [Impl])]
 pub struct Root {
-    #[get(wrap = true)]
+    #[get]
     pub data: Input,
     #[get]
     pub hand: IdT<pile::Pile<data::Card>>,

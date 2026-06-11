@@ -1,7 +1,7 @@
 use spru_util::{counter, fsm, pile, player_map, rotating, state_cell};
 use tagset::tagset;
 
-use crate::{data, game, player, reaction, round};
+use crate::{data, game, player, round};
 
 #[tagset(impl tagset::proxy::serde::Serialize)]
 #[tagset(impl<'de> tagset::serde::DeserializeFromDiscriminant<'de>)]

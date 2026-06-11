@@ -36,7 +36,7 @@ macro_rules! expand_foreach {
 }
 
 expand_foreach!{ $
-    { pub trait } [RegisterTypeNoop, RegisterTypeStd] { {
+    { pub trait } [RegisterTypeNoop, RegisterType] { {
         type State: spru::State;
         
         fn register<Storage>(&mut self, _registration: &mut Registration2<'_, '_>) 
@@ -61,7 +61,7 @@ pub trait RegisterMemberNoop {
     }
 }
 
-pub trait RegisterMember0<const BITSET: usize> {
+pub trait RegisterMember<const BITSET: usize> {
     type State: spru::State;
 
     fn register_member<Storage>(&mut self, _registration: &mut Registration2<'_, '_>, ) 
@@ -283,7 +283,7 @@ where
     type State = Action::State;
 }
 
-impl<Action, T> RegisterTypeStd for &mut TypeWrap<Action, T>
+impl<Action, T> RegisterType for &mut TypeWrap<Action, T>
 where 
     Action: spru::Action,
     T: Clone + Send + Sync + 'static,
@@ -326,7 +326,7 @@ where
     type State = Action::State;
 }
 
-impl<Action, T> RegisterMember0<0> for &mut TypeEqWrap<Action, T>
+impl<Action, T> RegisterMember<0> for &mut TypeEqWrap<Action, T>
 where
     Action: spru::Action,
     T: PartialEq + Clone + Sync + Send + 'static,
@@ -385,7 +385,7 @@ where
     type State = Action::State;
 }
 
-impl<Action, T> RegisterTypeStd for &mut StateWrap<Action, T>
+impl<Action, T> RegisterType for &mut StateWrap<Action, T>
 where 
     Action: spru::Action,
     T: spru::item::storage::Storable<Action::State> + Clone + Send + Sync + 'static,
@@ -444,7 +444,7 @@ where
 { 
     type State = Action::State;
     
-    fn register_member<Storage>(&mut self,_registration: &mut Registration2<'_,'_>)
+    fn register_member<Storage>(&mut self, _registration: &mut Registration2<'_,'_>)
     where 
         Storage: spru::item::Storage<State = Self::State>,
     {
@@ -487,7 +487,6 @@ where
 #[derive(Clone)]
 struct LedgerHandle {
     pointer: Arc<RwLock<*mut ()>>,
-    rhai_lifetime: i64,
 }
 
 // SAFETY: LedgerHandle locks all pointer access, the only concern is LedgerHandle does not outlive the original Ledger reference.
@@ -495,21 +494,16 @@ unsafe impl Send for LedgerHandle {}
 unsafe impl Sync for LedgerHandle {}
 
 impl LedgerHandle {
-    pub fn new<'l, Storage, Action>(ledger: &mut spru::interactor::Ledger<'l, Storage, Action>, rhai_lifetime: i64) -> Self {
+    pub fn new<'l, Storage, Action>(ledger: &mut spru::interactor::Ledger<'l, Storage, Action>) -> Self {
         let pointer = ledger as *mut spru::interactor::Ledger<'l, Storage, Action>;
         Self {
             pointer: Arc::new(RwLock::new(pointer.cast())),
-            rhai_lifetime,
         }
     }
 
     pub unsafe fn get_mut<'l, 'i, Storage, Action>(&'i mut self) 
         -> LedgerMut<'l, 'i, Storage, Action>
     {
-        // if self.rhai_lifetime != lifetime {
-        //     panic!("Dangling LedgerHandle (Expected {}, got {lifetime})", self.rhai_lifetime);
-        // }
-
         let guard = self.pointer.write()
             .expect("Ledger lock poisoned");
         
@@ -519,7 +513,6 @@ impl LedgerHandle {
     }
 
     pub fn from_rhai(ctx: &rhai::NativeCallContext) -> Self {
-
         let handle = ctx.tag()
             .expect("Ledger handle not set")
             .clone();
