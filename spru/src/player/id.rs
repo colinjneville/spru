@@ -3,7 +3,9 @@ use std::{cmp, fmt};
 /// Uniquely identifies a player within a game. Since each [Client](crate::Client) is aassociated
 /// with a single player, it also identifies that client. Note that `player` also includes
 /// non-interactive participants, such as spectators.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(transparent)]
 pub struct Id(pub(crate) u32);
 
 impl Id {

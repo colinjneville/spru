@@ -1,4 +1,4 @@
-pub struct Type;
+pub struct Stateless;
 pub struct State;
 
 

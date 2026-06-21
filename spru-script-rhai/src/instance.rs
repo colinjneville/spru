@@ -1,4 +1,4 @@
-use std::{any::{Any, TypeId}, sync::{RwLock, RwLockWriteGuard}};
+use std::{any::{Any, TypeId}, sync::{RwLock, RwLockReadGuard, RwLockWriteGuard}};
 
 use append_only_vec::AppendOnlyVec;
 use derive_where::derive_where;
@@ -19,26 +19,48 @@ impl RhaiCache {
         }
     }
 
-    fn get<Storage, Action, Lexicon>(&'static self, settings: &crate::Settings) -> Cached 
+    fn get<Storage, Lexicon>(&'static self, settings: &crate::Settings) -> Cached 
     where 
         Storage: spru::item::Storage,
-        Action: spru::Action<State = Storage::State> + 'static,
-        Lexicon: spru_script_base::Lexicon<Language = Rhai<Action, Lexicon>>,
+        Lexicon: spru_script::Lexicon<Language = Rhai, Action: spru::Action<State = Storage::State>>,
     {
-        let type_id = Self::key::<Storage, Action>();
+        let type_id = Self::key::<Storage, Lexicon>();
 
+        if let Some(cached) = self.get_internal(type_id, settings) {
+            cached
+        } else {
+            let index = self.map.push((type_id, settings.clone(), Internal::init::<Storage, Lexicon>(settings)));
+            Cached { internal: &self.map[index].2 }
+        }
+    }
+
+    fn get_stateless<Lexicon>(&'static self, settings: &crate::Settings) -> Cached
+    where
+        Lexicon: spru_script::StatelessLexicon<Language = Rhai>,
+    {
+        // TODO we can potentially reuse an existing <Storage, Lexicon> instance as a 
+        // stateless <Lexicon> instance without issue
+        let type_id = Self::key::<(), Lexicon>();
+
+        if let Some(cached) = self.get_internal(type_id, settings) {
+            cached
+        } else {
+            let index = self.map.push((type_id, settings.clone(), Internal::init_stateless::<Lexicon>(settings)));
+            Cached { internal: &self.map[index].2 }
+        }
+    }
+
+    fn get_internal(&'static self, type_id: TypeId, settings: &crate::Settings) -> Option<Cached> {
         for (cached_type_id, cached_settings, internal) in self.map.iter() {
-
             if *cached_type_id == type_id && cached_settings == settings {
-                return Cached { internal };
+                return Some(Cached { internal });
             }
         }
 
-        let index = self.map.push((type_id, settings.clone(), Internal::init::<Storage, Action, Lexicon>(settings)));
-        Cached { internal: &self.map[index].2 }
+        None
     }
 
-    fn key<Storage, Action>() -> TypeId {
+    fn key<Storage, Lexicon>() -> TypeId {
         Any::type_id(&|| {})
     }
 }
@@ -53,25 +75,28 @@ pub(crate) struct Internal {
 
 
 impl Internal {
-    fn init<Storage, Action, Lexicon>(_settings: &crate::Settings) -> Self 
+    fn init_stateless<Lexicon>(settings: &crate::Settings) -> Self 
     where
-        Storage: spru::item::Storage,
-        Action: spru::Action<State = Storage::State> + 'static,
-        Lexicon: spru_script_base::Lexicon<Language = Rhai<Action, Lexicon>>,
+        Lexicon: spru_script::StatelessLexicon<Language = Rhai>,
     {
+        let mut rhai = Self::init_internal(settings);
+        let mut registration = crate::Registration1::new(&mut rhai);
+        Lexicon::register_stateless(&mut registration);
+        let scope = registration.apply();
+
+        Self {
+            rhai: RwLock::new(rhai),
+            scope,
+        }
+    }
+
+    fn init_internal(_settings: &crate::Settings) -> rhai::Engine {
         let mut rhai = rhai::Engine::new();
         rhai.set_max_expr_depths(64, 32);
 
         // Needed for custom equality handling?
         rhai.set_fast_operators(false);
-        
-        rhai.register_type::<spru::player::Id>();
-        rhai.register_fn("==", |pid: &mut spru::player::Id, pid2: spru::player::Id| {
-            *pid == pid2
-        });
-        rhai.register_fn("!=", |pid: &mut spru::player::Id, pid2: spru::player::Id| {
-            *pid != pid2
-        });
+
 
         fn from_int<T: TryFrom<rhai::INT>>(
             ctx: rhai::NativeCallContext<'_>, 
@@ -116,9 +141,28 @@ impl Internal {
             rhai.register_fn("to_int", to_int::<i64>);
         }
         rhai.register_fn("to_int", to_int::<isize>);
+
+        rhai
+    }
+
+    fn init<Storage, Lexicon>(settings: &crate::Settings) -> Self 
+    where
+        Storage: spru::item::Storage,
+        Lexicon: spru_script::Lexicon<Language = Rhai, Action: spru::Action<State = Storage::State>>,
+    {
+        let mut rhai = Self::init_internal(settings);
         
+        rhai.register_type::<spru::player::Id>();
+        rhai.register_fn("==", |pid: &mut spru::player::Id, pid2: spru::player::Id| {
+            *pid == pid2
+        });
+        rhai.register_fn("!=", |pid: &mut spru::player::Id, pid2: spru::player::Id| {
+            *pid != pid2
+        });
+
         let mut registration = crate::Registration1::new(&mut rhai);
-        Lexicon::register::<Storage>(&mut registration);
+        Lexicon::register_stateless(&mut registration);
+        Lexicon::register_state::<Storage>(&mut registration);
         let scope = registration.apply();
 
         Self {
@@ -135,30 +179,42 @@ pub(crate) struct Cached {
 }
 
 impl Cached {
+    pub(crate) fn rhai_ref(&self) -> RwLockReadGuard<'_, rhai::Engine> {
+        self.internal.rhai.read()
+            .expect("Rhai lock is poisoned")
+    }
+
     pub(crate) fn rhai_mut(&self) -> RwLockWriteGuard<'_, rhai::Engine> {
+        // TODO this only needs to be mutable to set the default tag, which could
+        // probably removed by adding it to the scope instead
         self.internal.rhai.write()
             .expect("Rhai lock is poisoned")
     }
 }
 
+pub struct Rhai;
+
+impl spru_script::LanguageActual for Rhai {
+    type Registration<'r> = crate::Registration1<'r>;
+}
 
 #[derive(serde::Serialize, serde::Deserialize)]
 #[derive_where(Debug, Clone; )]
 #[serde(default)]
-#[serde(bound(serialize = "", deserialize = "Action: 'static, Lexicon: 'static"))]
-pub struct Rhai<Action, Lexicon> {
+#[serde(bound(serialize = "", deserialize = "Lexicon: 'static"))]
+pub struct RhaiInstance<Lexicon> {
     settings: crate::Settings,
     #[serde(skip)]
-    _p: std::marker::PhantomData<(Action, Lexicon)>,
+    _p: std::marker::PhantomData<(Lexicon, )>,
 }
 
-impl<Action: 'static, Lexicon: 'static> Default for Rhai<Action, Lexicon> {
+impl<Lexicon: 'static> Default for RhaiInstance<Lexicon> {
     fn default() -> Self {
         Self::new(Default::default())
     }
 }
 
-impl<Action: 'static, Lexicon: 'static> Rhai<Action, Lexicon> {
+impl<Lexicon: 'static> RhaiInstance<Lexicon> {
     pub fn new(settings: crate::Settings) -> Self {
         Self {
             settings,
@@ -167,21 +223,74 @@ impl<Action: 'static, Lexicon: 'static> Rhai<Action, Lexicon> {
     }
 }
 
-
-impl<Action, Lexicon> spru_script_base::Language for Rhai<Action, Lexicon>
-where
-    Action: spru::Action,
-{
-    type Action = Action;
-
-    type Registration<'r> = crate::Registration1<'r>;
+impl<Lexicon> spru_script::StatelessLanguage for RhaiInstance<Lexicon> {
     type Error = Box<rhai::EvalAltResult>;
 }
 
-impl<Action, Lexicon, Args, Ret, Context, Output> spru_script_base::LanguageExec<Args, Ret, Context, Output> for Rhai<Action, Lexicon> 
+impl<Lexicon> spru_script::Language for RhaiInstance<Lexicon>
 where
-    Action: spru::Action,
-    Lexicon: spru_script_base::Lexicon<Language = Self>,
+    Lexicon: spru_script::Lexicon<Language = Rhai>,
+{
+    type Action = Lexicon::Action;
+}
+
+impl<Lexicon, Args, Ret> spru_script::LanguageStatelessEval<Args, Ret> for RhaiInstance<Lexicon> 
+where
+    Lexicon: spru_script::StatelessLexicon<Language = Rhai>,
+    Ret: Clone + Send + Sync + 'static,
+    Args: Clone + Send + Sync + 'static,
+{
+    fn stateless_eval(&self, script: &str, args: Args) -> Result<Ret, Self::Error> {
+        let cached = RHAI_CACHE.get_stateless::<Lexicon>(&self.settings);
+        let rhai = cached.rhai_ref();
+
+        let mut scope = cached.internal.scope.clone();
+        scope.push(&*crate::key::GLOBAL_ARGS, args);
+        
+        let ret = rhai
+            .eval_with_scope::<Ret>(&mut scope, script)?;
+
+        Ok(ret)
+    }
+}
+
+impl<Lexicon, Args, Ret, Root> spru_script::LanguageEval<Args, Ret, Root> for RhaiInstance<Lexicon>
+where
+    Lexicon: spru_script::Lexicon<Language = Rhai>,
+    Ret: Clone + Send + Sync + 'static,
+    Args: Clone + Send + Sync + 'static,
+    Root: Clone + Send + Sync + 'static,
+{
+    fn eval<Storage>(&self, storage: &Storage, root: &Root, script: &str, args: Args) 
+        -> Result<Ret, Self::Error>
+    where 
+        Storage: spru::item::Storage<State = <Self::Action as spru::Action>::State>,
+    {
+        let ledger_handle = crate::LedgerHandle::new_readonly::<Storage>(storage);
+
+        let cached = RHAI_CACHE.get::<Storage, Lexicon>(&self.settings);
+        let mut rhai = cached.rhai_mut();
+
+        let mut scope = cached.internal.scope.clone();
+        scope.push(&*crate::key::GLOBAL_ARGS, args);
+        scope.push(&*crate::key::GLOBAL_CONTEXT, rhai::Map::from([("root".into(), rhai::Dynamic::from(root.clone()))]));
+
+         // Store a pointer to the Ledger for the duration of the script
+        rhai.set_default_tag(rhai::Dynamic::from(ledger_handle));
+        
+        let ret = rhai
+            .eval_with_scope::<Ret>(&mut scope, script)?;
+
+        // Pointer to the Ledger must be cleared to prevent it from outliving the mut borrow 
+        rhai.set_default_tag(());
+
+        Ok(ret)        
+    }
+}
+
+impl<Lexicon, Args, Ret, Context, Output> spru_script::LanguageExec<Args, Ret, Context, Output> for RhaiInstance<Lexicon> 
+where
+    Lexicon: spru_script::Lexicon<Language = Rhai>,
     Context: crate::Context,
     Output: crate::Output<Ret>,
     Output::RetIn: Clone + Send + Sync + 'static,
@@ -189,13 +298,13 @@ where
 {
     fn exec<Storage>(
         &self, 
-        interactor: &mut spru::Interactor<'_, Storage, Action, Context, Output>,
+        interactor: &mut spru::Interactor<'_, Storage, Lexicon::Action, Context, Output>,
         script: &str,
         args: Args,
     ) 
         -> Result<Ret, Self::Error> 
     where
-        Storage: spru::item::Storage<State = Action::State>,
+        Storage: spru::item::Storage<State = <Lexicon::Action as spru::Action>::State>,
     {
         let spru::interactor::SplitMut {
             ledger,
@@ -205,7 +314,7 @@ where
 
         let ledger_handle = crate::LedgerHandle::new(ledger);
 
-        let cached = RHAI_CACHE.get::<Storage, Action, Lexicon>(&self.settings);
+        let cached = RHAI_CACHE.get::<Storage, Lexicon>(&self.settings);
         let mut rhai = cached.rhai_mut();
 
         let mut context_map = rhai::Map::new();

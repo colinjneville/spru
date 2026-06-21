@@ -3,20 +3,23 @@ use std::marker::PhantomData;
 use bevy::prelude;
 use derive_where::derive_where;
 
-use crate::common;
+use crate::{common, server};
+
+
 
 #[derive_where(Debug; )]
 #[derive(prelude::Event)]
 #[non_exhaustive]
-pub struct Init<Server: super::ServerSSS> {
-    pub result: Result<common::component::GameId, spru::server::error::InitError>,
+pub struct Init<Server: server::ServerSSS> {
+    pub result: Result<server::ServerInfo, spru::server::error::InitError>,
     pub(crate) _server: PhantomData<fn() -> Server>,
 }
 
 #[derive_where(Debug; )]
-#[derive(prelude::Event)]
+#[derive(prelude::EntityEvent)]
 #[non_exhaustive]
-pub struct Signal<Server: super::ServerSSS> {
+pub struct Signal<Server: server::ServerSSS> {
+    pub entity: prelude::Entity,
     pub game_id: common::component::GameId,
     pub sender: spru::player::Id,
     pub result: Result<(), spru::server::error::SignalError>,
@@ -24,27 +27,30 @@ pub struct Signal<Server: super::ServerSSS> {
 }
 
 #[derive_where(Debug; )]
-#[derive(prelude::Event)]
+#[derive(prelude::EntityEvent)]
 #[non_exhaustive]
-pub struct AddPlayer<Server: super::ServerSSS> {
+pub struct AddPlayer<Server: server::ServerSSS> {
+    pub entity: prelude::Entity,
     pub game_id: common::component::GameId,
     pub result: Result<spru::player::Id, spru::server::error::AddPlayerError>,
     pub(crate) _server: PhantomData<fn() -> Server>,
 }
 
 #[derive_where(Debug; )]
-#[derive(prelude::Event)]
+#[derive(prelude::EntityEvent)]
 #[non_exhaustive]
-pub struct ManualTrigger<Server: super::ServerSSS> {
+pub struct ManualTrigger<Server: server::ServerSSS> {
+    pub entity: prelude::Entity,
     pub game_id: common::component::GameId,
     pub result: Result<(), spru::server::error::ManualTriggerError>,
     pub(crate) _server: PhantomData<fn() -> Server>,
 }
 
 #[derive_where(Debug; <Server::Reaction as spru::Reaction>::GameOutcome)]
-#[derive(prelude::Event)]
+#[derive(prelude::EntityEvent)]
 #[non_exhaustive]
-pub struct GameComplete<Server: super::ServerSSS> {
+pub struct GameComplete<Server: server::ServerSSS> {
+    pub entity: prelude::Entity,
     pub game_id: common::component::GameId,
     pub game_outcome: <Server::Reaction as spru::Reaction>::GameOutcome,
 }

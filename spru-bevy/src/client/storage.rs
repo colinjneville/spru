@@ -3,9 +3,83 @@ use std::{any, marker::PhantomData};
 use bevy::prelude;
 use spru::item;
 
-use crate::{client::component, common};
+use crate::{client, common};
 
-#[doc(hidden)]
+#[derive(Debug)]
+pub(crate) struct BevyReadOnlyStorage<'l, State> {
+    world: &'l prelude::World,
+    entity_map: &'l super::component::EntityMap,
+    game_id: spru::game::Id,
+    client_id: spru::player::Id,
+    _state: PhantomData<fn() -> State>,
+}
+
+impl<'l, State> BevyReadOnlyStorage<'l, State> {
+    pub(crate) fn new(
+        world: &'l prelude::World,
+        entity_map: &'l super::component::EntityMap,
+        game_id: spru::game::Id,
+        client_id: spru::player::Id,
+    ) -> Self {
+        Self {
+            world,
+            entity_map,
+            game_id,
+            client_id,
+            _state: PhantomData,
+        }
+    }
+}
+
+impl<'l, State: spru::State> spru::item::ReadOnlyStorage for BevyReadOnlyStorage<'l, State> {
+    type State = State;
+
+    fn get<T>(&self, id: item::IdT<T>) -> spru::item::storage::Result<&spru::Item<T>>
+    where
+        T: spru::item::storage::Storable<Self::State>,
+    {
+        let id = id.untyped();
+        let entity = self.entity_map.get(id)?;
+        Ok(self
+            .world
+            .get::<client::component::Item<T>>(entity)
+            .ok_or(super::BevyError::ComponentNotFound(
+                id,
+                entity,
+                any::type_name::<T>(),
+            ))?
+            .item())
+    }
+}
+
+impl<'l, State: spru::State> spru::item::Storage for BevyReadOnlyStorage<'l, State> {
+    #[allow(refining_impl_trait)]
+    fn get_mut<T>(
+        &mut self,
+        _id: item::IdT<T>,
+    ) -> spru::item::storage::Result<bevy::prelude::Mut<'_, spru::Item<T>>>
+    where
+        T: spru::item::storage::Storable<Self::State>,
+    {
+        panic!("BevyReadOnlyStorage cannot mutate state")
+    }
+
+    fn create<T>(&mut self, _value: spru::Item<T>) -> spru::item::storage::Result<()>
+    where
+        T: spru::item::storage::Storable<Self::State>,
+    {
+        panic!("BevyReadOnlyStorage cannot mutate state")
+    }
+
+    fn destroy<T>(&mut self, _id: item::IdT<T>) -> spru::item::storage::Result<spru::Item<T>>
+    where
+        T: spru::item::storage::Storable<Self::State>,
+    {
+        panic!("BevyReadOnlyStorage cannot mutate state")
+    }
+}
+
+
 #[derive(Debug)]
 pub struct BevyStorage<'l, State> {
     world: &'l mut prelude::World,
@@ -32,7 +106,7 @@ impl<'l, State> BevyStorage<'l, State> {
     }
 }
 
-impl<'l, State: spru::State> spru::item::Storage for BevyStorage<'l, State> {
+impl<'l, State: spru::State> spru::item::ReadOnlyStorage for BevyStorage<'l, State> {
     type State = State;
 
     fn get<T>(&self, id: item::IdT<T>) -> spru::item::storage::Result<&spru::Item<T>>
@@ -43,7 +117,7 @@ impl<'l, State: spru::State> spru::item::Storage for BevyStorage<'l, State> {
         let entity = self.entity_map.get(id)?;
         Ok(self
             .world
-            .get::<component::Item<T>>(entity)
+            .get::<client::component::Item<T>>(entity)
             .ok_or(super::BevyError::ComponentNotFound(
                 id,
                 entity,
@@ -51,7 +125,9 @@ impl<'l, State: spru::State> spru::item::Storage for BevyStorage<'l, State> {
             ))?
             .item())
     }
+}
 
+impl<'l, State: spru::State> spru::item::Storage for BevyStorage<'l, State> {
     #[allow(refining_impl_trait)]
     fn get_mut<T>(
         &mut self,
@@ -64,7 +140,7 @@ impl<'l, State: spru::State> spru::item::Storage for BevyStorage<'l, State> {
         let entity = self.entity_map.get(id)?;
         Ok(self
             .world
-            .get_mut::<component::Item<T>>(entity)
+            .get_mut::<client::component::Item<T>>(entity)
             .ok_or(super::BevyError::ComponentNotFound(
                 id,
                 entity,
@@ -83,12 +159,12 @@ impl<'l, State: spru::State> spru::item::Storage for BevyStorage<'l, State> {
                 .world
                 .spawn((
                     prelude::Name::new(format!(
-                        "[{:x}:{}.{id}] {}",
+                        "[{}:{}.{id}] {}",
                         self.game_id.friendly_display(),
                         self.client_id,
                         any::type_name::<T>()
                     )),
-                    component::Item::new(value),
+                    client::component::Item::new(value),
                     common::component::GameId::new(self.game_id),
                     super::component::ClientId::new(self.client_id),
                 ))
@@ -108,7 +184,7 @@ impl<'l, State: spru::State> spru::item::Storage for BevyStorage<'l, State> {
                     .world
                     .get_entity_mut(entity)
                     .map_err(|_| super::BevyError::EntityNotFound(id, entity))?;
-                match entity_mut.take::<component::Item<T>>() {
+                match entity_mut.take::<client::component::Item<T>>() {
                     Some(item) => Ok(item.into_inner()),
                     None => Err(super::BevyError::ComponentNotFound(
                         id,

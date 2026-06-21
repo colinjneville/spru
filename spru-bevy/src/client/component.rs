@@ -201,6 +201,19 @@ impl EntityMap {
             .ok_or(super::BevyError::IdNotFound(id))
     }
 
+    #[doc(hidden)]
+    pub fn take(&mut self) -> Self {
+        Self {
+            map: std::mem::take(&mut self.map),
+        }
+    }
+
+    #[doc(hidden)]
+    pub fn untake(&mut self, taken: Self) {
+        assert!(self.map.is_empty());
+        self.map = taken.map;
+    }
+
     pub(crate) fn insert_as(
         &mut self,
         id: item::Id,

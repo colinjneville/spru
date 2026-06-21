@@ -394,6 +394,10 @@ impl<'l, Storage, Action> Ledger<'l, Storage, Action> {
     {
         self.items_status.flush(self.storage)
     }
+
+    pub fn storage(&self) -> &Storage {
+        &self.storage
+    }
 }
 
 
@@ -766,6 +770,10 @@ impl<'i, Storage, Action, T> Existing<'i, Storage, Action, T> {
     /// The id of the item
     pub fn id(&self) -> IdT<T> {
         self.item.id()
+    }
+
+    pub fn state(&self) -> &'i T {
+        self.item.get()
     }
 
     /// Update the item. See [action::Update].

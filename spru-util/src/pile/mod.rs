@@ -836,27 +836,39 @@ mod test {
 
     struct MyLexicon;
 
+    impl spru_script::StatelessLexicon for MyLexicon {
+        type Language = spru_script_rhai::Rhai;
+        
+        fn register_stateless(_registration: &mut spru_script_rhai::Registration1<'_>) {
+            
+        }
+    }
+
     impl spru_script::Lexicon for MyLexicon {
-        type Language = spru_script::Rhai<MyAction, Self>;
+        type Action = MyAction;
     
-        fn register<Storage>(registration: &mut <Self::Language as spru_script::Language>::Registration<'_>)
+        fn register_state<Storage>(registration: &mut spru_script_rhai::Registration1<'_>)
         where
-            Storage: spru::item::Storage<State = <<Self::Language as spru_script::Language>::Action as spru::Action>::State>,
+            Storage: spru::item::Storage<State = MyState>,
         {
-            macro_rules! register {
-                ($registration:ident, $macro_path:path, $type_path:path $(as $rename_path:path)? $(,)?) => {
-                    $macro_path!(<Storage, MyAction> $registration => $type_path $(as $rename_path)?);
-                };
-            }
+            spru_script_rhai::rhai! { <Storage, MyAction> registration {
+                register_Pile => Pile<i64> as PileI64;
+            } };
 
-            register!(registration, register_Pile, Pile<i64> as PileI64);
+            // macro_rules! register {
+            //     ($registration:ident, $macro_path:path, $type_path:path $(as $rename_path:path)? $(,)?) => {
+            //         $macro_path!(<Storage, MyAction> $registration => $type_path $(as $rename_path)?);
+            //     };
+            // }
 
-            let mut registration2 = registration.type_registration(Some(spru_script::scriptable_path!(i64)));
-            use spru_script::RegisterType as _;
-            (&mut &mut &mut spru_script::Wrap::new_type((PhantomData::<(MyAction, i64)>, )))
-                .register::<Storage>(&mut registration2);
+            // register!(registration, register_Pile, Pile<i64> as PileI64);
+
+            // let mut registration2 = registration.type_registration(Some(spru_script::scriptable_path!(i64)));
+            // use spru_script_rhai::RegisterType as _;
+            // (&mut &mut &mut spru_script::Wrap::new_type((PhantomData::<(MyAction, i64)>, )))
+            //     .register::<Storage>(&mut registration2);
                 
-            registration2.apply();
+            // registration2.apply();
         }
     }
 
@@ -886,7 +898,7 @@ mod test {
 
         let storage = crate::storage::Standalone::<MyState>::new();
 
-        let rhai = spru_script::Rhai::<MyAction, MyLexicon>::new(Default::default());
+        let rhai = spru_script_rhai::RhaiInstance::<MyLexicon>::default();
 
         let mut test_interactor = spru::interactor::test_util::TestInteractor::new(storage);
 

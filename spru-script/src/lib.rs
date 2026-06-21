@@ -5,21 +5,23 @@ mod game_init;
 pub use game_init::GameInit;
 mod interaction;
 pub use interaction::Interaction;
+pub mod marker;
 mod player_init;
 pub use player_init::PlayerInit;
 mod reaction;
 pub use reaction::Reaction;
+pub mod wrap;
 
-cfg_select! {
-    feature = "rhai" => {
-        pub use spru_script_rhai::*;
-    }
-    _ => {
-        pub use spru_script_impl::*;
-    }
-}
+// cfg_select! {
+//     feature = "rhai" => {
+//         pub use spru_script_rhai::*;
+//     }
+//     _ => {
+//         pub use spru_script_impl::*;
+//     }
+// }
 
-pub use spru_script_base::{Language, LanguageExec, Lexicon};
+pub use spru_script_base::{LanguageActual, StatelessLanguage, LanguageStatelessEval, Language, LanguageExec, LanguageEval, StatelessLexicon, Lexicon};
 
 /// A pre-parsed path-wise representation of a type, including type arguments. Create using [macro@scriptable_path].
 pub use spru_script_base::ScriptablePath;
@@ -33,6 +35,9 @@ pub use spru_script_macro::script;
 /// Parses a rust type path during macro expansion. Used for implementing [Scriptable::register].
 /// Not normally needed for manual use.
 pub use spru_script_macro::scriptable_path;
+
+#[doc(hidden)]
+pub use spru_script_macro::scriptable;
 
 // /// A [spru::State] with scripting support. Implement using the [tagset::tagset] macro.
 // /// ```ignore
@@ -66,4 +71,3 @@ pub use spru_script_macro::scriptable_path;
 //         Storage: spru::item::Storage<State = Self>,
 //     ;
 // }
-

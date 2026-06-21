@@ -55,12 +55,12 @@ fn local_multiplayer() -> impl std::process::Termination {
                 &mut spru_bevy::server::component::FromUser<minimal::MyServer>,
             )>|
              -> prelude::Result {
-                let game_id = *server_init
+                let server_info = *server_init
                     .event()
                     .result
                     .as_ref()
                     .map_err(ToString::to_string)?;
-                let (_, mut from_user) = minimal::MyServer::filter_mut(&mut q_server, game_id)
+                let (_, mut from_user) = minimal::MyServer::filter_mut(&mut q_server, server_info.game_id)
                     .ok_or("server not found")?;
                 from_user.add_player(minimal::PlayerColor::Blue);
                 from_user.add_player(minimal::PlayerColor::Red);
@@ -76,13 +76,13 @@ fn local_multiplayer() -> impl std::process::Termination {
             )>|
              -> prelude::Result {
                 let game_id = client_init.event().game_id;
-                let client_id = *client_init
+                let client_info = *client_init
                     .event()
                     .result
                     .as_ref()
                     .map_err(ToString::to_string)?;
                 let (_, _, mut from_user) =
-                    minimal::MyClient::filter_mut(&mut q_client, game_id, client_id)
+                    minimal::MyClient::filter_mut(&mut q_client, game_id, client_info.client_id)
                         .ok_or("Client not found")?;
                 from_user.stage_interaction(minimal::Interaction);
                 from_user.revert_all_interactions();

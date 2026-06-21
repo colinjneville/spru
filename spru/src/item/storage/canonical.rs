@@ -33,7 +33,7 @@ impl<Repr, State> Canonical<Repr, State> {
     }
 }
 
-impl<State: crate::State> item::Storage for Canonical<State::Repr, State> {
+impl<State: crate::State> item::ReadOnlyStorage for Canonical<State::Repr, State> {
     type State = State;
 
     fn get<T>(&self, id: item::IdT<T>) -> Result<&Item<T>, storage::Error>
@@ -45,7 +45,9 @@ impl<State: crate::State> item::Storage for Canonical<State::Repr, State> {
             .ok_or(Error::ItemDoesNotExist(id.untyped()))
             .map_err(Into::into)
     }
+}
 
+impl<State: crate::State> item::Storage for Canonical<State::Repr, State> {
     #[allow(refining_impl_trait)]
     fn get_mut<T>(&mut self, id: item::IdT<T>) -> Result<&mut Item<T>, storage::Error>
     where

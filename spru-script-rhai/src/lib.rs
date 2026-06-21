@@ -1,22 +1,55 @@
 mod context;
 pub use context::Context;
 mod instance;
-pub use instance::Rhai;
+pub use instance::{Rhai, RhaiInstance};
 pub(crate) mod key;
-pub mod marker;
 mod output;
 pub use output::Output;
 mod settings;
 pub use settings::Settings;
 use spru::item::IdT;
 
-use std::{any, marker::PhantomData, sync::{Arc, RwLock, RwLockWriteGuard}};
+use std::{any, sync::{Arc, RwLock, RwLockWriteGuard}};
 
 type RhaiResult<T> = Result<T, rhai::EvalAltResult>;
 
-pub use spru_script_rhai_macro::scriptable;
+use spru_script::wrap::*;
+use spru_script::ScriptablePath;
 
-use spru_script_base::ScriptablePath;
+#[macro_export]
+macro_rules! _rhai {
+    (<$storage:ty, $action:ty> $registration:ident {
+        $(
+            $macro_path:path => $ty:path $(as $type_alias:path)?;
+        )*
+    } ) => {
+        #[allow(unused_imports)]
+        use spru_script_rhai::{
+            RegisterStateMemberNoop as _, RegisterStateMember as _,
+            RegisterStateNoop as _, RegisterState as _, 
+        };
+
+        $(
+            $macro_path!(<$storage, $action> $registration => $ty $(as $type_alias)?);
+        )*
+    };
+    ($registration:ident {
+        $(
+            $macro_path:path => $ty:path $(as $type_alias:path)?;
+        )*
+    } ) => {
+        #[allow(unused_imports)]
+        use spru_script_rhai::{
+            RegisterStatelessMemberNoop as _, RegisterStatelessMember as _,
+            RegisterStatelessNoop as _, RegisterStateless as _, 
+        };
+
+        $(
+            $macro_path!($registration => $ty $(as $type_alias)?);
+        )*
+    };
+}
+pub use _rhai as rhai;
 
 // Creates function/method/create traits for converting FromDynamic parameters and IntoDynamic return types
 // The first number is the max number of parameters when converting parameters (O(2^n) implementations),
@@ -35,23 +68,48 @@ macro_rules! expand_foreach {
     };
 }
 
-expand_foreach!{ $
-    { pub trait } [RegisterTypeNoop, RegisterType] { {
-        type State: spru::State;
-        
-        fn register<Storage>(&mut self, _registration: &mut Registration2<'_, '_>) 
-        where
-            Storage: spru::item::Storage<State = Self::State>,
-        {
-            
-        }
-    } }
+pub trait RegisterStatelessNoop {
+    fn register_stateless(&mut self, _registration: &mut Registration2<'_, '_>) {
+        tracing::warn!("Could not register stateless {ty}", ty = any::type_name::<Self>());
+    }
 }
 
-pub trait RegisterMemberNoop {
+pub trait RegisterStateless {
+    fn register_stateless(&mut self, _registration: &mut Registration2<'_, '_>);
+}
+
+pub trait RegisterStateNoop {
+    type State: spru::State;
+    
+    fn register_state<Storage>(&mut self, _registration: &mut Registration2<'_, '_>) 
+    where
+        Storage: spru::item::Storage<State = Self::State>,
+    {
+        tracing::warn!("Could not register state {ty}", ty = any::type_name::<Self>());
+    }
+}
+
+pub trait RegisterState {
+    type State: spru::State;
+    
+    fn register_state<Storage>(&mut self, _registration: &mut Registration2<'_, '_>) 
+    where
+        Storage: spru::item::Storage<State = Self::State>,
+    ;
+}
+
+pub trait RegisterStatelessMemberNoop {
+    fn register_stateless_member(&mut self, _registration: &mut Registration2<'_, '_>, ) {
+        // TODO The type does not give a very good indication of what failed to register,
+        // but getting the member name needs some cooperation from the *Wrap types
+        tracing::warn!("Could not register member {ty}", ty = any::type_name::<Self>());
+    }
+}
+
+pub trait RegisterStateMemberNoop {
     type State: spru::State;
 
-    fn register_member<Storage>(&mut self, _registration: &mut Registration2<'_, '_>, ) 
+    fn register_state_member<Storage>(&mut self, _registration: &mut Registration2<'_, '_>, ) 
     where
         Storage: spru::item::Storage<State = Self::State>,
     {
@@ -61,29 +119,16 @@ pub trait RegisterMemberNoop {
     }
 }
 
-pub trait RegisterMember<const BITSET: usize> {
-    type State: spru::State;
-
-    fn register_member<Storage>(&mut self, _registration: &mut Registration2<'_, '_>, ) 
-    where
-        Storage: spru::item::Storage<State = Self::State>;
+pub trait RegisterStatelessMember<const BITSET: usize> {
+    fn register_stateless_member(&mut self, _registration: &mut Registration2<'_, '_>, );
 }
 
+pub trait RegisterStateMember<const BITSET: usize> {
+    type State: spru::State;
 
-
-#[derive(Debug)]
-#[repr(transparent)]
-pub struct Wrap<Marker, Args>(Option<Args>, PhantomData<Marker>);
-
-impl<Marker, Args> Wrap<Marker, Args> {
-    pub fn new(args: Args) -> Self {
-        Self(Some(args), PhantomData)
-    }
-
-    pub fn take(&mut self) -> Args {
-        self.0.take()
-            .expect("take called only once")
-    }
+    fn register_state_member<Storage>(&mut self, _registration: &mut Registration2<'_, '_>, ) 
+    where
+        Storage: spru::item::Storage<State = Self::State>;
 }
 
 pub trait IntoDynamic: 'static {
@@ -193,32 +238,6 @@ expand_foreach! { $
     } }
 }
 
-macro_rules! wrap_constructors {
-    ($($marker:ty => $constructor:ident),* $(,)?) => {
-        $(
-            impl<Args> Wrap<$marker, Args> {
-                pub fn $constructor(args: Args) -> Self {
-                    Self::new(args)
-                }
-            }
-        )*
-    }
-}
-
-wrap_constructors! {
-    marker::State => new_state,
-    (marker::State, marker::Get) => new_state_get,
-    (marker::State, marker::Set) => new_state_set,
-    (marker::State, marker::Method) => new_state_method,
-    (marker::State, marker::Function) => new_state_function,
-    (marker::State, marker::Create) => new_state_create,
-    marker::Type => new_type,
-    (marker::Type, marker::Get) => new_type_get,
-    (marker::Type, marker::Method) => new_type_method,
-    (marker::Type, marker::Function) => new_type_function,
-    (marker::Type, marker::Eq) => new_type_eq,
-}
-
 pub struct Registration1<'r> {
     rhai: &'r mut rhai::Engine,
     globals: rhai::Map,
@@ -273,27 +292,13 @@ pub trait Register {
     fn register(engine: &mut rhai::Engine);
 }
 
-pub type TypeArgs<Action, T> = (PhantomData<(Action, T)>, );
-pub type TypeWrap<Action, T> = Wrap<marker::Type, TypeArgs<Action, T>>;
+impl<T> RegisterStatelessNoop for StatelessWrap<T> { }
 
-impl<Action, T> RegisterTypeNoop for TypeWrap<Action, T> 
-where
-    Action: spru::Action,
-{ 
-    type State = Action::State;
-}
-
-impl<Action, T> RegisterType for &mut TypeWrap<Action, T>
+impl<T> RegisterStateless for &mut StatelessWrap<T>
 where 
-    Action: spru::Action,
     T: Clone + Send + Sync + 'static,
 {
-    type State = Action::State;
-
-    fn register<Storage>(&mut self, registration: &mut Registration2<'_, '_>) 
-    where
-        Storage: spru::item::Storage<State = Self::State>,
-    {
+    fn register_stateless(&mut self, registration: &mut Registration2<'_, '_>) {
         let (_, ) = self.take();
         registration.registration.rhai.register_type::<T>();
 
@@ -316,27 +321,15 @@ where
     }
 }
 
-pub type TypeEqArgs<Action, T> = (PhantomData<(Action, T)>, );
-pub type TypeEqWrap<Action, T> = Wrap<(marker::Type, marker::Eq), TypeEqArgs<Action, T>>;
 
-impl<Action, T> RegisterMemberNoop for TypeEqWrap<Action, T>
-where 
-    Action: spru::Action,
-{ 
-    type State = Action::State;
-}
 
-impl<Action, T> RegisterMember<0> for &mut TypeEqWrap<Action, T>
+impl<T> RegisterStatelessMemberNoop for StatelessEqWrap<T> { }
+
+impl<T> RegisterStatelessMember<0> for &mut StatelessEqWrap<T>
 where
-    Action: spru::Action,
     T: PartialEq + Clone + Sync + Send + 'static,
 {
-    type State = Action::State;
-
-    fn register_member<Storage>(&mut self, registration: &mut Registration2<'_, '_>) 
-    where
-        Storage: spru::item::Storage<State = Self::State>,
-    {
+    fn register_stateless_member(&mut self, registration: &mut Registration2<'_, '_>) {
         let (_, ) = self.take();
         registration.registration.rhai.register_fn("==", move |t: &mut T, t2: T| t == &t2);
         registration.registration.rhai.register_fn("!=", move |t: &mut T, t2: T| t != &t2);
@@ -344,55 +337,30 @@ where
 }
 
 
-pub type TypeGetArgs<'n, Action, T, U> = (&'n str, fn(&T) -> U, PhantomData<Action>);
-pub type TypeGetWrap<'n, Action, T, U> = Wrap<(marker::Type, marker::Get), TypeGetArgs<'n, Action, T, U>>;
-
-impl<Action, T, U> RegisterMemberNoop for TypeGetWrap<'_, Action, T, U>
-where 
-    Action: spru::Action,
-{ 
-    type State = Action::State;
-}
 
 
-pub type TypeMethodArgs<'n, Action, T, Args, Ret> = (&'n str, fn(&T, Args) -> Ret, PhantomData<Action>);
-pub type TypeMethodWrap<'n, Action, T, Args, Ret> = Wrap<(marker::Type, marker::Method), TypeMethodArgs<'n, Action, T, Args, Ret>>;
+impl<T, U> RegisterStatelessMemberNoop for StatelessGetWrap<'_, T, U> { }
 
-impl<Action, T, Args, Ret> RegisterMemberNoop for TypeMethodWrap<'_, Action, T, Args, Ret> 
-where
-    Action: spru::Action,
-{ 
-    type State = Action::State;
-}
+impl<T, Args, Ret> RegisterStatelessMemberNoop for StatelessMethodWrap<'_, T, Args, Ret> { }
 
-pub type TypeFunctionArgs<'n, Action, Args, Ret> = (&'n str, fn(Args) -> Ret, PhantomData<Action>);
-pub type TypeFunctionWrap<'n, Action, Args, Ret> = Wrap<(marker::Type, marker::Function), TypeFunctionArgs<'n, Action, Args, Ret>>;
 
-impl<Action, Args, Ret> RegisterMemberNoop for TypeFunctionWrap<'_, Action, Args, Ret>
-where
-    Action: spru::Action,
-{ 
-    type State = Action::State;
-}
+impl<Args, Ret> RegisterStatelessMemberNoop for StatelessFunctionWrap<'_, Args, Ret> { }
 
-pub type StateArgs<Action, T> = (PhantomData<(Action, T)>, );
-pub type StateWrap<Action, T> = Wrap<marker::State, StateArgs<Action, T>>;
-
-impl<Action, T> RegisterTypeNoop for StateWrap<Action, T> 
+impl<Action, T> RegisterStateNoop for StateWrap<Action, T> 
 where
     Action: spru::Action,
 {
     type State = Action::State;
 }
 
-impl<Action, T> RegisterType for &mut StateWrap<Action, T>
+impl<Action, T> RegisterState for &mut StateWrap<Action, T>
 where 
     Action: spru::Action,
     T: spru::item::storage::Storable<Action::State> + Clone + Send + Sync + 'static,
 {
     type State = Action::State;
 
-    fn register<Storage>(&mut self, registration: &mut Registration2<'_, '_>) 
+    fn register_state<Storage>(&mut self, registration: &mut Registration2<'_, '_>) 
     where
         Storage: spru::item::Storage<State = Self::State>,
     {
@@ -425,26 +393,20 @@ where
     }
 }
 
-pub type StateGetArgs<'n, Action, T, U> = (&'n str, fn(&T) -> U, PhantomData<Action>);
-pub type StateGetWrap<'n, Action, T, U> = Wrap<(marker::State, marker::Get), StateGetArgs<'n, Action, T, U>>;
-
-impl<Action, T, U> RegisterMemberNoop for StateGetWrap<'_, Action, T, U>
+impl<Action, T, U> RegisterStateMemberNoop for StateGetWrap<'_, Action, T, U>
 where
     Action: spru::Action,
 { 
     type State = Action::State;
 } 
 
-pub type StateSetArgs<'n, Action, T, U, Ret> = (&'n str, fn(&T, U) -> Ret, PhantomData<Action>);
-pub type StateSetWrap<'n, Action, T, U, Ret> = Wrap<(marker::State, marker::Set), StateSetArgs<'n, Action, T, U, Ret>>;
-
-impl<Action, T, U, Ret> RegisterMemberNoop for StateSetWrap<'_, Action, T, U, Ret>
+impl<Action, T, U, Ret> RegisterStateMemberNoop for StateSetWrap<'_, Action, T, U, Ret>
 where
     Action: spru::Action,
 { 
     type State = Action::State;
     
-    fn register_member<Storage>(&mut self, _registration: &mut Registration2<'_,'_>)
+    fn register_state_member<Storage>(&mut self, _registration: &mut Registration2<'_,'_>)
     where 
         Storage: spru::item::Storage<State = Self::State>,
     {
@@ -453,30 +415,21 @@ where
     
 }
 
-pub type StateMethodArgs<'n, Action, T, Args, Ret> = (&'n str, fn(&T, Args) -> Ret, PhantomData<Action>);
-pub type StateMethodWrap<'n, Action, T, Args, Ret> = Wrap<(marker::State, marker::Method), StateMethodArgs<'n, Action, T, Args, Ret>>;
-
-impl<Action, T, Args, Ret> RegisterMemberNoop for StateMethodWrap<'_, Action, T, Args, Ret>
+impl<Action, T, Args, Ret> RegisterStateMemberNoop for StateMethodWrap<'_, Action, T, Args, Ret>
 where
     Action: spru::Action,
 { 
     type State = Action::State;
 }
 
-pub type StateFunctionArgs<'n, Action, Args, Ret> = (&'n str, fn(Args) -> Ret, PhantomData<Action>);
-pub type StateFunctionWrap<'n, Action, Args, Ret> = Wrap<(marker::State, marker::Function), StateFunctionArgs<'n, Action, Args, Ret>>;
-
-impl<Action, Args, Ret> RegisterMemberNoop for StateFunctionWrap<'_, Action, Args, Ret>
+impl<Action, Args, Ret> RegisterStateMemberNoop for StateFunctionWrap<'_, Action, Args, Ret>
 where
     Action: spru::Action,
 { 
     type State = Action::State;
 }
 
-pub type StateCreateArgs<'n, Action, T, Args, Create> = (&'n str, fn(Args) -> Create, PhantomData<(Action, T)>);
-pub type StateCreateWrap<'n, Action, T, Args, Create> = Wrap<(marker::State, marker::Create), StateCreateArgs<'n, Action, T, Args, Create>>;
-
-impl<Action, T, Args, Create> RegisterMemberNoop for StateCreateWrap<'_, Action, T, Args, Create>
+impl<Action, T, Args, Create> RegisterStateMemberNoop for StateCreateWrap<'_, Action, T, Args, Create>
 where
     Action: spru::Action
 { 
@@ -485,8 +438,9 @@ where
 
 // https://rhai.rs/book/patterns/references.html
 #[derive(Clone)]
-struct LedgerHandle {
-    pointer: Arc<RwLock<*mut ()>>,
+enum LedgerHandle {
+    StorageOnly(Arc<*const ()>),
+    Ledger(Arc<RwLock<*mut ()>>),
 }
 
 // SAFETY: LedgerHandle locks all pointer access, the only concern is LedgerHandle does not outlive the original Ledger reference.
@@ -496,20 +450,53 @@ unsafe impl Sync for LedgerHandle {}
 impl LedgerHandle {
     pub fn new<'l, Storage, Action>(ledger: &mut spru::interactor::Ledger<'l, Storage, Action>) -> Self {
         let pointer = ledger as *mut spru::interactor::Ledger<'l, Storage, Action>;
-        Self {
-            pointer: Arc::new(RwLock::new(pointer.cast())),
-        }
+        Self::Ledger(Arc::new(RwLock::new(pointer.cast())))
     }
+
+    pub fn new_readonly<'l, Storage>(storage: &Storage) -> Self {
+        let pointer = storage as *const Storage;
+        Self::StorageOnly(Arc::new(pointer.cast()))
+    }
+
+    // pub unsafe fn get<'i, Storage, Action: 'i>(&'i self)
+    //     -> StorageRef<'i, Storage>
+    // {
+    //     match self {
+    //         LedgerHandle::StorageOnly(pointer) => {
+    //             let storage = pointer.cast::<Storage>();
+    //             let storage = unsafe { &*storage };
+    //             StorageRef { _guard: None, storage, }
+    //         },
+    //         LedgerHandle::Ledger(pointer) => {
+    //             let guard = pointer.read()
+    //                 .expect("Ledger lock poisoned");
+    //             let ledger = guard.cast::<spru::interactor::Ledger<'_, Storage, Action>>();
+    //             let ledger = unsafe { &mut *ledger };
+    //             StorageRef { _guard: Some(guard), storage: ledger.storage() }
+    //         },
+    //     }
+    // }
 
     pub unsafe fn get_mut<'l, 'i, Storage, Action>(&'i mut self) 
         -> LedgerMut<'l, 'i, Storage, Action>
     {
-        let guard = self.pointer.write()
-            .expect("Ledger lock poisoned");
+        match self {
+            LedgerHandle::StorageOnly(pointer) => {
+                let storage = pointer.cast::<Storage>();
+                let storage = unsafe { &*storage };
+                
+                LedgerMut::Storage { storage }
+            },
+            LedgerHandle::Ledger(pointer) => {
+                let guard = pointer.write()
+                    .expect("Ledger lock poisoned");
+                
+                let ledger = guard.cast::<spru::interactor::Ledger<'l, Storage, Action>>();
+                let ledger = unsafe { &mut *ledger };
+                LedgerMut::Ledger { _guard: guard, ledger }
+            },
+        }
         
-        let ledger = guard.cast::<spru::interactor::Ledger<'l, Storage, Action>>();
-        let ledger = unsafe { &mut *ledger };
-        LedgerMut { _guard: guard, ledger }
     }
 
     pub fn from_rhai(ctx: &rhai::NativeCallContext) -> Self {
@@ -522,24 +509,65 @@ impl LedgerHandle {
     }
 }
 
-struct LedgerMut<'l, 'i, Storage, Action> {
-    _guard: RwLockWriteGuard<'i, *mut ()>,
-    ledger: &'i mut spru::interactor::Ledger<'l, Storage, Action>, 
+// struct StorageRef<'i, Storage> {
+//     _guard: Option<RwLockReadGuard<'i, *mut ()>>,
+//     storage: &'i Storage, 
+// }
+
+// impl<'i, Storage> std::ops::Deref for StorageRef<'i, Storage> {
+//     type Target = Storage;
+
+//     fn deref(&self) -> &Self::Target {
+//         self.storage
+//     }
+// }
+
+enum LedgerMut<'l, 'i, Storage, Action> {
+    Storage {
+        storage: &'i Storage,
+    },
+    Ledger {
+        _guard: RwLockWriteGuard<'i, *mut ()>,
+        ledger: &'i mut spru::interactor::Ledger<'l, Storage, Action>, 
+    },
 }
 
-impl<'l, 'i, Storage, Action> std::ops::Deref for LedgerMut<'l, 'i, Storage, Action> {
-    type Target = spru::interactor::Ledger<'l, Storage, Action>;
+impl<'l, 'i, Storage, Action> LedgerMut<'l, 'i, Storage, Action> {
+    fn get<T>(&self, id: IdT<T>) 
+        -> Result<&T, spru::item::storage::Error> 
+    where
+        Storage: spru::item::Storage,
+        T: spru::item::storage::Storable<Storage::State>,
+    {
+        match self {
+            LedgerMut::Storage { storage } => storage.get(id)
+                .map(spru::Item::get),
+            LedgerMut::Ledger { _guard, ledger } => ledger.get(id)
+                .map(|existing| existing.state()),
+        }
+    }
 
-    fn deref(&self) -> &Self::Target {
-        self.ledger
+    fn ledger(&mut self) -> Result<&mut spru::interactor::Ledger<'l, Storage, Action>, &'static str> {
+        match self {
+            LedgerMut::Storage { .. } => Err("Attempted to modify state during read-only script evaluation"),
+            LedgerMut::Ledger { _guard, ledger } => Ok(ledger),
+        }
     }
 }
 
-impl<'l, 'i, Storage, Action> std::ops::DerefMut for LedgerMut<'l, 'i, Storage, Action> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        self.ledger
-    }
-}
+// impl<'l, 'i, Storage, Action> std::ops::Deref for LedgerMut<'l, 'i, Storage, Action> {
+//     type Target = spru::interactor::Ledger<'l, Storage, Action>;
+
+//     fn deref(&self) -> &Self::Target {
+//         self.ledger
+//     }
+// }
+
+// impl<'l, 'i, Storage, Action> std::ops::DerefMut for LedgerMut<'l, 'i, Storage, Action> {
+//     fn deref_mut(&mut self) -> &mut Self::Target {
+//         self.ledger
+//     }
+// }
 
 fn pop_type<T>(ctx: &rhai::NativeCallContext<'_>, args: &mut &mut [&mut rhai::Dynamic]) -> Result<T, rhai::EvalAltResult> 
 where

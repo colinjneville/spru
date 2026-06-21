@@ -50,14 +50,29 @@ struct MyState;
 struct MyAction;
 
 struct MyLexicon;
-impl spru_script::Lexicon for MyLexicon {
-    type Language = spru_script_rhai::Rhai<MyAction, Self>;
 
-    fn register<Storage>(registration: &mut <Self::Language as spru_script_base::Language>::Registration<'_>)
+impl spru_script::StatelessLexicon for MyLexicon {
+    type Language = spru_script_rhai::Rhai;
+
+    fn register_stateless(registration: &mut spru_script_rhai::Registration1<'_>) {
+        
+    }
+}
+
+impl spru_script::Lexicon for MyLexicon {
+    
+    type Action = MyAction;
+
+    
+
+    fn register_state<Storage>(registration: &mut spru_script_rhai::Registration1<'_>)
     where
         Storage: spru::item::Storage<State = MyState>,
     {
-        register_S!(<Storage, MyAction> registration => S);
+        spru_script_rhai::rhai! { <Storage, MyAction> registration {
+            register_S => S as S;
+        } };
+        // register_S!(<Storage, MyAction> registration => S);
     }
 }
 
@@ -65,7 +80,7 @@ impl spru_script::Lexicon for MyLexicon {
 fn script() {
     use spru_script::LanguageExec as _;
     let storage = spru_util::storage::Standalone::<MyState>::new();
-    let rhai = spru_script_rhai::Rhai::<MyAction, MyLexicon>::default();
+    let rhai = spru_script_rhai::RhaiInstance::<MyLexicon>::default();
     let mut test_interactor = spru::interactor::test_util::TestInteractor::new(storage);
     let mut interactor = test_interactor.interactor::<MyAction, _, ()>(&());
     let s = interactor
@@ -86,4 +101,51 @@ fn script() {
         .unwrap();
 
     assert_eq!(a, 7i64);
+}
+
+#[test]
+fn eval() {
+    use spru_script::{LanguageExec as _, LanguageEval as _};
+    let storage = spru_util::storage::Standalone::<MyState>::new();
+    let rhai = spru_script_rhai::RhaiInstance::<MyLexicon>::default();
+    let mut test_interactor = spru::interactor::test_util::TestInteractor::new(storage);
+    let mut interactor = test_interactor.interactor::<MyAction, _, ()>(&());
+    let s = interactor
+        .create(cloned::create(S { a: 3i64, b: None, }));
+    let root = s.id();
+
+    interactor.flush().unwrap();
+
+    let mut interactor = test_interactor.interactor::<MyAction, _, ()>(&root);
+
+    let exec_script = r#"
+    let b = type.S.create(7, 5);
+    context.root.b = b;
+    context.root.b.a
+    "#;
+
+    let a: i64 = rhai.exec(&mut interactor, exec_script, rhai::Dynamic::UNIT)
+        .unwrap();
+
+    let eval_script = r#"
+    context.root.b.a + args
+    "#;
+
+    let addend = 3i64;
+
+    let b: i64 = rhai.eval(interactor.ledger().storage(), &root, eval_script, rhai::Dynamic::from(addend))
+        .unwrap();
+
+    assert_eq!(a, 7i64);
+    assert_eq!(a + addend, b);
+
+    let bad_eval_script = r#"
+    let b = type.S.create(7, 5);
+    context.root.b = b;
+    context.root.b.a
+    "#;
+
+    let c: Result<i64, _> = rhai.eval(interactor.ledger().storage(), &root, bad_eval_script, ());
+
+    assert!(c.is_err());
 }

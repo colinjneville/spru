@@ -65,6 +65,6 @@ impl spru::Interaction for Draw {
 const SCRIPT: Script = crate::script::script!("rhai/draw.rhai");
 
 pub fn new(is_deck: bool) -> super::RhaiInteraction<bool> {
-    let language = spru_script::Rhai::<crate::Actions, crate::Lexicon>::default();
+    let language = crate::Language::default();
     super::RhaiInteraction::new(language, SCRIPT.get(), is_deck)
 }

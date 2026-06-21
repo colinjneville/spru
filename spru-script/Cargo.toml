@@ -25,9 +25,3 @@ derive-where.workspace = true
 serde.workspace = true
 
 tracing.workspace = true
-
-spru-script-rhai = { workspace = true, optional = true } 
-
-[features]
-default = ["rhai"]
-rhai = ["dep:spru-script-rhai"]

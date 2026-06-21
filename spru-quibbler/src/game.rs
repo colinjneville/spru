@@ -117,7 +117,7 @@ pub mod init {
     const SCRIPT: crate::script::Script = crate::script::script!("rhai/game_init.rhai");
 
     pub fn new() -> crate::GameInit {
-        let language = spru_script::Rhai::<crate::Actions, crate::Lexicon>::default();
+        let language = crate::Language::default();
         crate::GameInit::new(language, SCRIPT.get(), ())
     }
 }

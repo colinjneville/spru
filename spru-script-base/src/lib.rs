@@ -1,16 +1,52 @@
-pub trait Lexicon {
-    type Language: crate::Language;
+pub trait StatelessLexicon {
+    type Language: crate::LanguageActual;
 
-    fn register<Storage>(registration: &mut <Self::Language as crate::Language>::Registration<'_>)
+    /// Register non-State immutable types
+    fn register_stateless(registration: &mut <Self::Language as crate::LanguageActual>::Registration<'_>);
+}
+
+pub trait Lexicon: StatelessLexicon {
+    type Action: spru::Action;
+
+    /// Register State types contained by this Lexicon for use in [Self::Language].  
+    fn register_state<Storage>(registration: &mut <Self::Language as crate::LanguageActual>::Registration<'_>)
     where
-        Storage: spru::item::Storage<State = <<Self::Language as crate::Language>::Action as spru::Action>::State>,
+        Storage: spru::item::Storage<State = <Self::Action as spru::Action>::State>,
     ;
 }
 
-pub trait Language {
-    type Action: spru::Action;
+pub trait LanguageActual {
     type Registration<'r>;
+    // type Registered<Lexicon: crate::StatelessLexicon>;
+    // type Error;
+
+    // fn with_stateless_lexicon<Lexicon: crate::StatelessLexicon>() 
+    //     -> Result<Self::Registered<Lexicon>, Self::Error>;
+    // fn with_lexicon<Lexicon: crate::Lexicon>() 
+    //     -> Result<Self::Registered<Lexicon>, Self::Error>;
+}
+
+pub trait StatelessLanguage {
+    // type Registration<'r>;
     type Error;
+}
+
+pub trait Language: StatelessLanguage {
+    type Action: spru::Action;
+}
+
+pub trait LanguageStatelessEval<Args, Ret>: StatelessLanguage {
+    // Evaluate the result of a script without Storage access
+    fn stateless_eval(&self, script: &str, args: Args) -> Result<Ret, Self::Error>;
+}
+
+pub trait LanguageEval<Args, Ret, Root>: Language + LanguageStatelessEval<Args, Ret> {
+    // Evaluate the result of a script with read-only Storage access. Any attempts to modify game items will fail.
+    fn eval<Storage>(&self, storage: &Storage, root: &Root, script: &str, args: Args) 
+        -> Result<Ret, Self::Error>
+    where 
+        Storage: spru::item::Storage<State = <Self::Action as spru::Action>::State>,
+    ;
 }
 
 pub trait LanguageExec<Args, Ret, Context, Output>: Language {

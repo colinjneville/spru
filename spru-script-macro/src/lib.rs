@@ -1,4 +1,5 @@
 mod script;
+mod scriptable;
 mod scriptable_path;
 
 #[proc_macro_attribute]
@@ -15,5 +16,12 @@ pub fn scriptable_path(input: proc_macro::TokenStream) -> proc_macro::TokenStrea
     quote::quote! {
         #scriptable_path
     }.into()
+}
+
+#[proc_macro]
+pub fn scriptable(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let (Ok(ts) | Err(ts)) = scriptable::scriptable(input.into())
+        .map_err(syn::Error::into_compile_error);
+    ts.into()
 }
 

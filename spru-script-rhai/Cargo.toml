@@ -16,6 +16,7 @@ spru-script.workspace = true
 [dependencies]
 spru.workspace = true
 spru-macro.workspace = true
+spru-script.workspace = true
 spru-script-base.workspace = true
 spru-script-macro.workspace = true
 spru-script-rhai-macro.workspace = true

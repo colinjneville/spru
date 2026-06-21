@@ -302,6 +302,6 @@ impl spru::Reaction for Reaction {
 const SCRIPT: Script = crate::script::script!("rhai/reaction.rhai");
 
 pub fn new() -> crate::Reaction {
-    let language = spru_script::Rhai::<crate::Actions, crate::Lexicon>::default();
+    let language = crate::Language::default();
     crate::Reaction::new(language, SCRIPT.get())
 }

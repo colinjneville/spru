@@ -1,9 +1,11 @@
 pub mod command;
 pub mod component;
 pub mod event;
+#[cfg(feature = "remote")]
+pub mod remote;
 mod storage;
 use bevy::prelude;
-pub(crate) use storage::BevyStorage;
+pub use storage::BevyStorage;
 mod plugin;
 pub use plugin::Plugin;
 use spru::item;
@@ -122,3 +124,37 @@ pub enum RunClientError {
 }
 
 pub type RunClientResult<T> = std::result::Result<T, RunClientError>;
+
+#[derive(Debug, Clone, Copy)]
+pub struct ClientInfo {
+    pub entity: prelude::Entity,
+    pub client_id: component::ClientId,
+}
+
+#[cfg(feature = "script")]
+pub fn eval<Client, Args, Ret>(
+    world: &prelude::World,
+    client_entity: prelude::Entity,
+    language: &impl spru_script::LanguageEval<Args, Ret, Client::Root, Error: std::error::Error + Send + Sync + 'static>,
+    script: &str,
+    args: Args,
+) 
+    -> prelude::Result<Ret> 
+where
+    Client: ClientSSS,
+{
+    let (root, entity_map, game_id, client_id) = world.get_entity(client_entity)?
+        .components::<(
+            &common::component::Root<Client::Common>,
+            &component::EntityMap,
+            &common::component::GameId,
+            &component::ClientId,
+        )>();
+
+    let game_id = **game_id;
+    let client_id = **client_id;
+    let storage = storage::BevyReadOnlyStorage::new(world, entity_map, game_id, client_id);
+
+    let ret = language.eval(&storage, &root.0, script, args)?;
+    Ok(ret)
+}

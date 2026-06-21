@@ -112,6 +112,6 @@ impl spru::Interaction for Play {
 const SCRIPT: Script = crate::script::script!("rhai/play.rhai");
 
 pub fn new(play: Option<crate::Play>) -> super::RhaiInteraction<Option<crate::Play>> {
-    let language = spru_script::Rhai::<crate::Actions, crate::Lexicon>::default();
+    let language = crate::Language::default();
     super::RhaiInteraction::new(language, SCRIPT.get(), play)
 }

@@ -2,17 +2,9 @@ use std::{fmt, ops};
 
 use bevy::prelude;
 
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    Hash,
-    serde::Serialize,
-    serde::Deserialize,
-    prelude::Component,
-)]
+#[derive(Debug, Clone, Copy, PartialOrd, Ord, PartialEq, Eq, Hash)]
+#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(prelude::Component)]
 #[component(immutable)]
 pub struct GameId(spru::game::Id);
 

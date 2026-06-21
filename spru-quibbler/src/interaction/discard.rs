@@ -54,7 +54,7 @@ impl spru::Interaction for Discard {
 const SCRIPT: Script = crate::script::script!("rhai/discard.rhai");
 
 pub fn new(discard: data::Card) -> super::RhaiInteraction<data::Card> {
-    let language = spru_script::Rhai::<crate::Actions, crate::Lexicon>::default();
+    let language = crate::Language::default();
     super::RhaiInteraction::new(language, SCRIPT.get(), discard)
 }
 

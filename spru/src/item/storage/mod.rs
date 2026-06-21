@@ -10,11 +10,11 @@ use crate::{Item, item::IdT};
 /// A result with an [Error] `Err`
 pub type Result<T> = std::result::Result<T, self::Error>;
 
-/// Stores and retrieves [Item]s created by spru.  
+/// Retrieves [Item]s created by spru.  
 ///
 /// A [Server](crate::Server) provides its own Storage, but a [Client](crate::Client) must
 /// choose an implementation.
-pub trait Storage {
+pub trait ReadOnlyStorage {
     /// The type of [State](trait@crate::State) stored, usually defined by type parameter
     type State: crate::State;
 
@@ -24,7 +24,13 @@ pub trait Storage {
     fn get<T>(&self, id: IdT<T>) -> self::Result<&Item<T>>
     where
         T: Storable<Self::State>;
+}
 
+/// Stores and retrieves [Item]s created by spru.  
+///
+/// A [Server](crate::Server) provides its own Storage, but a [Client](crate::Client) must
+/// choose an implementation.
+pub trait Storage: ReadOnlyStorage {
     /// Retrieve a mutable [`Item<T>`] with the given id.  
     ///
     /// Returns an error if the [Item] does not exist.

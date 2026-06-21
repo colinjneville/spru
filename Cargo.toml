@@ -65,6 +65,10 @@ rhai = "1.24.0"
 tracing = "0.1.41"
 tracing-core = "0.1.34"
 
+# networking
+aeronet = "0.20.0"
+aeronet_webtransport = "0.20.0"
+
 # async
 # atomicell = "0.2.0"
 # futures-io = "0.3.31"
@@ -86,7 +90,7 @@ proc-macro2 = { version = "1.0.106", features = ["span-locations"] }
 quote = "1.0.33"
 syn = { version = "2.0.38", features = ["full"] }
 
-vacro-parser = "0.1.14"
+vacro-parser = "0.1.15"
 vacro-report = "0.1.3"
 
 # serialization

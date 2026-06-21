@@ -266,8 +266,12 @@ impl Ret {
 
         let apply_actions: syn::Block = syn::parse_quote_spanned! { span => 
             {
-                for action in actions {
-                    ledger.enqueue_action(id, action);
+                if !actions.is_empty() {
+                    for action in actions {
+                        ledger.ledger()?.enqueue_action(id, action);
+                    }
+                    ledger.ledger()?.flush()
+                        .map_err(|e| format!("Failed to flush actions: {e}"))?;
                 }
             }
         };
@@ -275,15 +279,19 @@ impl Ret {
 
         let create: syn::Block = syn::parse_quote_spanned! { span => 
             {
-                let id = ledger.enqueue_create(#ident.into());
+                let id = ledger.ledger()?.enqueue_create(#ident.into());
                 let #ident = rhai::Dynamic::from(id.force_type::<This>());
+                ledger.ledger()?.flush()
+                    .map_err(|e| format!("Failed to flush actions: {e}"))?;
             }
         };
         let create = create.stmts;
 
         let flush: syn::Stmt = syn::parse_quote_spanned! { span => 
-            ledger.flush()
-                .map_err(|e| format!("Failed to flush actions: {e}"))?;
+            if false {
+                // ledger.ledger()?.flush()
+                //     .map_err(|e| format!("Failed to flush actions: {e}"))?;
+            }
         };
 
         Self {
@@ -391,6 +399,7 @@ struct Receiver {
     storable_bound: syn::WherePredicate,
     type_pat: syn::PatType,
     state_pat: syn::PatType,
+    // get_storage: Vec<syn::Stmt>,
     get_ledger: Vec<syn::Stmt>,
     lookup: Vec<syn::Stmt>,
     statics_map_get: syn::Stmt,
@@ -459,6 +468,7 @@ impl Receiver {
             storable_bound,
             type_pat,
             state_pat,
+            // get_storage,
             get_ledger,
             lookup,
             statics_map_get,
@@ -494,6 +504,13 @@ impl Receiver {
         member_kind.has_receiver.then_some(if member_kind.is_state { &self.state_pat } else { &self.type_pat })
             .into_iter()
     }
+
+    // fn get_storage(&self, member_kind: &MemberKind) -> impl Iterator<Item = &syn::Stmt> + Clone {
+    //     ((member_kind.has_receiver || matches!(&member_kind.return_kind, ReturnKind::Action)) && member_kind.is_state)
+    //         .then_some(&self.get_storage)
+    //         .into_iter()
+    //         .flatten()
+    // }
 
     fn get_ledger(&self, member_kind: &MemberKind) -> impl Iterator<Item = &syn::Stmt> + Clone {
         ((member_kind.has_receiver || matches!(&member_kind.return_kind, ReturnKind::Action)) && member_kind.is_state)
@@ -687,7 +704,7 @@ pub(crate) fn impl_dynamic_fn(input: TokenStream) -> syn::Result<TokenStream> {
         },
         MemberKind {
             is_state: false,
-            wrapper_ident: syn::Ident::new("TypeGetWrap", span),
+            wrapper_ident: syn::Ident::new("StatelessGetWrap", span),
             param_kind: ParamKind::None,
             has_receiver: true,
             return_kind: ReturnKind::One,
@@ -695,7 +712,7 @@ pub(crate) fn impl_dynamic_fn(input: TokenStream) -> syn::Result<TokenStream> {
         },
         MemberKind {
             is_state: false,
-            wrapper_ident: syn::Ident::new("TypeMethodWrap", span),
+            wrapper_ident: syn::Ident::new("StatelessMethodWrap", span),
             param_kind: ParamKind::Many,
             has_receiver: true,
             return_kind: ReturnKind::One,
@@ -704,7 +721,7 @@ pub(crate) fn impl_dynamic_fn(input: TokenStream) -> syn::Result<TokenStream> {
         },
         MemberKind {
             is_state: false,
-            wrapper_ident: syn::Ident::new("TypeFunctionWrap", span),
+            wrapper_ident: syn::Ident::new("StatelessFunctionWrap", span),
             param_kind: ParamKind::Many,
             has_receiver: false,
             return_kind: ReturnKind::One,
@@ -720,9 +737,16 @@ pub(crate) fn impl_dynamic_fn(input: TokenStream) -> syn::Result<TokenStream> {
     let ret = Ret::new(span);
     let receiver = Receiver::new(span);
 
+    let stateless_fn = syn::Ident::new("register_stateless_member", span);
+    let state_fn = syn::Ident::new("register_state_member", span);
+
+    let stateless_trait = syn::Ident::new("RegisterStatelessMember", span);
+    let state_trait = syn::Ident::new("RegisterStateMember", span);
+
     for param_count in 0..unconverted_params_limit {
         for member_kind in &member_kinds {
             let MemberKind { 
+                is_state,
                 wrapper_ident,
                 param_kind,
                 return_kind,
@@ -734,6 +758,19 @@ pub(crate) fn impl_dynamic_fn(input: TokenStream) -> syn::Result<TokenStream> {
             }
 
             let return_conversions = if return_kind.has_return_value() { yes_return_def.as_slice() } else { no_return_def.as_slice() };
+
+            let action_param = is_state.then(|| quote::quote_spanned!(span => Action,));
+            let action_param = action_param.as_ref();
+            let action_bound = is_state.then(|| quote::quote_spanned!(span => Action: ::spru::Action,));
+            let action_bound = action_bound.as_ref();
+            let state_assoc: Option<syn::ItemType> = is_state.then(|| syn::parse_quote_spanned!(span => type State = Action::State;));
+            let state_assoc = state_assoc.as_ref();
+            let storage_param = is_state.then(|| syn::Ident::new("Storage", span));
+            let storage_param = storage_param.as_ref();
+            let storage_bound = storage_param.map(|storage_param| quote::quote_spanned!(span => #storage_param: spru::item::Storage<State = Self::State>,));
+            let storage_bound = storage_bound.as_ref();
+            let trait_fn = if *is_state { &state_fn } else { &stateless_fn };
+            let trait_ident = if *is_state { &state_trait } else { &stateless_trait };
 
             for &return_conversion in return_conversions {
                 let bitset_max = if param_count < converted_params_limit { 1usize << param_count } else { 1 };
@@ -768,27 +805,27 @@ pub(crate) fn impl_dynamic_fn(input: TokenStream) -> syn::Result<TokenStream> {
                     output = quote::quote_spanned! { span =>
                         #output
                         #[allow(warnings)]
-                        impl<Action, #(#receiver_param_ty, )* #(#args_types, )* #(#ret_ty, )*> 
-                            RegisterMember<#trait_bitset> for 
+                        impl<#action_param #(#receiver_param_ty, )* #(#args_types, )* #(#ret_ty, )*> 
+                            #trait_ident <#trait_bitset> for 
                             #(#mut_refs)* #wrapper_ident<
                                 '_, 
-                                Action, 
+                                #action_param
                                 #(#receiver_param_ty2, )*
                                 #(#args_tuple_type, )*
                                 #(#ret_ty2, )*
                             >
                         where
-                            Action: ::spru::Action,
+                            #action_bound
                             #(#receiver_bound, )*
                             #(#receiver_storable_bound, )*
                             #(#args_bounds, )*
                             #(#ret_bound, )*
                         {
-                            type State = Action::State;
+                            #state_assoc
 
-                            fn register_member<Storage>(&mut self, registration: &mut Registration2<'_, '_>, ) 
+                            fn #trait_fn <#storage_param> (&mut self, registration: &mut Registration2<'_, '_>, ) 
                             where
-                                Storage: spru::item::Storage<State = Self::State>,
+                                #storage_bound
                             {
                                 let (name, method, _phantom) = self.take();
                                 #register_fn

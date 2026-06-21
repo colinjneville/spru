@@ -1,7 +1,6 @@
 use std::{collections::HashMap, fmt, mem};
 
 use spru_script::script;
-use spru_util::pile;
 
 use crate::data;
 
@@ -94,7 +93,7 @@ impl Play {
         self.unused.as_slice()
     }
 
-    pub fn parsed(hand: &pile::Pile<data::Card>, s: &[u8]) -> Result<Self, u8> {
+    pub fn parsed<'c>(hand: impl IntoIterator<Item = &'c data::Card>, s: &[u8]) -> Result<Self, u8> {
         let mut remaining_cards = HashMap::new();
         for card in hand {
             *remaining_cards.entry(card.clone()).or_insert(0) += 1;
