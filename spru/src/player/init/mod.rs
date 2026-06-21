@@ -15,10 +15,8 @@ pub trait Init {
     type In;
     /// The game's [Server::Root](crate::Server::Root)
     type Root;
-    /// The game's [Server::State](crate::Server::State)
-    type State: tagset::TagSet;
     /// The game's [Server::Action](crate::Server::Action)
-    type Action;
+    type Action: crate::Action;
 
     fn initialize(&self, interactor: &mut Interactor<Self>, input: Self::In) -> self::Result<()>;
 }
@@ -27,8 +25,8 @@ pub trait Init {
 pub type Interactor<'l, 'r, Init> = crate::Interactor<
     'l,
     item::storage::Canonical<
-        <<Init as self::Init>::State as tagset::TagSet>::Repr,
-        <Init as self::Init>::State,
+        <<<Init as self::Init>::Action as crate::Action>::State as tagset::TagSet>::Repr,
+        <<Init as self::Init>::Action as crate::Action>::State,
     >,
     <Init as self::Init>::Action,
     Context<'r, <Init as self::Init>::Root>,

@@ -1,7 +1,7 @@
 pub mod id;
 pub use id::{Id, IdT};
 pub mod storage;
-pub use storage::Storage;
+pub use storage::{ReadOnlyStorage, Storage};
 pub mod version;
 pub use version::Version;
 

@@ -76,10 +76,8 @@ impl<Trigger, GameOutcome> interactor::TakeGameOutcome<GameOutcome>
 /// so players can be notified of the failure locally as soon as possible.
 #[telety(crate::reaction)]
 pub trait Reaction {
-    /// The game's [trait@crate::State]
-    type State: tagset::TagSet;
     /// The game's [trait@crate::Action]
-    type Action;
+    type Action: crate::Action;
     /// The game's [Common::Root](crate::Common::Root)
     type Root;
     /// The input that determines what the reaction should do
@@ -102,8 +100,8 @@ pub trait Reaction {
 pub type Interactor<'l, 'r, Reaction> = crate::Interactor<
     'l,
     Canonical<
-        <<Reaction as self::Reaction>::State as tagset::TagSet>::Repr,
-        <Reaction as self::Reaction>::State,
+        <<<Reaction as self::Reaction>::Action as crate::Action>::State as tagset::TagSet>::Repr,
+        <<Reaction as self::Reaction>::Action as crate::Action>::State,
     >,
     <Reaction as self::Reaction>::Action,
     Context<'r, <Reaction as self::Reaction>::Root>,

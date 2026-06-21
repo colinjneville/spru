@@ -1,6 +1,9 @@
 pub mod command;
 pub mod component;
 pub mod event;
+#[cfg(feature = "remote")]
+#[cfg(not(target_family = "wasm"))]
+pub mod remote;
 mod plugin;
 use derive_where::derive_where;
 pub use plugin::Plugin;
@@ -110,6 +113,12 @@ pub enum RunServerError {
 pub type RunServerResult<T> = std::result::Result<T, RunServerError>;
 
 #[derive_where(Debug; spru::common::Seed<Common>)]
-pub struct PendingClient<Common: crate::common::CommonSSS> {
+pub struct PendingClient<Common: common::CommonSSS> {
     pub seed: spru::common::Seed<Common>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct ServerInfo {
+    pub entity: prelude::Entity,
+    pub game_id: common::component::GameId,
 }

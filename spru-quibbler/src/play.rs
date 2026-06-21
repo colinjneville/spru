@@ -1,7 +1,6 @@
 use std::{collections::HashMap, fmt, mem};
 
-use spru_script::{Wrap, script};
-use spru_util::pile;
+use spru_script::script;
 
 use crate::data;
 
@@ -9,16 +8,16 @@ use crate::data;
 #[script(state = false, include = [Methods])]
 pub struct Play {
     #[get]
-    words: Vec<Vec<Wrap<data::Card>>>,
+    words: Vec<Vec<data::Card>>,
     #[get]
-    unused: Vec<Wrap<data::Card>>,
+    unused: Vec<data::Card>,
 }
 
 #[script(state = false, partial = Methods)]
 impl Play {
-    #[function(name = new)]
-    fn _new(words: Vec<Vec<Wrap<data::Card>>>, unused: Vec<Wrap<data::Card>>) -> Wrap<Play> {
-        Wrap::new(Self { words, unused })
+    #[function]
+    fn create(words: Vec<Vec<data::Card>>, unused: Vec<data::Card>) -> Play {
+        Self { words, unused }
     }
 
     #[get(name = is_full)]
@@ -31,13 +30,6 @@ impl Play {
         self.base_score()
     }
 
-    #[get(name = words)]
-    fn _words(&self) -> Vec<Vec<Wrap<data::Card>>> {
-        self.words()
-            .map(|c| c.into_iter().cloned().map(Wrap).collect::<Vec<_>>())
-            .collect()
-    }
-
     #[get(name = word_count)]
     fn _word_count(&self) -> usize {
         self.words.len()
@@ -46,11 +38,6 @@ impl Play {
     #[get(name = max_word_len)]
     fn _max_word_len(&self) -> usize {
         self.max_word_len()
-    }
-
-    #[get(name = unused)]
-    fn _unused(&self) -> Vec<Wrap<data::Card>> {
-        spru_script::TransparentWrapperAlloc::wrap_vec(self.unused().to_vec())
     }
 
     #[function]
@@ -64,12 +51,6 @@ impl Play {
 
 impl Play {
     pub(crate) fn new(words: Vec<Vec<data::Card>>, unused: Vec<data::Card>) -> Self {
-        let words = words.into_iter()
-            .map(spru_script::TransparentWrapperAlloc::wrap_vec)
-            .collect();
-        
-        let unused = spru_script::TransparentWrapperAlloc::wrap_vec(unused);
-
         Self { words, unused }
     }
 
@@ -94,7 +75,6 @@ impl Play {
     pub fn words(&self) -> impl Iterator<Item = &[data::Card]> {
         self.words.iter()
             .map(Vec::as_slice)
-            .map(spru_script::TransparentWrapper::peel_slice)
     }
 
     pub fn word_count(&self) -> usize {
@@ -110,13 +90,13 @@ impl Play {
     }
 
     pub fn unused(&self) -> &[data::Card] {
-        spru_script::TransparentWrapper::peel_slice(self.unused.as_slice())
+        self.unused.as_slice()
     }
 
-    pub fn parsed(hand: &pile::Pile<Wrap<data::Card>>, s: &[u8]) -> Result<Self, u8> {
+    pub fn parsed<'c>(hand: impl IntoIterator<Item = &'c data::Card>, s: &[u8]) -> Result<Self, u8> {
         let mut remaining_cards = HashMap::new();
         for card in hand {
-            *remaining_cards.entry(card.0.clone()).or_insert(0) += 1;
+            *remaining_cards.entry(card.clone()).or_insert(0) += 1;
         }
 
         let mut words = vec![];
@@ -176,7 +156,7 @@ impl fmt::Display for Play {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for word in &self.words {
             for card in word {
-                write!(f, "{}", **card)?;
+                write!(f, "{}", *card)?;
             }
             write!(f, " ")?;
         }
@@ -184,7 +164,7 @@ impl fmt::Display for Play {
         if !self.unused.is_empty() {
             write!(f, "(")?;
             for card in &self.unused {
-                write!(f, "{}", **card)?;
+                write!(f, "{}", *card)?;
             }
             write!(f, ")")?;
         }

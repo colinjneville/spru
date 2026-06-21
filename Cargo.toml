@@ -6,10 +6,15 @@ members = [
 	"spru-macro", 
 	"spru-quibbler", 
     "spru-script",
-    "spru-script-lua",
+    "spru-script-base", 
+    "spru-script-base-macro",
+    "spru-script-impl", 
+    "spru-script-impl-macro",
+    "spru-script-rhai",
+    "spru-script-rhai-macro",
     "spru-script-macro",
 	"spru-test",
-	"spru-util",
+	"spru-util", 
 ]
 
 [workspace.package]
@@ -23,7 +28,12 @@ spru-util = { version = "0.1", path = "./spru-util" }
 spru-bevy = { version = "0.1", path = "./spru-bevy" }
 spru-script-macro = { version = "0.1", path = "./spru-script-macro" }
 spru-script = { version = "0.1", path = "./spru-script" }
-spru-script-lua = { version = "0.1", path = "./spru-script-lua" }
+spru-script-base = { version = "0.1", path = "./spru-script-base" }
+spru-script-base-macro = { version = "0.1", path = "./spru-script-base-macro" }
+spru-script-impl = { version = "0.1", path = "./spru-script-impl" }
+spru-script-impl-macro = { version = "0.1", path = "./spru-script-impl-macro" }
+spru-script-rhai = { version = "0.1", path = "./spru-script-rhai" }
+spru-script-rhai-macro = { version = "0.1", path = "./spru-script-rhai-macro" }
 
 telety = "0.4"
 tagset = "0.1.3"
@@ -33,7 +43,7 @@ thiserror = "2.0.12"
 anyhow = "1.0.100"
 append-only-vec = "0.1.8"
 
-bytemuck = "1.25.0"
+bytemuck = { version = "1.25.0", features = ["extern_crate_alloc"] }
 
 derive_more = "1.0.0"
 derive-where = { version = "1.6.0", features = ["serde"] }
@@ -49,11 +59,15 @@ rust-fsm = "0.8.0"
 uuid = { version = "1.18.1", features = [ "v4", "serde" ] }
 
 # scripting
-mlua = { version = "0.11.6", features = ["lua55", "vendored", "error-send", "send"] }
+rhai = "1.24.0"
 
 # logging
 tracing = "0.1.41"
 tracing-core = "0.1.34"
+
+# networking
+aeronet = "0.20.0"
+aeronet_webtransport = "0.20.0"
 
 # async
 # atomicell = "0.2.0"
@@ -72,11 +86,11 @@ tracing-core = "0.1.34"
 # smol = "2.0.0"
 
 # macros
-proc-macro2 = "1.0.69"
+proc-macro2 = { version = "1.0.106", features = ["span-locations"] }
 quote = "1.0.33"
 syn = { version = "2.0.38", features = ["full"] }
 
-vacro-parser = "0.1.10"
+vacro-parser = "0.1.15"
 vacro-report = "0.1.3"
 
 # serialization

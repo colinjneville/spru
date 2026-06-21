@@ -1,7 +1,7 @@
 pub mod error;
 pub use error::Error;
 
-use std::{collections::VecDeque, fmt};
+use std::{borrow::Cow, collections::VecDeque, fmt};
 
 use derive_where::derive_where;
 use tagset::tagset_meta;
@@ -66,6 +66,9 @@ impl<'r, Root> Context<'r, Root> {
     }
 }
 
+// TODO temporary workaround for `Interaction::apply` bound. Telety isn't translating `crate::Action` to `spru::Action`
+extern crate self as spru;
+
 /// A client-initiated change to the game state.  
 ///
 /// The Interaction handles the ways players can interact with the game. An Interaction is usually
@@ -111,10 +114,8 @@ impl<'r, Root> Context<'r, Root> {
 #[telety(crate::interaction, alias_traits = "always")]
 #[tagset_meta]
 pub trait Interaction {
-    /// The game's [trait@crate::State]
-    type State: crate::State;
     /// The game's [trait@crate::Action]
-    type Action: crate::Action<State = Self::State>;
+    type Action: crate::Action;
     /// See [Common::Root](crate::Common::Root).
     type Root;
     /// See [Reaction::Trigger](crate::Reaction::Trigger)
@@ -129,7 +130,12 @@ pub trait Interaction {
         interactor: &mut Interactor<'l, 'r, Storage, Self>,
     ) -> self::Result<()>
     where
-        Storage: item::Storage<State = Self::State>;
+        Storage: item::Storage<State = <Self::Action as spru::Action>::State>;
+
+    /// A description of the Interaction, usually for diagnostic purposes
+    fn description(&self) -> Cow<'static, str> {
+        Cow::Borrowed(std::any::type_name::<Self>())
+    }
 }
 
 /// An alias for the [Interactor](crate::Interactor) used in an [Interaction](trait@Interaction).

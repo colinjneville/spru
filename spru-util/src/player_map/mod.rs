@@ -23,7 +23,7 @@ where
     PlayerState: Clone + 'static,
 {
     #[create]
-    fn default() -> cloned::Create<PlayerMap<PlayerState>> {
+    fn dflt() -> cloned::Create<PlayerMap<PlayerState>> {
         create()
     }
 

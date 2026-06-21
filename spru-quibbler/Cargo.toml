@@ -12,7 +12,7 @@ spru.workspace = true
 spru-util.workspace = true
 spru-bevy.workspace = true
 spru-script.workspace = true
-spru-script-lua.workspace = true
+spru-script-rhai.workspace = true
 
 tagset.workspace = true
 telety.workspace = true
@@ -28,7 +28,7 @@ anyhow.workspace = true
 serde.workspace = true
 ron.workspace = true
 
-mlua.workspace = true
+rhai = { workspace = true, features = ["serde"] }
 
 tracing.workspace = true
 
@@ -46,3 +46,21 @@ features = ["default"]
 
 [build-dependencies]
 copy_to_output.workspace = true
+
+[features]
+# non-WASM compatible
+default = ["hybrid"]
+
+# "role" features
+dedicated-client = ["client", "remote", "ui"]
+local = ["server", "client", "ui"]
+# non-WASM compatible
+dedicated-server = ["server", "remote"]
+hybrid = ["local", "dedicated-server"]
+
+# sub-features
+client = ["spru-bevy/client"]
+server = ["spru-bevy/server"]
+remote = ["spru-bevy/remote"]
+# TODO bevy/bevy_egui should be trimmed for dedicated servers
+ui = []

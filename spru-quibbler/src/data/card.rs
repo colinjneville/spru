@@ -1,6 +1,6 @@
 use std::fmt;
 
-use spru_script::{Wrap, script};
+use spru_script::script;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 #[script(state = false, include = [Methods], derive = [Eq])]
@@ -21,8 +21,8 @@ impl Card {
     }
 
     #[function]
-    fn all() -> Vec<Wrap<Card>> {
-        spru_script::TransparentWrapperAlloc::wrap_vec(self::all())
+    fn all() -> Vec<Card> {
+        self::all()
     }
 }
 

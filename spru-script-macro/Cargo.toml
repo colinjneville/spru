@@ -17,3 +17,5 @@ syn = { workspace = true, features = ["fold"] }
 
 vacro-parser.workspace = true
 vacro-report.workspace = true
+
+spru-script-base-macro.workspace = true

@@ -156,21 +156,19 @@ impl<Action> Records<Action> {
         Storage: item::Storage,
         Action: crate::Action<State = Storage::State>,
     {
+        let _span = tracing::trace_span!("apply_actions").entered();
+
         let mut undo = Self::default();
 
         for r in self.iter() {
             match r.apply_internal(storage) {
                 Ok(Some(undo_action)) => {
-                    if let Some(back) = undo.records.back_mut() {
-                        // Pack the undo records if the original record was packed
-                        if back.item_id == r.item_id() {
-                            back.append(undo_action);
-                            continue;
-                        }
-
+                    // Pack the undo records if the original record was packed
+                    if let Some(back) = undo.records.back_mut() && back.item_id == r.item_id() {
+                        back.append(undo_action);
+                    } else {
                         // Otherwise start a new undo record
-                        let packed =
-                            Packed::new(r.item_id(), r.version_change().undo(), undo_action);
+                        let packed = Packed::new(r.item_id(), r.version_change().undo(), undo_action);
                         undo.records.push_back(packed);
                     }
                 }

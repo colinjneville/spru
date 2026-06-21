@@ -229,33 +229,26 @@ impl<Action, Interaction> Log<Action, Interaction> {
     {
         let mut count = 0;
 
-        // pop_back_if: https://github.com/rust-lang/rust/issues/135889
-        while let Some(pending) = self.pending_undo_transactions.pop_back() {
-            if Some(pending.id) < until {
-                // We've gone too far, put it back and exit
-                self.pending_undo_transactions.push_back(pending);
-                break;
+        while let Some(pending) = self.pending_undo_transactions.pop_back_if(|pending| Some(pending.id) >= until) {
+            // If we have not attempted to apply this interaction yet, or the server
+            // has explicitly rejected it, we can revert
+            if pending.interaction.is_some() || from_server {
+                count += 1;
+                pending.undo_transaction.apply(storage)?;
             } else {
-                // If we have not attempted to apply this interaction yet, or the server
-                // has explicitly rejected it, we can revert
-                if pending.interaction.is_some() || from_server {
-                    count += 1;
-                    pending.undo_transaction.apply(storage)?;
-                } else {
-                    // We've already told the server to confirm the interaction, but have not yet
-                    // recieved a response. It's no longer our choice to revert.
-                    break;
+                // We've already told the server to confirm the interaction, but have not yet
+                // recieved a response. It's no longer our choice to revert.
+                break;
 
-                    // TODO CORRECTNESS
-                    // If this revert is due to a conflict with an incoming server transaction, we need
-                    // to be able to revert past the lock point because those pending changes may be the
-                    // cause of the conflict.
-                    // But this must be done one interaction at a time, because we must not undo an
-                    // interaction the server could accept
-                    #[allow(unreachable_code)]
-                    {
-                        todo!()
-                    }
+                // TODO CORRECTNESS
+                // If this revert is due to a conflict with an incoming server transaction, we need
+                // to be able to revert past the lock point because those pending changes may be the
+                // cause of the conflict.
+                // But this must be done one interaction at a time, because we must not undo an
+                // interaction the server could accept
+                #[allow(unreachable_code)]
+                {
+                    todo!()
                 }
             }
         }

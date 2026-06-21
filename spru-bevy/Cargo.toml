@@ -9,16 +9,20 @@ categories = ["game-development", "wasm"]
 keywords = ["gamedev", "framework", "game", "wasm", "bevy"]
 
 [features]
-default = ["server", "client"]
+default = ["server", "client", "remote", "script"]
 server = []
 client = []
+remote = ["dep:aeronet", "aeronet_webtransport/server"]
+script = ["dep:spru-script"]
 
 [dependencies]
 spru.workspace = true
+spru-script = { workspace = true, optional = true }
 
 bevy.workspace = true
 
 serde.workspace = true
+rmp-serde.workspace = true
 
 thiserror.workspace = true
 
@@ -28,6 +32,9 @@ derive-where.workspace = true
 
 # Only needed to qualify TagSet::Repr, hopefully can be removed in the future
 tagset.workspace = true
+
+aeronet = { workspace = true, optional = true }
+aeronet_webtransport = { workspace = true, optional = true }
 
 [dev-dependencies]
 spru-test = { path = "../spru-test/" }

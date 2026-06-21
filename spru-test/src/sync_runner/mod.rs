@@ -88,7 +88,7 @@ where
     ) -> anyhow::Result<Self>
     where
         GameInit:
-            spru::game::Init<State = Server::State, Action = Server::Action, Root = Server::Root>,
+            spru::game::Init<Action = Server::Action, Root = Server::Root>,
     {
         let spru_server = Server::init(game_init, player_init, reaction)?;
         let server = SyncServer::new(spru_server);

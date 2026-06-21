@@ -10,8 +10,8 @@ keywords = ["gamedev", "framework", "game", "wasm"]
 
 [dev-dependencies]
 spru = { workspace = true, features = ["test-util"] }
-spru-script-lua.workspace = true
-mlua.workspace = true
+rhai.workspace = true
+spru-script-rhai.workspace = true
 
 [dependencies]
 spru.workspace = true

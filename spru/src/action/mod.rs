@@ -1,4 +1,6 @@
 pub mod error;
+use std::any;
+
 pub use error::Error;
 
 use crate::{Item, action, common::error::AnyResult, item};
@@ -26,6 +28,7 @@ pub trait SubAction {
         Self::T: item::storage::Storable<Storage::State>,
         Self::Undo: Into<Action>,
     {
+        tracing::info!(Item = any::type_name::<Self::T>(), action = any::type_name::<Self>());
         self.apply(context)
             .map(|o| o.map(Into::into))
             .map_err(|e| e.with_context(self))

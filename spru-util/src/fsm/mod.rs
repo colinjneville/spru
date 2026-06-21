@@ -5,7 +5,7 @@ use std::mem;
 use derive_where::derive_where;
 pub use rust_fsm;
 use spru::common::error::AnyResult;
-use spru_script::{Wrap, script};
+use spru_script::script;
 use tagset::tagset;
 use telety::telety;
 
@@ -29,12 +29,12 @@ where
     FSM::State: Clone,
 {
     #[create]
-    fn new(initial_state: Wrap<FSM::State>) -> Create<FSM> {
-        create(initial_state.0)
+    fn create(initial_state: FSM::State) -> Create<FSM> {
+        create(initial_state)
     }
 
     #[create]
-    fn default() -> Create<FSM> {
+    fn dflt() -> Create<FSM> {
         default()
     }
 
@@ -44,25 +44,25 @@ where
     }
 
     #[get(name = current)]
-    fn _current(&self) -> Wrap<FSM::State> {
-        Wrap::new(self.current().clone())
+    fn _current(&self) -> FSM::State {
+        self.current().clone()
     }
 
     #[method]
-    fn transition(&self, input: Wrap<FSM::Input>) -> (Option<Wrap<FSM::Output>>, Transition<FSM>) {
-        let output = <FSM as rust_fsm::StateMachineImpl>::output(&self.0, &input.0);
-        (output.map(Wrap), transition(input.0))
+    fn transition(&self, input: FSM::Input) -> (Option<FSM::Output>, Transition<FSM>) {
+        let output = <FSM as rust_fsm::StateMachineImpl>::output(&self.0, &input);
+        (output, transition(input))
     }
 
     #[method]
-    fn try_transition(&self, input: Wrap<FSM::Input>) -> (Option<Wrap<FSM::Output>>, Transition<FSM>) {
-        let output = <FSM as rust_fsm::StateMachineImpl>::output(&self.0, &input.0);
-        (output.map(Wrap), try_transition(input.0))
+    fn try_transition(&self, input: FSM::Input) -> (Option<FSM::Output>, Transition<FSM>) {
+        let output = <FSM as rust_fsm::StateMachineImpl>::output(&self.0, &input);
+        (output, try_transition(input))
     }
 
     #[method]
-    fn set(&self, new_state: Wrap<FSM::State>) -> ((), Set<FSM>) {
-        ((), set(new_state.0))
+    fn set(&self, new_state: FSM::State) -> ((), Set<FSM>) {
+        ((), set(new_state))
     }
 }
 

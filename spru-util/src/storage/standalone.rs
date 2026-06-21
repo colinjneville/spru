@@ -23,7 +23,7 @@ impl<State> Standalone<State> {
     }
 }
 
-impl<State: spru::State> spru::item::Storage for Standalone<State> {
+impl<State: spru::State> spru::item::ReadOnlyStorage for Standalone<State> {
     type State = State;
 
     fn get<T>(&self, id: IdT<T>) -> spru::item::storage::Result<&Item<T>>
@@ -43,7 +43,9 @@ impl<State: spru::State> spru::item::Storage for Standalone<State> {
         item.ok_or(Error::IdNotFound(id.untyped()))
             .map_err(Into::into)
     }
+}
 
+impl<State: spru::State> spru::item::Storage for Standalone<State> {
     #[allow(refining_impl_trait)]
     fn get_mut<T>(&mut self, id: IdT<T>) -> spru::item::storage::Result<&mut spru::Item<T>>
     where
@@ -124,7 +126,7 @@ mod test {
 
     #[test]
     fn standalone() {
-        use spru::item::storage::Storage as _;
+        use spru::item::storage::{ReadOnlyStorage as _, Storage as _};
         let mut storage = Standalone::<State>::new();
 
         let id0 = spru::item::IdT::test_new(0);

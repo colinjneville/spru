@@ -2,10 +2,16 @@ use std::{marker::PhantomData, ops::DerefMut};
 
 use bevy::prelude;
 
-use crate::common;
+use crate::{client, common};
 
 pub fn run_client<Client: crate::client::ClientSSS>(
     world: &mut prelude::World,
+    q_client: &mut prelude::QueryState<(
+        prelude::Entity,
+        &mut super::component::Runner<Client>,
+        &common::component::GameId,
+        &super::component::ClientId,
+    )>,
 ) -> super::RunClientResult<()> {
     // We need to access the Client components, but also need
     // full World access for Storage.
@@ -16,13 +22,6 @@ pub fn run_client<Client: crate::client::ClientSSS>(
 
     // This currently triggers add/remove component events
     // https://github.com/bevyengine/bevy/issues/13128
-
-    let mut q_client = world.query::<(
-        prelude::Entity,
-        &mut super::component::Runner<Client>,
-        &common::component::GameId,
-        &super::component::ClientId,
-    )>();
 
     let entities: Vec<_> = q_client.iter(world).map(|tup| tup.0).collect();
 
@@ -60,6 +59,7 @@ pub fn run_client<Client: crate::client::ClientSSS>(
             let to_server = &mut *to_server;
 
             signal(
+                entity, 
                 *game_id,
                 *client_id,
                 client_signal,
@@ -78,6 +78,7 @@ pub fn run_client<Client: crate::client::ClientSSS>(
             match user_input {
                 UserInput::StageInteraction(interaction) => {
                     stage_interaction(
+                        entity, 
                         *game_id,
                         *client_id,
                         interaction,
@@ -89,6 +90,7 @@ pub fn run_client<Client: crate::client::ClientSSS>(
                 }
                 UserInput::ApplyInteraction(pending) => {
                     apply_interactions(
+                        entity, 
                         *game_id,
                         *client_id,
                         pending,
@@ -100,6 +102,7 @@ pub fn run_client<Client: crate::client::ClientSSS>(
                 }
                 UserInput::RevertInteraction(pending) => {
                     revert_interactions(
+                        entity, 
                         *game_id,
                         *client_id,
                         pending,
@@ -123,6 +126,7 @@ pub fn run_client<Client: crate::client::ClientSSS>(
 }
 
 pub(crate) fn process_output<Client: super::ClientSSS, Ret>(
+    entity: prelude::Entity,
     game_id: common::component::GameId,
     client_id: super::component::ClientId,
     output: spru::client::Output<Client, Ret>,
@@ -144,6 +148,7 @@ pub(crate) fn process_output<Client: super::ClientSSS, Ret>(
         match event {
             spru::client::Event::GameComplete(game_complete) => {
                 event_trigger.trigger(super::event::GameOutcome::<Client> {
+                    entity,
                     game_id,
                     client_id,
                     game_outcome: game_complete.game_outcome,
@@ -175,20 +180,20 @@ pub(crate) fn init<Client: super::ClientSSS>(
         let client_id = super::component::ClientId::new(client.local_player_id());
         let root = common::component::Root::<Client::Common>::new(client.root().clone());
 
-        world.spawn((
+        let entity = world.spawn((
             game_id,
             client_id,
             prelude::Name::new(format!(
-                "[{:x}:{}] spru client",
+                "[{}:{}] spru client",
                 game_id.friendly_display(),
                 client_id
             )),
             entity_map,
             super::component::Runner::new(client),
             root,
-        ));
+        )).id();
 
-        Ok(client_id)
+        Ok(client::ClientInfo { entity, client_id })
     })();
 
     event_trigger.trigger(super::event::Init::<Client> {
@@ -199,6 +204,7 @@ pub(crate) fn init<Client: super::ClientSSS>(
 }
 
 pub(crate) fn signal<Client: super::ClientSSS>(
+    entity: prelude::Entity,
     game_id: common::component::GameId,
     client_id: super::component::ClientId,
     signal: spru::common::signal::ToClient<Client::Common>,
@@ -210,11 +216,12 @@ pub(crate) fn signal<Client: super::ClientSSS>(
 ) {
     let result = (|| {
         let output = runner.client.signal(storage, signal)?;
-        let () = process_output(game_id, client_id, output, to_server, event_trigger);
+        let () = process_output(entity, game_id, client_id, output, to_server, event_trigger);
         Ok(())
     })();
 
     event_trigger.trigger(super::event::Signal::<Client> {
+        entity,
         game_id,
         client_id,
         result,
@@ -223,6 +230,7 @@ pub(crate) fn signal<Client: super::ClientSSS>(
 }
 
 pub(crate) fn stage_interaction<Client: super::ClientSSS<Interaction: Clone>>(
+    entity: prelude::Entity,
     game_id: common::component::GameId,
     client_id: super::component::ClientId,
     interaction: Client::Interaction,
@@ -238,11 +246,12 @@ pub(crate) fn stage_interaction<Client: super::ClientSSS<Interaction: Clone>>(
             .client
             .stage_interaction(storage, interaction_clone)?;
         let pending_interaction_id =
-            process_output(game_id, client_id, output, to_server, event_trigger);
+            process_output(entity, game_id, client_id, output, to_server, event_trigger);
         Ok(pending_interaction_id)
     })();
 
     event_trigger.trigger(super::event::StageInteraction::<Client> {
+        entity,
         game_id,
         client_id,
         interaction,
@@ -251,6 +260,7 @@ pub(crate) fn stage_interaction<Client: super::ClientSSS<Interaction: Clone>>(
 }
 
 pub(crate) fn apply_interactions<Client: super::ClientSSS>(
+    entity: prelude::Entity,
     game_id: common::component::GameId,
     client_id: super::component::ClientId,
     pending_interaction_id: Option<spru::interaction::Pending>,
@@ -264,12 +274,13 @@ pub(crate) fn apply_interactions<Client: super::ClientSSS>(
         let output = runner
             .client
             .apply_interactions(storage, pending_interaction_id)?;
-        let count = process_output(game_id, client_id, output, to_server, event_trigger);
+        let count = process_output(entity, game_id, client_id, output, to_server, event_trigger);
 
         Ok(count)
     })();
 
     event_trigger.trigger(super::event::ApplyInteractions::<Client> {
+        entity,
         game_id,
         client_id,
         pending_interaction_id,
@@ -279,6 +290,7 @@ pub(crate) fn apply_interactions<Client: super::ClientSSS>(
 }
 
 pub(crate) fn revert_interactions<Client: super::ClientSSS>(
+    entity: prelude::Entity,
     game_id: common::component::GameId,
     client_id: super::component::ClientId,
     pending_interaction_id: Option<spru::interaction::Pending>,
@@ -292,11 +304,12 @@ pub(crate) fn revert_interactions<Client: super::ClientSSS>(
         let output = runner
             .client
             .revert_interactions(storage, pending_interaction_id)?;
-        let count = process_output(game_id, client_id, output, to_server, event_trigger);
+        let count = process_output(entity, game_id, client_id, output, to_server, event_trigger);
         Ok(count)
     })();
 
     event_trigger.trigger(super::event::RevertInteractions::<Client> {
+        entity,
         game_id,
         client_id,
         pending_interaction_id,

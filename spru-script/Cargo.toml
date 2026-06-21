@@ -13,19 +13,15 @@ spru = { workspace = true, features = ["test-util"] }
 
 [dependencies]
 spru.workspace = true
+spru-script-base.workspace = true
+spru-script-impl.workspace = true
 spru-script-macro.workspace = true
 
 tagset.workspace = true
 telety.workspace = true
-
-# for TransparentWrapper
-bytemuck.workspace = true
 
 derive-where.workspace = true
 
 serde.workspace = true
 
 tracing.workspace = true
-
-[features]
-default = []

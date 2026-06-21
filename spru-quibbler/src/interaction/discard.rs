@@ -1,9 +1,8 @@
 use spru::{interactor::with, item::IdT};
-use spru_script::Wrap;
 use spru_util::{fsm, pile};
 use tracing::instrument;
 
-use crate::{data, interaction::LuaInteraction, script::{self, Script}};
+use crate::{data, script::Script};
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Discard {
@@ -17,10 +16,9 @@ impl Discard {
 }
 
 impl spru::Interaction for Discard {
-    type State = crate::State;
     type Action = crate::Actions;
     type Root = IdT<crate::game::Root>;
-    type Trigger = Wrap<crate::reaction::Trigger>;
+    type Trigger = crate::reaction::Trigger;
 
     #[instrument(skip_all, ret, err)]
     fn apply<Storage>(
@@ -28,7 +26,7 @@ impl spru::Interaction for Discard {
         interactor: &mut spru::interaction::Interactor<Storage, Self>,
     ) -> spru::interaction::Result<()>
     where
-        Storage: spru::item::Storage<State = Self::State>,
+        Storage: spru::item::Storage<State = crate::State>,
     {
         let player_id = interactor.context().player;
 
@@ -44,18 +42,19 @@ impl spru::Interaction for Discard {
 
         let hand_index = hand
             .iter()
-            .position(|i| i.0 == self.discard)
+            .position(|i| *i == self.discard)
             .ok_or(crate::anyhow!("Card is not in hand"))?;
         hand.update(pile::remove(hand_index));
-        discard.update(pile::push_top(Wrap(self.discard.clone())));
+        discard.update(pile::push_top(self.discard.clone()));
 
         Ok(())
     }
 }
 
-const SCRIPT: Script = crate::script::script!("scripts/discard.lua");
+const SCRIPT: Script = crate::script::script!("rhai/discard.rhai");
 
-pub fn new(discard: data::Card) -> super::LuaInteraction<Wrap<data::Card>> {
-    super::LuaInteraction::new(spru_script_lua::Lua::new(), SCRIPT.get(), Wrap(discard))
+pub fn new(discard: data::Card) -> super::RhaiInteraction<data::Card> {
+    let language = crate::Language::default();
+    super::RhaiInteraction::new(language, SCRIPT.get(), discard)
 }
 

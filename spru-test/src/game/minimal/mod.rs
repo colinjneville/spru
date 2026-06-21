@@ -10,28 +10,28 @@ pub struct LobbyInfo;
 pub struct MemberInfo(pub PlayerColor);
 
 #[derive(Debug)]
-pub struct Trigger(spru::player::Id);
+pub struct MyTrigger(spru::player::Id);
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct GameOutcome(pub spru::player::Id);
+pub struct MyGameOutcome(pub spru::player::Id);
 
 #[tagset(impl crate::proxy::std::fmt::Debug)]
 #[tagset(impl spru::State)]
-#[tagset(GameRoot)]
+#[tagset(MyGameRoot)]
 #[tagset(player_map::PlayerMap<PlayerData>)]
-pub struct State;
+pub struct MyState;
 
 #[tagset(derive(Clone))]
 #[tagset(impl crate::proxy::std::fmt::Debug)]
 #[tagset(impl spru::Action {
-    type State = State;
+    type State = MyState;
 })]
 #[tagset(impl tagset::proxy::serde::Serialize)]
 #[tagset(impl<'de> tagset::serde::DeserializeFromDiscriminant<'de>)]
 #[tagset(impl<'de> tagset::proxy::serde::Deserialize<'de>)]
-#[tagset(include(cloned::Actions<GameRoot>))]
+#[tagset(include(cloned::Actions<MyGameRoot>))]
 #[tagset(include(player_map::Actions<PlayerData>))]
-pub struct Actions;
+pub struct MyAction;
 
 #[derive(Debug, spru_util::FromInfallible, thiserror::Error)]
 #[error("{0}")]
@@ -44,21 +44,20 @@ impl From<anyhow::Error> for Error {
 }
 
 #[derive(Debug)]
-pub struct Reaction;
+pub struct MyReaction;
 
-impl spru::Reaction for Reaction {
-    type State = State;
-    type Action = Actions;
-    type Root = IdT<GameRoot>;
-    type Trigger = Trigger;
-    type GameOutcome = GameOutcome;
+impl spru::Reaction for MyReaction {
+    type Action = MyAction;
+    type Root = IdT<MyGameRoot>;
+    type Trigger = MyTrigger;
+    type GameOutcome = MyGameOutcome;
 
     fn apply(
         &self,
         interactor: &mut spru::reaction::Interactor<Self>,
         input: Self::Trigger,
     ) -> spru::action::Result<()> {
-        interactor.set_game_outcome(GameOutcome(input.0));
+        interactor.set_game_outcome(MyGameOutcome(input.0));
         Ok(())
     }
 }
@@ -79,13 +78,12 @@ pub const PLAYER_COLORS: [PlayerColor; 4] = [
 ];
 
 #[derive(Debug)]
-pub struct PlayerInit;
+pub struct MyPlayerInit;
 
-impl spru::player::Init for PlayerInit {
+impl spru::player::Init for MyPlayerInit {
     type In = PlayerColor;
-    type Root = IdT<GameRoot>;
-    type State = State;
-    type Action = Actions;
+    type Root = IdT<MyGameRoot>;
+    type Action = MyAction;
 
     fn initialize(
         &self,
@@ -114,23 +112,22 @@ pub struct PlayerData {
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct GameRoot {
+pub struct MyGameRoot {
     players: IdT<player_map::PlayerMap<PlayerData>>,
 }
 
 pub struct GameInit(pub LobbyInfo);
 
 impl spru::game::Init for GameInit {
-    type Root = IdT<GameRoot>;
-    type State = State;
-    type Action = Actions;
+    type Root = IdT<MyGameRoot>;
+    type Action = MyAction;
 
     fn initialize(
         self,
         interactor: &mut spru::game::init::Interactor<Self>,
     ) -> spru::game::init::Result<Self::Root> {
         let players = interactor.create(player_map::create()).id();
-        let root = interactor.create(spru_util::cloned::create(GameRoot { players }));
+        let root = interactor.create(spru_util::cloned::create(MyGameRoot { players }));
 
         Ok(root.id())
     }
@@ -139,26 +136,25 @@ impl spru::game::Init for GameInit {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Interaction;
 impl spru::Interaction for Interaction {
-    type State = State;
-    type Action = Actions;
-    type Root = IdT<GameRoot>;
-    type Trigger = Trigger;
+    type Action = MyAction;
+    type Root = IdT<MyGameRoot>;
+    type Trigger = MyTrigger;
 
     fn apply<Storage>(
         &self,
         interactor: &mut spru::interaction::Interactor<Storage, Self>,
     ) -> spru::interaction::Result<()>
     where
-        Storage: spru::item::Storage<State = Self::State>,
+        Storage: spru::item::Storage<State = <MyAction as spru::Action>::State>,
     {
         let _root = interactor.get_root()?;
-        interactor.enqueue_trigger(Trigger(interactor.context().player));
+        interactor.enqueue_trigger(MyTrigger(interactor.context().player));
         Ok(())
     }
 }
 
-pub type Server = spru::server::Impl<Interaction, Reaction, PlayerInit>;
+pub type MyServer = spru::server::Impl<Interaction, MyReaction, MyPlayerInit>;
 
-pub type Client = spru::client::Impl<Interaction, GameOutcome>;
+pub type MyClient = spru::client::Impl<Interaction, MyGameOutcome>;
 
-pub type Common = <Server as spru::Server>::Common;
+pub type MyCommon = <MyServer as spru::Server>::Common;
