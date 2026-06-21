@@ -24,7 +24,7 @@ jobs:
       run: cargo binstall wasm-bindgen-cli --no-confirm
     - uses: Swatinem/rust-cache@v2
     - name: Build wasm32-unknown-unknown
-      run: cargo build --verbose --release -p spru-quibbler --target wasm32-unknown-unknown
+      run: cargo build --verbose --release -p spru-quibbler --target wasm32-unknown-unknown --no-default-features --features "local,dedicated-client"
     - name: Run wasm-bindgen
       run: wasm-bindgen --out-name wasm-quibbler --out-dir ./spru-quibbler/wasm --target web ./target/wasm32-unknown-unknown/release/spru-quibbler.wasm
     - name: Upload WASM artifacts 

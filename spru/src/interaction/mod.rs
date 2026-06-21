@@ -1,7 +1,7 @@
 pub mod error;
 pub use error::Error;
 
-use std::{collections::VecDeque, fmt};
+use std::{borrow::Cow, collections::VecDeque, fmt};
 
 use derive_where::derive_where;
 use tagset::tagset_meta;
@@ -131,6 +131,11 @@ pub trait Interaction {
     ) -> self::Result<()>
     where
         Storage: item::Storage<State = <Self::Action as spru::Action>::State>;
+
+    /// A description of the Interaction, usually for diagnostic purposes
+    fn description(&self) -> Cow<'static, str> {
+        Cow::Borrowed(std::any::type_name::<Self>())
+    }
 }
 
 /// An alias for the [Interactor](crate::Interactor) used in an [Interaction](trait@Interaction).

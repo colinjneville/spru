@@ -5,7 +5,8 @@ use derive_where::derive_where;
 
 use crate::server;
 
-#[derive(Debug, prelude::Component)]
+#[derive(Debug)]
+#[derive(prelude::Component, prelude::Reflect)]
 #[require(FromClient<Server>, ToClient<Server>, FromUser<Server>, PendingClients<Server>)]
 pub struct Runner<Server: server::ServerSSS> {
     pub(crate) server: Server,
@@ -34,10 +35,10 @@ impl<Server: server::ServerSSS> Runner<Server> {
 
 #[derive_where(Debug; spru::common::signal::ToServer<Server::Common>)]
 #[derive_where(Default)]
-#[derive(prelude::Component)]
+#[derive(prelude::Component, prelude::Reflect)]
 pub struct FromClient<Server: server::ServerSSS> {
     queues: Vec<(
-        spru::player::Id,
+        crate::reflect::spru::player::Id,
         VecDeque<spru::common::signal::ToServer<Server::Common>>,
     )>,
 }
@@ -72,7 +73,7 @@ impl<Server: server::ServerSSS> FromClient<Server> {
     )> {
         for (client_id, queue) in &mut self.queues {
             if let Some(signal) = queue.pop_front() {
-                return Some((*client_id, signal));
+                return Some((client_id.0, signal));
             }
         }
         None
@@ -81,10 +82,10 @@ impl<Server: server::ServerSSS> FromClient<Server> {
 
 #[derive_where(Debug; spru::common::signal::ToClient<Server::Common>)]
 #[derive_where(Default)]
-#[derive(prelude::Component)]
+#[derive(prelude::Component, prelude::Reflect)]
 pub struct ToClient<Server: server::ServerSSS> {
     queues: Vec<(
-        spru::player::Id,
+        crate::reflect::spru::player::Id,
         VecDeque<spru::common::signal::ToClient<Server::Common>>,
     )>,
 }
@@ -135,7 +136,7 @@ impl<Server: server::ServerSSS> ToClient<Server> {
     )> {
         for (client_id, queue) in &mut self.queues {
             if let Some(signal) = queue.pop_front() {
-                return Some((*client_id, signal));
+                return Some((client_id.0, signal));
             }
         }
         None
@@ -144,11 +145,11 @@ impl<Server: server::ServerSSS> ToClient<Server> {
 
 fn get_queue_mut<T>(
     player_id: spru::player::Id,
-    queues: &mut Vec<(spru::player::Id, VecDeque<T>)>,
+    queues: &mut Vec<(crate::reflect::spru::player::Id, VecDeque<T>)>,
 ) -> &mut VecDeque<T> {
     let mut index = None;
     for (i, (queue_player_id, _queue)) in queues.iter_mut().enumerate() {
-        if player_id == *queue_player_id {
+        if player_id == queue_player_id.0 {
             index = Some(i);
             break;
         }
@@ -157,7 +158,7 @@ fn get_queue_mut<T>(
     let index = match index {
         Some(index) => index,
         None => {
-            queues.push((player_id, VecDeque::new()));
+            queues.push((crate::reflect::spru::player::Id(player_id), VecDeque::new()));
             queues.len() - 1
         }
     };
@@ -167,7 +168,7 @@ fn get_queue_mut<T>(
 
 #[derive_where(Default; )]
 #[derive_where(Debug; server::PendingClient<Server::Common>)]
-#[derive(prelude::Component)]
+#[derive(prelude::Component, prelude::Reflect)]
 pub struct PendingClients<Server: server::ServerSSS> {
     queue: VecDeque<server::PendingClient<Server::Common>>,
 }
@@ -192,7 +193,7 @@ impl<Server: server::ServerSSS> PendingClients<Server> {
 
 #[derive_where(Debug; UserInput<Server>)]
 #[derive_where(Default)]
-#[derive(prelude::Component)]
+#[derive(prelude::Component, prelude::Reflect)]
 pub struct FromUser<Server: server::ServerSSS> {
     queue: VecDeque<UserInput<Server>>,
 }

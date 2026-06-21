@@ -63,8 +63,6 @@ impl spru_script::Lexicon for MyLexicon {
     
     type Action = MyAction;
 
-    
-
     fn register_state<Storage>(registration: &mut spru_script_rhai::Registration1<'_>)
     where
         Storage: spru::item::Storage<State = MyState>,

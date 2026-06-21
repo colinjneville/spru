@@ -22,6 +22,8 @@ use std::{
     deku::DekuRead,
     deku::DekuWrite,
 )]
+#[repr(transparent)]
+#[serde(transparent)]
 pub struct Id(u32);
 
 impl Id {

@@ -11,10 +11,14 @@ use spru::item;
 /// inside the same World. Note that while this uses a [spru::player::Id] as the id,
 /// this does not mean the attached game piece belongs to that player, only that it
 /// is their 'view' of the game piece.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, prelude::Component)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(prelude::Component, prelude::Reflect)]
 #[component(storage = "SparseSet")]
 #[component(immutable)]
-pub struct ClientId(spru::player::Id);
+pub struct ClientId(
+    #[reflect(remote = crate::reflect::spru::player::Id)]
+    spru::player::Id
+);
 
 impl ClientId {
     pub(crate) fn new(id: spru::player::Id) -> Self {
@@ -36,7 +40,8 @@ impl fmt::Display for ClientId {
     }
 }
 
-#[derive(Debug, prelude::Component)]
+#[derive(Debug)]
+#[derive(prelude::Component, prelude::Reflect)]
 #[component(storage = "SparseSet")]
 #[require(FromServer<Client>, ToServer<Client>, FromUser<Client>, EntityMap)]
 pub struct Runner<Client: super::ClientSSS> {
@@ -51,7 +56,7 @@ impl<Client: super::ClientSSS> Runner<Client> {
 
 #[derive_where(Debug; spru::common::signal::ToClient<Client::Common>)]
 #[derive_where(Default)]
-#[derive(prelude::Component)]
+#[derive(prelude::Component, prelude::Reflect)]
 #[component(storage = "SparseSet")]
 pub struct FromServer<Client: super::ClientSSS> {
     queue: VecDeque<spru::common::signal::ToClient<Client::Common>>,
@@ -77,7 +82,7 @@ impl<Client: super::ClientSSS> FromServer<Client> {
 
 #[derive_where(Debug; spru::common::signal::ToServer<Client::Common>)]
 #[derive_where(Default)]
-#[derive(prelude::Component)]
+#[derive(prelude::Component, prelude::Reflect)]
 #[component(storage = "SparseSet")]
 pub struct ToServer<Client: super::ClientSSS> {
     queue: VecDeque<spru::common::signal::ToServer<Client::Common>>,
@@ -103,7 +108,7 @@ impl<Client: super::ClientSSS> ToServer<Client> {
 
 #[derive_where(Debug; UserInput<Client>)]
 #[derive_where(Default)]
-#[derive(prelude::Component)]
+#[derive(prelude::Component, prelude::Reflect)]
 #[component(storage = "SparseSet")]
 pub struct FromUser<Client: super::ClientSSS> {
     queue: VecDeque<UserInput<Client>>,
@@ -157,7 +162,8 @@ pub(crate) enum UserInput<Client: super::ClientSSS> {
     RevertInteraction(Option<spru::interaction::Pending>),
 }
 
-#[derive(Debug, prelude::Component)]
+#[derive(Debug)]
+#[derive(prelude::Component, prelude::Reflect)]
 pub struct Item<T: Send + Sync + 'static>(spru::Item<T>);
 
 impl<T: Send + Sync + 'static> Item<T> {
@@ -186,17 +192,18 @@ impl<T: Send + Sync + 'static> ops::Deref for Item<T> {
     }
 }
 
-#[derive(Debug, Default, prelude::Component)]
+#[derive(Debug, Default)]
+#[derive(prelude::Component, prelude::Reflect)]
 #[component(storage = "SparseSet")]
 pub struct EntityMap {
-    map: HashMap<item::Id, prelude::Entity>,
+    map: HashMap<crate::reflect::spru::item::Id, prelude::Entity>,
 }
 
 impl EntityMap {
     pub fn get<ID: Into<item::Id>>(&self, id: ID) -> super::BevyResult<prelude::Entity> {
         let id = id.into();
         self.map
-            .get(&id)
+            .get(&crate::reflect::spru::item::Id(id))
             .copied()
             .ok_or(super::BevyError::IdNotFound(id))
     }
@@ -219,7 +226,7 @@ impl EntityMap {
         id: item::Id,
         f: impl FnOnce() -> super::BevyResult<prelude::Entity>,
     ) -> super::BevyResult<prelude::Entity> {
-        match self.map.entry(id) {
+        match self.map.entry(crate::reflect::spru::item::Id(id)) {
             hash_map::Entry::Occupied(oe) => Err(super::BevyError::IdAlreadyExists(id, *oe.get())),
             hash_map::Entry::Vacant(ve) => {
                 let entity = f()?;
@@ -234,7 +241,7 @@ impl EntityMap {
         id: item::Id,
         f: impl FnOnce(prelude::Entity) -> super::BevyResult<T>,
     ) -> super::BevyResult<T> {
-        match self.map.entry(id) {
+        match self.map.entry(crate::reflect::spru::item::Id(id)) {
             hash_map::Entry::Occupied(oe) => {
                 let value = f(*oe.get())?;
                 oe.remove();
@@ -249,6 +256,6 @@ impl<ID: Into<item::Id>> ops::Index<ID> for EntityMap {
     type Output = prelude::Entity;
 
     fn index(&self, index: ID) -> &Self::Output {
-        &self.map[&index.into()]
+        &self.map[&crate::reflect::spru::item::Id(index.into())]
     }
 }

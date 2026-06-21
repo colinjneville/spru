@@ -66,7 +66,7 @@ pub fn propagate_remote_queues<Client>(
                 while let Some(signal) = to_server.dequeue() {
                     match rmp_serde::to_vec(&signal) {
                         Ok(msg) => {
-                            match transport.send.push(remote::CLIENT_TO_SERVER_LANE_SIGNAL, msg.into(), time::Instant::now()) {
+                            match transport.send.push(remote::CLIENT_TO_SERVER_LANE_SIGNAL, msg.into(), bevy::platform::time::Instant::now()) {
                                 Ok(_key) => {
                                     prelude::trace!("Sent signal");
                                 }

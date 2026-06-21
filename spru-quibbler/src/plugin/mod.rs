@@ -6,7 +6,7 @@ cfg_select! {
         pub(crate) use client::Client;
     }
     _ => {
-        pub(crate) use NoopPlugin as Client;
+        pub(crate) use Noop as Client;
     }
 }
 cfg_select! {
@@ -15,7 +15,7 @@ cfg_select! {
         pub(crate) use dedicated_server::DedicatedServer;
     }
     _ => {
-        pub(crate) use NoopPlugin as DedicatedServer;
+        pub(crate) use Noop as DedicatedServer;
     }
 }
 cfg_select! {
@@ -24,7 +24,7 @@ cfg_select! {
         pub(crate) use local::Local;
     }
     _ => {
-        pub(crate) use NoopPlugin as Local;
+        pub(crate) use Noop as Local;
     }
 }
 cfg_select! {
@@ -33,7 +33,7 @@ cfg_select! {
         pub(crate) use remote::Remote;
     }
     _ => {
-        pub(crate) use NoopPlugin as Remote;
+        pub(crate) use Noop as Remote;
     }
 }
 cfg_select! {
@@ -42,7 +42,7 @@ cfg_select! {
         pub(crate) use server::Server;
     }
     _ => {
-        pub(crate) use NoopPlugin as Server;
+        pub(crate) use Noop as Server;
     }
 }
 
@@ -52,7 +52,7 @@ cfg_select! {
         pub(crate) use ui::Ui;
     }
     _ => {
-        pub(crate) use NoopPlugin as Ui;
+        pub(crate) use Noop as Ui;
     }
 }
 
@@ -63,4 +63,8 @@ pub(crate) struct Noop;
 
 impl prelude::Plugin for Noop {
     fn build(&self, _app: &mut bevy::app::App) { }
+    
+    fn is_unique(&self) -> bool {
+        false
+    }
 }

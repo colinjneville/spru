@@ -25,7 +25,7 @@ impl prelude::Plugin for Client {
                     client_map.insert(**game_id, **client_id, client_add.entity);
                     
                     commands.entity(client_add.entity)
-                        .insert((
+                        .insert_if_new((
                             crate::Log::default(),
                         ));
                 }
@@ -37,10 +37,12 @@ impl prelude::Plugin for Client {
                 | {
                     client_map.remove(client_remove.entity);
 
-                    commands.entity(client_remove.entity)
-                        .remove::<(
-                            crate::Log,
-                        )>();
+                    // TODO don't destroy the Log for now, because spru_bevy currently removes and reinserts the Runner 
+                    // every frame in order to split the World into Runner and The Rest of the World.
+                    // commands.entity(client_remove.entity)
+                    //     .remove::<(
+                    //         crate::Log,
+                    //     )>();
                 }
             )
             .add_observer(

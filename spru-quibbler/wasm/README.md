@@ -1,5 +1,5 @@
 # Building and running locally
-* cargo build --verbose --release -p spru-quibbler --target wasm32-unknown-unknown
+* cargo build --verbose --release -p spru-quibbler --target wasm32-unknown-unknown --no-default-features --features "local,dedicated-client"
 * wasm-bindgen --out-name wasm-quibbler --out-dir ./spru-quibbler/wasm --target web ./target/wasm32-unknown-unknown/release/spru-quibbler.wasm
 * miniserve ./spru-quibbler/wasm --index quibbler.html -p 8080 -i 127.0.0.1
 

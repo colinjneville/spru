@@ -219,8 +219,9 @@ impl Ui {
         game_ids.sort_unstable();
 
         let (mut egui, mut active_game) = s_egui.get_mut(world);
-        let ctx = egui.ctx_mut()?;
         if game_ids.len() > 1 {
+            let ctx = egui.ctx_mut()?;
+
             egui::TopBottomPanel::bottom("game_select").show(ctx, |ui| {
                     ui.horizontal(|ui| {
                         for &game_id in &game_ids {
@@ -236,6 +237,8 @@ impl Ui {
                 });
         } else if game_ids.len() == 1 && active_game.0 != Some(*game_ids[0]) {
             active_game.0 = Some(*game_ids[0]);
+        } else if game_ids.is_empty() && active_game.0 != None {
+            active_game.0 = None;
         }
 
         Ok(())
@@ -266,7 +269,7 @@ impl Ui {
             let (mut egui, mut active_client) = s_egui.get_mut(world);
             let ctx = egui.ctx_mut()?;
             
-            if player_names.len() > 2 {
+            if player_names.len() > 1 {
                 egui::TopBottomPanel::bottom("player_select").show(ctx, |ui| {
                     ui.horizontal(|ui| {
                         for (client_id, username) in &player_names {
@@ -289,7 +292,7 @@ impl Ui {
     }
 
     #[cfg(feature = "server")]
-    fn server_ui(
+    fn server_ui_control(
         mut egui: bevy_egui::EguiContexts,
         server_map: prelude::Res<ServerMap>,
         mut add_player_string: prelude::Local<String>,
@@ -388,6 +391,39 @@ impl Ui {
         } else {
             Ok(None)
         }
+    }
+
+    #[cfg(feature = "server")]
+    fn server_ui_log(
+        mut egui: bevy_egui::EguiContexts,
+        server_map: prelude::Res<ServerMap>,
+        active_game: prelude::Res<ActiveGame>,
+        q_log: prelude::Query<(
+            &crate::Log,
+        )>,
+    ) -> prelude::Result {
+        if let Some(active_game_id) = active_game.0
+            && let Some(entity) = server_map.get(active_game_id)
+            && let Ok((log, )) = q_log.get(entity)
+        {
+            let ctx = egui.ctx_mut()?;
+
+            egui::TopBottomPanel::bottom("server_log").show(ctx, |ui| {
+                egui::ScrollArea::vertical()
+                    .max_height(64.)
+                    .max_width(f32::INFINITY)
+                    .show(ui, |ui| {
+                        egui::Grid::new("log").striped(true).show(ui, |ui| {
+                            for log_line in log.iter().rev() {
+                                ui.label(log_line);
+                                ui.end_row();
+                            }
+                        });
+                    });
+            });
+        }
+
+        Ok(())
     }
 
     #[cfg(feature = "client")]
@@ -600,12 +636,11 @@ impl prelude::Plugin for Ui {
             })
             .add_systems(bevy_egui::EguiPrimaryContextPass, (
                 Self::application_ui.in_set(UiPhase::Application),
-                #[cfg(feature = "server")]
                 Self::game_select_ui.in_set(UiPhase::GameSelect),
                 #[cfg(feature = "client")]
                 Self::client_select_ui.in_set(UiPhase::ClientSelect),
                 #[cfg(feature = "server")]
-                Self::server_ui.in_set(UiPhase::Server),
+                (Self::server_ui_control, Self::server_ui_log).in_set(UiPhase::Server),
                 #[cfg(feature = "client")]
                 Self::client_ui.in_set(UiPhase::Client),
             ))

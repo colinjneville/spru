@@ -4,9 +4,12 @@ use bevy::prelude;
 
 #[derive(Debug, Clone, Copy, PartialOrd, Ord, PartialEq, Eq, Hash)]
 #[derive(serde::Serialize, serde::Deserialize)]
-#[derive(prelude::Component)]
+#[derive(prelude::Component, prelude::Reflect)]
 #[component(immutable)]
-pub struct GameId(spru::game::Id);
+pub struct GameId(
+    #[reflect(remote = crate::reflect::spru::game::Id)]
+    spru::game::Id
+);
 
 impl GameId {
     pub(crate) fn new(game_id: spru::game::Id) -> Self {
@@ -28,7 +31,9 @@ impl fmt::Display for GameId {
     }
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize, prelude::Component)]
+#[derive(Debug)]
+#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(prelude::Component, prelude::Reflect)]
 pub struct Root<Common: super::CommonSSS>(pub Common::Root);
 
 impl<Common: super::CommonSSS> Root<Common> {
