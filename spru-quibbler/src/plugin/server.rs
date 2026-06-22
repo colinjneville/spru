@@ -20,20 +20,11 @@ impl prelude::Plugin for Server {
             .add_plugins((
                 spru_bevy::server::Plugin::<crate::Server>::default(),
             ))
-            .init_resource::<ServerMap>()
             .add_systems(prelude::Startup, Self::startup)
             .add_observer(|
                     server_add: prelude::On<prelude::Add, spru_bevy::server::component::Runner<crate::Server>>,
                     mut commands: prelude::Commands,
-                    mut server_map: prelude::ResMut<ServerMap>,
-                    q_game_id: prelude::Query<(
-                        &spru_bevy::common::component::GameId,
-                    )>,
                 | {
-                    let (game_id, ) = q_game_id.get(server_add.entity)
-                        .expect("Entity does not have game id");
-                    server_map.insert(**game_id, server_add.entity);
-
                     commands.entity(server_add.entity)
                         .insert((
                             crate::Log::default(),
@@ -43,10 +34,7 @@ impl prelude::Plugin for Server {
             .add_observer(|
                     server_remove: prelude::On<prelude::Remove, spru_bevy::server::component::Runner<crate::Server>>,
                     mut commands: prelude::Commands,
-                    mut server_map: prelude::ResMut<ServerMap>,
-                | {
-                    server_map.remove(server_remove.entity);
-                    
+                | { 
                     commands.entity(server_remove.entity)
                         .remove::<(
                             crate::Log,
@@ -115,30 +103,3 @@ impl prelude::Plugin for Server {
     }
 }
 
-#[derive(Debug, Default)]
-#[derive(prelude::Resource)]
-pub(crate) struct ServerMap {
-    map: HashMap<spru::game::Id, prelude::Entity>,
-    inverse_map: HashMap<prelude::Entity, spru::game::Id>,
-}
-
-impl ServerMap {
-    fn insert(&mut self, game_id: spru::game::Id, entity: prelude::Entity) {
-        self.map.insert(game_id, entity);
-        self.inverse_map.insert(entity, game_id);
-    }
-
-    fn remove(&mut self, entity: prelude::Entity) {
-        if let Some(game_id) = self.inverse_map.remove(&entity) {
-            self.map.remove(&game_id);
-        }
-    }
-
-    pub(crate) fn get(&self, game_id: spru::game::Id) -> Option<prelude::Entity> {
-        self.map.get(&game_id).copied()
-    }
-
-    pub(crate) fn iter(&self) -> impl Iterator<Item = (&spru::game::Id, &prelude::Entity)> {
-        self.map.iter()
-    }
-}

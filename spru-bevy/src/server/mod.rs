@@ -4,12 +4,13 @@ pub mod event;
 #[cfg(feature = "remote")]
 #[cfg(not(target_family = "wasm"))]
 pub mod remote;
+pub mod resource;
 mod plugin;
-use derive_where::derive_where;
 pub use plugin::Plugin;
 pub mod system;
 
 use bevy::prelude;
+use derive_where::derive_where;
 
 use crate::common;
 

@@ -1,5 +1,3 @@
-use std::time;
-
 use bevy::prelude;
 
 use crate::{client, common, remote};

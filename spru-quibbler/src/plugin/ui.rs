@@ -4,10 +4,10 @@ use bevy::prelude;
 use bevy_egui::egui;
 
 #[cfg(feature = "server")]
-use crate::plugin::server::ServerMap;
+use spru_bevy::server::resource::ServerMap;
 
 #[cfg(feature = "client")]
-use crate::plugin::client::ClientMap;
+use spru_bevy::client::resource::ClientMap;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[derive(prelude::SystemSet)]

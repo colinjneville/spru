@@ -9,8 +9,6 @@ use crate::{client, common};
 pub(crate) struct BevyReadOnlyStorage<'l, State> {
     world: &'l prelude::World,
     entity_map: &'l super::component::EntityMap,
-    game_id: spru::game::Id,
-    client_id: spru::player::Id,
     _state: PhantomData<fn() -> State>,
 }
 
@@ -18,14 +16,10 @@ impl<'l, State> BevyReadOnlyStorage<'l, State> {
     pub(crate) fn new(
         world: &'l prelude::World,
         entity_map: &'l super::component::EntityMap,
-        game_id: spru::game::Id,
-        client_id: spru::player::Id,
     ) -> Self {
         Self {
             world,
             entity_map,
-            game_id,
-            client_id,
             _state: PhantomData,
         }
     }

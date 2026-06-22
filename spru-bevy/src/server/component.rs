@@ -3,11 +3,12 @@ use std::collections::VecDeque;
 use bevy::prelude;
 use derive_where::derive_where;
 
-use crate::server;
+use crate::{common, server};
 
 #[derive(Debug)]
 #[derive(prelude::Component, prelude::Reflect)]
 #[require(FromClient<Server>, ToClient<Server>, FromUser<Server>, PendingClients<Server>)]
+#[component(on_add, on_remove, on_despawn)]
 pub struct Runner<Server: server::ServerSSS> {
     pub(crate) server: Server,
 }
@@ -30,6 +31,23 @@ impl<Server: server::ServerSSS> Runner<Server> {
     ) -> &spru::item::storage::Canonical<<Server::State as tagset::TagSet>::Repr, Server::State>
     {
         self.server.storage()
+    }
+
+    fn on_add(mut world: bevy::ecs::world::DeferredWorld, context: bevy::ecs::lifecycle::HookContext) {
+        let game_id = **world.get::<common::component::GameId>(context.entity)
+            .expect("Expected GameId");
+        world.resource_mut::<server::resource::ServerMap>()
+            .insert(game_id, context.entity);
+    }
+
+    fn on_remove(mut world: bevy::ecs::world::DeferredWorld, context: bevy::ecs::lifecycle::HookContext) {
+        world.resource_mut::<server::resource::ServerMap>()
+            .remove(context.entity);
+    }
+
+    fn on_despawn(mut world: bevy::ecs::world::DeferredWorld, context: bevy::ecs::lifecycle::HookContext) {
+        world.resource_mut::<server::resource::ServerMap>()
+            .remove(context.entity);
     }
 }
 

@@ -1,6 +1,6 @@
 use bevy::prelude;
 
-use crate::{client, common};
+use crate::client;
 
 pub fn on_connected<Client: client::ClientSSS>(
     trigger: prelude::On<prelude::Add, aeronet::io::Session>, 

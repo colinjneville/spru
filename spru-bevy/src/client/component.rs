@@ -7,6 +7,8 @@ use bevy::prelude;
 use derive_where::derive_where;
 use spru::item;
 
+use crate::{client, common};
+
 /// Specifies the Client the entity belongs to. This allows multiple Clients to co-exist
 /// inside the same World. Note that while this uses a [spru::player::Id] as the id,
 /// this does not mean the attached game piece belongs to that player, only that it
@@ -43,6 +45,7 @@ impl fmt::Display for ClientId {
 #[derive(Debug)]
 #[derive(prelude::Component, prelude::Reflect)]
 #[component(storage = "SparseSet")]
+#[component(on_add, on_remove, on_despawn)]
 #[require(FromServer<Client>, ToServer<Client>, FromUser<Client>, EntityMap)]
 pub struct Runner<Client: super::ClientSSS> {
     pub(crate) client: Client,
@@ -51,6 +54,26 @@ pub struct Runner<Client: super::ClientSSS> {
 impl<Client: super::ClientSSS> Runner<Client> {
     pub(crate) fn new(client: Client) -> Self {
         Self { client }
+    }
+
+    fn on_add(mut world: bevy::ecs::world::DeferredWorld, context: bevy::ecs::lifecycle::HookContext) {
+        let game_id = **world.get::<common::component::GameId>(context.entity)
+            .expect("Expected GameId");
+        let client_id = **world.get::<client::component::ClientId>(context.entity)
+            .expect("Expected ClientId");
+        
+        world.resource_mut::<client::resource::ClientMap>()
+            .insert(game_id, client_id, context.entity);
+    }
+
+    fn on_remove(mut world: bevy::ecs::world::DeferredWorld, context: bevy::ecs::lifecycle::HookContext) {
+        world.resource_mut::<client::resource::ClientMap>()
+            .remove(context.entity);
+    }
+
+    fn on_despawn(mut world: bevy::ecs::world::DeferredWorld, context: bevy::ecs::lifecycle::HookContext) {
+        world.resource_mut::<client::resource::ClientMap>()
+            .remove(context.entity);
     }
 }
 

@@ -4,7 +4,6 @@ use crate::server::{self, remote};
 
 pub fn on_opened(
     trigger: prelude::On<prelude::Add, aeronet::io::server::Server>, 
-    commands: prelude::Commands,
     q_servers: prelude::Query<&aeronet::io::connection::LocalAddr>,
 ) {
     
@@ -89,7 +88,7 @@ pub fn on_session_request<Server: crate::server::ServerSSS>(
     Ok(())
 }
 
-fn on_connected<Server: crate::server::ServerSSS>(
+pub fn on_connected<Server: crate::server::ServerSSS>(
     trigger: prelude::On<prelude::Add, aeronet::io::Session>, 
     mut commands: prelude::Commands,
     clients: prelude::Query<(

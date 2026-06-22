@@ -14,10 +14,13 @@ impl<Server: server::ServerSSS> prelude::Plugin for Plugin<Server> {
     fn build(&self, app: &mut prelude::App) {
         let Self { _server } = self;
 
-        app.add_systems(
-            prelude::FixedUpdate,
-            (server::system::run_server::<Server>
-                .pipe::<_, _, prelude::Result, _>(common::adapt::map_err),),
-        );
+        app
+            .add_systems(
+                prelude::FixedUpdate,
+                (server::system::run_server::<Server>
+                    .pipe::<_, _, prelude::Result, _>(common::adapt::map_err),),
+            )
+            .init_resource::<server::resource::ServerMap>()
+        ;
     }
 }

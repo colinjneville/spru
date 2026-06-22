@@ -3,15 +3,18 @@ pub mod component;
 pub mod event;
 #[cfg(feature = "remote")]
 pub mod remote;
+pub mod resource;
 mod storage;
-use bevy::prelude;
 pub use storage::BevyStorage;
 mod plugin;
 pub use plugin::Plugin;
+pub mod system;
+
 use spru::item;
+use bevy::prelude;
 
 use crate::common;
-pub mod system;
+
 
 pub trait ClientSSS:
     spru::client::Client<
@@ -143,17 +146,13 @@ pub fn eval<Client, Args, Ret>(
 where
     Client: ClientSSS,
 {
-    let (root, entity_map, game_id, client_id) = world.get_entity(client_entity)?
+    let (root, entity_map) = world.get_entity(client_entity)?
         .components::<(
             &common::component::Root<Client::Common>,
             &component::EntityMap,
-            &common::component::GameId,
-            &component::ClientId,
         )>();
 
-    let game_id = **game_id;
-    let client_id = **client_id;
-    let storage = storage::BevyReadOnlyStorage::new(world, entity_map, game_id, client_id);
+    let storage = storage::BevyReadOnlyStorage::new(world, entity_map);
 
     let ret = language.eval(&storage, &root.0, script, args)?;
     Ok(ret)
