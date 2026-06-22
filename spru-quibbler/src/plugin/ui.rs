@@ -84,6 +84,7 @@ struct UiData {
     active_game_id: spru::game::Id,
     active_client_id: spru::player::Id,
     active_client_entity: prelude::Entity,
+    has_pending_interactions: bool,
     snapshot: UiSnapshot,
 }
 
@@ -355,7 +356,10 @@ impl Ui {
         world: &prelude::World,
         client_map: prelude::Res<ClientMap>,
         active_game: prelude::Res<ActiveGame>,
-        active_client: prelude::Res<ActiveClient>,        
+        active_client: prelude::Res<ActiveClient>,
+        q_client: prelude::Query<(
+            &spru_bevy::client::component::Runner<crate::Client>,
+        )>,
     ) -> prelude::Result<Option<UiData>> {
         if let Some(active_game_id) = active_game.0 
             && let Some(active_client_id) = active_client.get(active_game_id)
@@ -382,10 +386,14 @@ impl Ui {
 
             let snapshot = UiSnapshot::from_dynamic(ui_snapshot);
 
+            let (client, ) = q_client.get(active_client_entity)?;
+            let has_pending_interactions = client.pending_interactions().next().is_some();
+
             Ok(Some(UiData {
                 active_game_id,
                 active_client_id,
                 active_client_entity,
+                has_pending_interactions,
                 snapshot,
             }))
         } else {
@@ -478,6 +486,7 @@ impl Ui {
             active_game_id: _active_game_id,
             active_client_id,
             active_client_entity,
+            has_pending_interactions,
             snapshot,
         } = ui_data;
 
@@ -596,10 +605,16 @@ impl Ui {
                 ui.separator();
                 ui.label("Local Changes:");
                 ui.horizontal(|ui| {
-                    if ui.button("Apply").clicked() {
+                    let mut apply_button = egui::Button::new("Apply");
+                    let mut revert_button = egui::Button::new("Revert");
+                    if has_pending_interactions {
+                        apply_button = apply_button.stroke(egui::Stroke::new(1.5, egui::Color32::ORANGE));
+                        revert_button = revert_button.stroke(egui::Stroke::new(1.5, egui::Color32::ORANGE));
+                    }
+                    if ui.add(apply_button).clicked() {
                         from_user.apply_all_interactions();
                     }
-                    if ui.button("Revert").clicked() {
+                    if ui.add(revert_button).clicked() {
                         from_user.revert_all_interactions();
                     }
                 });

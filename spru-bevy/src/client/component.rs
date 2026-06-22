@@ -75,6 +75,10 @@ impl<Client: super::ClientSSS> Runner<Client> {
         world.resource_mut::<client::resource::ClientMap>()
             .remove(context.entity);
     }
+
+    pub fn pending_interactions(&self) -> impl Iterator<Item = spru::interaction::Pending> {
+        self.client.pending_interactions()
+    }
 }
 
 #[derive_where(Debug; spru::common::signal::ToClient<Client::Common>)]
