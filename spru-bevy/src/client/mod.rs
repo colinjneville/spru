@@ -135,7 +135,7 @@ pub struct ClientInfo {
 pub fn eval<Client, Args, Ret>(
     world: &prelude::World,
     client_entity: prelude::Entity,
-    language: &impl spru_script::LanguageEval<Args, Ret, Client::Root, Error: std::error::Error + Send + Sync + 'static>,
+    language: &impl spru_script::DialectEval<Args, Ret, Client::Root, Error: std::error::Error + Send + Sync + 'static>,
     script: &str,
     args: Args,
 ) 

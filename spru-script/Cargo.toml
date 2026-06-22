@@ -14,7 +14,6 @@ spru = { workspace = true, features = ["test-util"] }
 [dependencies]
 spru.workspace = true
 spru-script-base.workspace = true
-spru-script-impl.workspace = true
 spru-script-macro.workspace = true
 
 tagset.workspace = true

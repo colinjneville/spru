@@ -17,30 +17,22 @@ pub trait Lexicon: StatelessLexicon {
 
 pub trait LanguageActual {
     type Registration<'r>;
-    // type Registered<Lexicon: crate::StatelessLexicon>;
-    // type Error;
-
-    // fn with_stateless_lexicon<Lexicon: crate::StatelessLexicon>() 
-    //     -> Result<Self::Registered<Lexicon>, Self::Error>;
-    // fn with_lexicon<Lexicon: crate::Lexicon>() 
-    //     -> Result<Self::Registered<Lexicon>, Self::Error>;
 }
 
-pub trait StatelessLanguage {
-    // type Registration<'r>;
+pub trait StatelessDialect {
     type Error;
 }
 
-pub trait Language: StatelessLanguage {
+pub trait Dialect: StatelessDialect {
     type Action: spru::Action;
 }
 
-pub trait LanguageStatelessEval<Args, Ret>: StatelessLanguage {
+pub trait StatelessDialectEval<Args, Ret>: StatelessDialect {
     // Evaluate the result of a script without Storage access
     fn stateless_eval(&self, script: &str, args: Args) -> Result<Ret, Self::Error>;
 }
 
-pub trait LanguageEval<Args, Ret, Root>: Language + LanguageStatelessEval<Args, Ret> {
+pub trait DialectEval<Args, Ret, Root>: Dialect + StatelessDialectEval<Args, Ret> {
     // Evaluate the result of a script with read-only Storage access. Any attempts to modify game items will fail.
     fn eval<Storage>(&self, storage: &Storage, root: &Root, script: &str, args: Args) 
         -> Result<Ret, Self::Error>
@@ -49,7 +41,7 @@ pub trait LanguageEval<Args, Ret, Root>: Language + LanguageStatelessEval<Args, 
     ;
 }
 
-pub trait LanguageExec<Args, Ret, Context, Output>: Language {
+pub trait DialectExec<Args, Ret, Context, Output>: Dialect {
     fn exec<Storage>(
         &self, 
         interactor: &mut spru::Interactor<'_, Storage, Self::Action, Context, Output>, 
