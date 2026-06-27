@@ -38,6 +38,8 @@ halfbrown = { version = "0.3.0", features = ["serde"] }
 thiserror = "2.0.12"
 anyhow = "1.0.100"
 append-only-vec = "0.1.8"
+itertools = "0.15.0"
+scopeguard = "1.2.0"
 
 bytemuck = { version = "1.25.0", features = ["extern_crate_alloc"] }
 
@@ -64,6 +66,7 @@ tracing-core = "0.1.34"
 # networking
 aeronet = "0.20.0"
 aeronet_webtransport = "0.20.0"
+url = "2.5.8"
 
 # async
 # atomicell = "0.2.0"

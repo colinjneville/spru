@@ -14,6 +14,7 @@ use derive_where::derive_where;
 
 use crate::common;
 
+/// A [spru::Server] whose constituent types are [Send] + [Sync] + `'static`
 pub trait ServerSSS:
     spru::Server<
         State: spru::State<Repr: Send + Sync + 'static> + Send + Sync + 'static,
@@ -113,13 +114,17 @@ pub enum RunServerError {
 
 pub type RunServerResult<T> = std::result::Result<T, RunServerError>;
 
-#[derive_where(Debug; spru::common::Seed<Common>)]
-pub struct PendingClient<Common: common::CommonSSS> {
-    pub seed: spru::common::Seed<Common>,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct ServerInfo {
-    pub entity: prelude::Entity,
-    pub game_id: common::component::GameId,
+pub(crate) fn trigger_events<Server: ServerSSS>(entity: prelude::Entity, event_trigger: &mut impl common::TriggerEvent, events: Vec<spru::server::Event<Server>>) {
+    for event in events {
+        #[allow(clippy::single_match)]
+        match event {
+            spru::server::Event::GameComplete(game_complete) => {
+                event_trigger.trigger(event::GameComplete::<Server> {
+                    entity,
+                    game_outcome: game_complete.game_outcome,
+                });
+            }
+            _ => {}
+        }
+    }
 }

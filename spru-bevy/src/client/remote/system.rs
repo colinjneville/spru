@@ -36,7 +36,9 @@ pub fn propagate_remote_queues<Client>(
                             match rmp_serde::from_slice::<spru::common::Seed<Client::Common>>(&msg.payload) {
                                 Ok(seed) => {
                                     prelude::info!("Creating client");
-                                    commands.queue(crate::client::command::Init::<Client> { seed });
+                                    commands
+                                        .spawn_empty()
+                                        .queue(crate::client::command::Init::<Client> { seed });
                                 }
                                 Err(err) => {
                                     prelude::warn!("Invalid seed: {err}");

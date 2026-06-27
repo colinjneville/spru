@@ -5,6 +5,10 @@ if trigger == type.Trigger.start_game() {
         throw "The game has already started";
     }
 
+    if context.root.players.count == 0 {
+        throw "At least one player is required";
+    }
+
     context.root.has_started = true;
 
     output.enqueue_trigger(type.Trigger.start_round());

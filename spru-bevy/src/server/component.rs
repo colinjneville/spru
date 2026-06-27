@@ -7,7 +7,7 @@ use crate::{common, server};
 
 #[derive(Debug)]
 #[derive(prelude::Component, prelude::Reflect)]
-#[require(FromClient<Server>, ToClient<Server>, FromUser<Server>, PendingClients<Server>)]
+#[require(FromClient<Server>, ToClient<Server>)]
 #[component(on_add, on_remove, on_despawn)]
 pub struct Runner<Server: server::ServerSSS> {
     pub(crate) server: Server,
@@ -136,6 +136,7 @@ impl<Server: server::ServerSSS> ToClient<Server> {
         client_id: spru::player::Id,
         signal: spru::common::signal::ToClient<Server::Common>,
     ) {
+        prelude::trace!("Signal to {client_id}");
         get_queue_mut(client_id, &mut self.queues).push_back(signal);
     }
 
@@ -182,67 +183,4 @@ fn get_queue_mut<T>(
     };
 
     &mut queues[index].1
-}
-
-#[derive_where(Default; )]
-#[derive_where(Debug; server::PendingClient<Server::Common>)]
-#[derive(prelude::Component, prelude::Reflect)]
-pub struct PendingClients<Server: server::ServerSSS> {
-    queue: VecDeque<server::PendingClient<Server::Common>>,
-}
-
-impl<Server: server::ServerSSS> PendingClients<Server> {
-    pub fn len(&self) -> usize {
-        self.queue.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.queue.is_empty()
-    }
-
-    pub(crate) fn enqueue(&mut self, pending_client: server::PendingClient<Server::Common>) {
-        self.queue.push_back(pending_client);
-    }
-
-    pub fn dequeue(&mut self) -> Option<server::PendingClient<Server::Common>> {
-        self.queue.pop_front()
-    }
-}
-
-#[derive_where(Debug; UserInput<Server>)]
-#[derive_where(Default)]
-#[derive(prelude::Component, prelude::Reflect)]
-pub struct FromUser<Server: server::ServerSSS> {
-    queue: VecDeque<UserInput<Server>>,
-}
-
-impl<Server: server::ServerSSS> FromUser<Server> {
-    pub fn len(&self) -> usize {
-        self.queue.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.queue.is_empty()
-    }
-
-    pub fn add_player(&mut self, user_init_in: <Server::PlayerInit as spru::player::Init>::In) {
-        self.queue.push_back(UserInput::AddPlayer(user_init_in));
-    }
-
-    pub fn manual_trigger(&mut self, trigger: <Server::Reaction as spru::Reaction>::Trigger) {
-        self.queue.push_back(UserInput::ManualTrigger(trigger));
-    }
-
-    pub(crate) fn dequeue(&mut self) -> Option<UserInput<Server>> {
-        self.queue.pop_front()
-    }
-}
-
-#[derive_where(Debug;
-    <Server::PlayerInit as spru::player::Init>::In,
-    <Server::Reaction as spru::Reaction>::Trigger,
-)]
-pub(crate) enum UserInput<Server: server::ServerSSS> {
-    AddPlayer(<Server::PlayerInit as spru::player::Init>::In),
-    ManualTrigger(<Server::Reaction as spru::Reaction>::Trigger),
 }

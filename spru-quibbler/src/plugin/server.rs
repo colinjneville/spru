@@ -1,16 +1,16 @@
-use std::collections::HashMap;
-
 use bevy::prelude;
 
 pub(crate) struct Server;
 
 impl Server {
     fn startup(mut commands: prelude::Commands) {
-        commands.queue(spru_bevy::server::command::Init::<crate::Server, _> {
-            game_init: crate::game::init::new(),
-            player_init: crate::player::init::new(),
-            reaction: crate::reaction::new(),
-        })
+        commands
+            .spawn_empty()
+            .queue(spru_bevy::server::command::Init::<crate::Server, _> {
+                game_init: crate::game::init::new(),
+                player_init: crate::player::init::new(),
+                reaction: crate::reaction::new(),
+            });
     }
 }
 
@@ -20,7 +20,7 @@ impl prelude::Plugin for Server {
             .add_plugins((
                 spru_bevy::server::Plugin::<crate::Server>::default(),
             ))
-            .add_systems(prelude::Startup, Self::startup)
+            // .add_systems(prelude::Startup, Self::startup)
             .add_observer(|
                     server_add: prelude::On<prelude::Add, spru_bevy::server::component::Runner<crate::Server>>,
                     mut commands: prelude::Commands,

@@ -24,26 +24,33 @@ pub fn on_session_request<Server: crate::server::ServerSSS>(
     q_server: &mut prelude::QueryState<(
         &mut crate::server::component::Runner<Server>,
         &mut crate::server::component::ToClient<Server>,
-        &mut crate::server::component::PendingClients<Server>,
     )>,
 ) -> prelude::Result {
     let client = request.event_target();
+    
     let q_clients = q_clients.query(world);
     
     let Ok((&prelude::ChildOf(server), )) = q_clients.get(client) else {
         return Ok(());
     };
 
-    let response = {
+    let response = 'response: {
+        let Ok(url) = url::Url::parse(&request.path) else {
+            break 'response aeronet_webtransport::server::SessionResponse::NotFound;
+        };
+
         let mut event = remote::event::AttemptedConnection::<<Server::PlayerInit as spru::player::Init>::In> { 
             entity: client, 
-            headers: request.headers.clone(),
+            // WASM can't use actual headers (currently), so all headers are passed as query parameters
+            // headers: request.headers.clone(),
+            headers: url.query_pairs().map(|(k, v)| (k.into_owned(), v.into_owned())).collect(),
+            
             response: None,
         };
         
         world.trigger_ref(&mut event);
 
-        let (mut runner, mut to_client, mut pending_clients, ) = q_server.get_mut(world, server)?;
+        let (mut runner, mut to_client, ) = q_server.get_mut(world, server)?;
 
         let response = event.response.unwrap_or(super::JoinRequestResponse::RejectNotFound);
         prelude::info!("{server} responding to connection request from {client} with: {response}");
@@ -61,12 +68,12 @@ pub fn on_session_request<Server: crate::server::ServerSSS>(
 
                         to_client.enqueue_outbound(outbound);
 
-                        pending_clients.enqueue(crate::server::PendingClient {
-                            seed: ret,
-                        });
-
                         world.commands().entity(client)
-                            .insert(server::remote::component::RemoteClient { player_id });
+                            .insert((
+                                server::remote::component::RemoteClient { player_id },
+                                server::remote::component::PendingRemote { seed: Some(ret) },
+                            ))
+                            ;
 
                         aeronet_webtransport::server::SessionResponse::Accepted
 

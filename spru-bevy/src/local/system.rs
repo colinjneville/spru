@@ -47,18 +47,3 @@ pub fn propagate_local_queues<Server, Client>(
         }
     }
 }
-
-pub fn create_local_clients<Server, Client>(
-    mut commands: prelude::Commands,
-    q_server: prelude::Query<(&mut crate::server::component::PendingClients<Server>,)>,
-) where
-    Server: crate::server::ServerSSS,
-    Client: crate::client::ClientSSS<Common = Server::Common>,
-{
-    for (mut pending_clients,) in q_server {
-        while let Some(pending_client) = pending_clients.dequeue() {
-            let seed = pending_client.seed;
-            commands.queue(crate::client::command::Init::<Client> { seed });
-        }
-    }
-}

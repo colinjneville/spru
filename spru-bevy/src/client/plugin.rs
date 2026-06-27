@@ -1,6 +1,6 @@
 use std::marker::PhantomData;
 
-use bevy::{ecs::system::IntoSystem as _, prelude};
+use bevy::prelude;
 use derive_where::derive_where;
 
 use crate::client;
@@ -15,8 +15,7 @@ impl<Client: super::ClientSSS> prelude::Plugin for Plugin<Client> {
         app
             .add_systems(
                 prelude::FixedPostUpdate,
-                (super::system::run_client::<Client>
-                    .pipe::<_, _, prelude::Result, _>(crate::common::adapt::map_err),),
+                super::system::run_client::<Client>,
             )
             .init_resource::<client::resource::ClientMap>()
         ;

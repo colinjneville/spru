@@ -1,6 +1,5 @@
 use bevy::prelude;
 
-use spru_bevy::{client::ClientSSS as _, server::ServerSSS as _};
 use spru_test::game::minimal;
 
 fn headless_plugins_with_logging() -> bevy::app::PluginGroupBuilder {
@@ -34,11 +33,13 @@ fn just_plugins() -> impl std::process::Termination {
 #[test]
 fn local_multiplayer() -> impl std::process::Termination {
     fn setup(mut commands: prelude::Commands) {
-        commands.queue(spru_bevy::server::command::Init::<minimal::MyServer, _> {
-            game_init: minimal::GameInit(minimal::LobbyInfo),
-            player_init: minimal::MyPlayerInit,
-            reaction: minimal::MyReaction,
-        })
+        commands
+            .spawn_empty()
+            .queue(spru_bevy::server::command::Init::<minimal::MyServer, _> {
+                game_init: minimal::GameInit(minimal::LobbyInfo),
+                player_init: minimal::MyPlayerInit,
+                reaction: minimal::MyReaction,
+            });
     }
 
     let exit = bevy::app::App::new()
@@ -49,45 +50,27 @@ fn local_multiplayer() -> impl std::process::Termination {
             spru_bevy::local::Plugin::<minimal::MyServer, minimal::MyClient>::default(),
         ))
         .add_observer(
-            |server_init: prelude::On<spru_bevy::server::event::Init<minimal::MyServer>>,
-             mut q_server: prelude::Query<(
-                &spru_bevy::common::component::GameId,
-                &mut spru_bevy::server::component::FromUser<minimal::MyServer>,
-            )>|
-             -> prelude::Result {
-                let server_info = *server_init
-                    .event()
-                    .result
-                    .as_ref()
-                    .map_err(ToString::to_string)?;
-                let (_, mut from_user) = minimal::MyServer::filter_mut(&mut q_server, server_info.game_id)
-                    .ok_or("server not found")?;
-                from_user.add_player(minimal::PlayerColor::Blue);
-                from_user.add_player(minimal::PlayerColor::Red);
+            |
+                server_init: prelude::On<spru_bevy::server::event::Init<minimal::MyServer>>, 
+                mut commands: prelude::Commands,
+            | -> prelude::Result {
+                commands.entity(server_init.entity)
+                    .queue(spru_bevy::local::command::AddLocalPlayer::<minimal::MyServer, minimal::MyClient>::new(minimal::PlayerColor::Blue))
+                    .queue(spru_bevy::local::command::AddLocalPlayer::<minimal::MyServer, minimal::MyClient>::new(minimal::PlayerColor::Red));
+                
                 Ok(())
             },
         )
-        .add_observer(
-            |client_init: prelude::On<spru_bevy::client::event::Init<minimal::MyClient>>,
-             mut q_client: prelude::Query<(
-                &spru_bevy::common::component::GameId,
-                &spru_bevy::client::component::ClientId,
-                &mut spru_bevy::client::component::FromUser<minimal::MyClient>,
-            )>|
-             -> prelude::Result {
-                let game_id = client_init.event().game_id;
-                let client_info = *client_init
-                    .event()
-                    .result
-                    .as_ref()
-                    .map_err(ToString::to_string)?;
-                let (_, _, mut from_user) =
-                    minimal::MyClient::filter_mut(&mut q_client, game_id, client_info.client_id)
-                        .ok_or("Client not found")?;
-                from_user.stage_interaction(minimal::Interaction);
-                from_user.revert_all_interactions();
-                from_user.stage_interaction(minimal::Interaction);
-                from_user.apply_all_interactions();
+        .add_observer(|
+                client_init: prelude::On<spru_bevy::client::event::Init<minimal::MyClient>>,
+                mut commands: prelude::Commands,
+            | -> prelude::Result {                
+                commands.entity(client_init.entity)
+                    .queue(spru_bevy::client::command::StageInteraction::<minimal::MyClient>::new(minimal::Interaction))
+                    .queue(spru_bevy::client::command::RevertInteractions::<minimal::MyClient>::all())
+                    .queue(spru_bevy::client::command::StageInteraction::<minimal::MyClient>::new(minimal::Interaction))
+                    .queue(spru_bevy::client::command::ApplyInteractions::<minimal::MyClient>::all());
+
                 Ok(())
             },
         )

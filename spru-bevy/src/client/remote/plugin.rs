@@ -24,6 +24,7 @@ where
         app
             .add_plugins((
                 aeronet::AeronetPlugins,
+                aeronet_webtransport::client::WebTransportClientPlugin,
             ))
             .add_systems(
                 prelude::FixedUpdate,
