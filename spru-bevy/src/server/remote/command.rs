@@ -41,6 +41,8 @@ impl<Server> StartListener<Server> {
 }
 
 impl<Server: server::ServerSSS> prelude::EntityCommand for StartListener<Server> {
+    type Out = ();
+    
     fn apply(self, entity: bevy::ecs::world::EntityWorldMut) {
         if entity.contains::<server::component::Runner<Server>>() {
             aeronet_webtransport::server::WebTransportServer::open(self.config)

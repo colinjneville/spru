@@ -56,6 +56,8 @@ pub struct JoinRemote {
 }
 
 impl prelude::Command for JoinRemote {
+    type Out = ();
+    
     fn apply(self, world: &mut bevy::ecs::world::World) {
         let Self {
             url,

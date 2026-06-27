@@ -20,6 +20,8 @@ where
         + Sync
         + 'static,
 {
+    type Out = ();
+    
     fn apply(self, mut entity: prelude::EntityWorldMut) {
         let Self {
             game_init,
@@ -63,7 +65,9 @@ impl<Server: server::ServerSSS> ManualTrigger<Server> {
     }
 }
 
-impl<Server: server::ServerSSS> prelude::EntityCommand<prelude::Result> for ManualTrigger<Server> {
+impl<Server: server::ServerSSS> prelude::EntityCommand for ManualTrigger<Server> {
+    type Out = prelude::Result;
+
     fn apply(self, mut entity: bevy::ecs::world::EntityWorldMut) -> prelude::Result {
         let Self {
             trigger,

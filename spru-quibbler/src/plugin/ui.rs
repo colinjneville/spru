@@ -69,13 +69,22 @@ trait ConfigPanel {
     /// Returns true if the user has completed this panel
     fn show_panel(&mut self, config_step: &mut usize, panel_step: usize, ctx: &mut egui::Context, next_text: &str) {
         let state = PanelState::from_step(*config_step, panel_step);
-        let to_next = egui::SidePanel::left(any::type_name::<Self>())
-            .default_width(480.)
+
+        let egui_id = format!("{}Next", any::type_name::<Self>());
+
+        let builder = egui::UiBuilder::new().layer_id(egui::LayerId::background()).max_rect(ctx.content_rect());
+        let mut ui = egui::Ui::new(ctx.clone(), egui_id.clone().into(), builder);
+
+        // egui panels now use ui instead of ctx, but it's not immediately clear
+        // how to properly do so when the panels are distributed among different functions.
+        // Just use the deprecated functions for now.
+        let to_next = egui::Panel::left(any::type_name::<Self>())
+            .default_size(480.)
             .show_animated(ctx, state != PanelState::Hidden, |ui| {
                 ui.add_enabled_ui(state == PanelState::Active, |ui| {
                     self.show(ui);
-                    egui::TopBottomPanel::bottom(format!("{}Next", any::type_name::<Self>()))
-                        .show(ctx, |ui| {
+                    egui::Panel::bottom(egui_id)
+                        .show_inside(ui, |ui| {
                             let next_button = egui::Button::new(next_text);
                                     
                             ui.add_enabled(self.valid(), next_button).clicked()
@@ -547,11 +556,13 @@ impl Ui {
         let mut game_ids: Vec<_> = game_ids.into_iter().collect();
         game_ids.sort_unstable();
 
-        let (mut egui, mut active_game) = s_egui.get_mut(world);
+        let (mut egui, mut active_game) = s_egui.get_mut(world)?;
         if game_ids.len() > 1 {
             let ctx = egui.ctx_mut()?;
+            let builder = egui::UiBuilder::new().layer_id(egui::LayerId::background()).max_rect(ctx.content_rect());
+            let mut ui = egui::Ui::new(ctx.clone(), "game_select".into(), builder);
 
-            egui::TopBottomPanel::bottom("game_select").show(ctx, |ui| {
+            egui::Panel::bottom("game_select").show(ctx, |ui| {
                     ui.horizontal(|ui| {
                         for &game_id in &game_ids {
                             let button = egui::Button::selectable(
@@ -593,13 +604,20 @@ impl Ui {
                     player_names.push((client_id, username));
                 }
             }
-            player_names.sort_unstable_by_key(|(id, _)| *id);
 
-            let (mut egui, mut active_client) = s_egui.get_mut(world);
+            let (mut egui, mut active_client) = s_egui.get_mut(world)?;
             let ctx = egui.ctx_mut()?;
+            let builder = egui::UiBuilder::new().layer_id(egui::LayerId::background()).max_rect(ctx.content_rect());
+            let mut ui = egui::Ui::new(ctx.clone(), "player_select".into(), builder);
+            ui.set_clip_rect(ctx.content_rect());
+            ui
+                .response()
+                .widget_info(|| egui::WidgetInfo::new(egui::WidgetType::Panel));
             
             if player_names.len() > 1 {
-                egui::TopBottomPanel::bottom("player_select").show(ctx, |ui| {
+                player_names.sort_unstable_by_key(|(id, _)| *id);
+
+                egui::Panel::bottom("player_select").show(ctx, |ui| {
                     ui.horizontal(|ui| {
                         for (client_id, username) in &player_names {
                             let button = egui::Button::selectable(
@@ -643,8 +661,10 @@ impl Ui {
         let (local_addr, ) = q_server.get(server_entity)?;
 
         let ctx = egui.ctx_mut()?;
+        let builder = egui::UiBuilder::new().layer_id(egui::LayerId::background()).max_rect(ctx.content_rect());
+        let mut ui = egui::Ui::new(ctx.clone(), "server_control".into(), builder);
         
-        egui::TopBottomPanel::top("server_control").show(ctx, |ui| {
+        egui::Panel::top("server_control").show(ctx, |ui| {
             ui.vertical(|ui| {
                 #[cfg(feature = "remote")]
                 {
@@ -758,8 +778,10 @@ impl Ui {
             && let Ok((log, )) = q_log.get(entity)
         {
             let ctx = egui.ctx_mut()?;
+            let builder = egui::UiBuilder::new().layer_id(egui::LayerId::background()).max_rect(ctx.content_rect());
+            let mut ui = egui::Ui::new(ctx.clone(), "server_log".into(), builder);
 
-            egui::TopBottomPanel::bottom("server_log").show(ctx, |ui| {
+            egui::Panel::bottom("server_log").show(ctx, |ui| {
                 egui::ScrollArea::vertical()
                     .max_height(64.)
                     .max_width(f32::INFINITY)
@@ -793,8 +815,10 @@ impl Ui {
             && let Ok((log, )) = q_log.get(entity)
         {
             let ctx = egui.ctx_mut()?;
+            let builder = egui::UiBuilder::new().layer_id(egui::LayerId::background()).max_rect(ctx.content_rect());
+            let mut ui = egui::Ui::new(ctx.clone(), "client_log".into(), builder);
 
-            egui::TopBottomPanel::bottom("client_log").show(ctx, |ui| {
+            egui::Panel::bottom("client_log").show(ctx, |ui| {
                 egui::ScrollArea::vertical()
                     .max_height(64.)
                     .max_width(f32::INFINITY)
@@ -837,8 +861,10 @@ impl Ui {
         let player_turn_snapshot = snapshot.players.iter().filter(|p| Some(p.id) == snapshot.current_turn).next();
 
         let ctx = egui.ctx_mut()?;
-
-        egui::TopBottomPanel::bottom("player_view").show(ctx, |ui| {
+        let builder = egui::UiBuilder::new().layer_id(egui::LayerId::background()).max_rect(ctx.content_rect());
+        let mut ui = egui::Ui::new(ctx.clone(), "player_view".into(), builder);
+        
+        egui::Panel::bottom("player_view").show(ctx, |ui| {
             ui.vertical(|ui| -> prelude::Result {
                 ui.heading(format!("{}'s view", active_client_snapshot.name));
                 ui.separator();

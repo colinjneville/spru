@@ -11,6 +11,8 @@ pub struct Init<Client: super::ClientSSS> {
 }
 
 impl<Client: super::ClientSSS> prelude::EntityCommand for Init<Client> {
+    type Out = ();
+
     fn apply(self, mut entity: prelude::EntityWorldMut) {
         let Self { seed } = self;
 
@@ -67,7 +69,9 @@ impl<Client: client::ClientSSS> StageInteraction<Client> {
     }
 }
 
-impl<Client: client::ClientSSS> prelude::EntityCommand<prelude::Result> for StageInteraction<Client> {
+impl<Client: client::ClientSSS> prelude::EntityCommand for StageInteraction<Client> {
+    type Out = prelude::Result;
+
     fn apply(self, mut entity: bevy::ecs::world::EntityWorldMut) -> prelude::Result {
         let Self {
             interaction,
@@ -124,7 +128,9 @@ impl<Client: client::ClientSSS> ApplyInteractions<Client> {
     }
 }
 
-impl<Client: client::ClientSSS> prelude::EntityCommand<prelude::Result> for ApplyInteractions<Client> {
+impl<Client: client::ClientSSS> prelude::EntityCommand for ApplyInteractions<Client> {
+    type Out = prelude::Result;
+
     fn apply(self, mut entity: bevy::ecs::world::EntityWorldMut) -> prelude::Result {
         let Self {
             pending_interaction_id,
@@ -183,7 +189,9 @@ impl<Client: client::ClientSSS> RevertInteractions<Client> {
     }
 }
 
-impl<Client: client::ClientSSS> prelude::EntityCommand<prelude::Result> for RevertInteractions<Client> {
+impl<Client: client::ClientSSS> prelude::EntityCommand for RevertInteractions<Client> {
+    type Out = prelude::Result;
+    
     fn apply(self, mut entity: bevy::ecs::world::EntityWorldMut) -> prelude::Result {
         let Self {
             pending_interaction_id,

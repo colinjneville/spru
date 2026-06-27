@@ -57,15 +57,15 @@ rust-fsm = "0.8.0"
 uuid = { version = "1.18.1", features = [ "v4", "serde" ] }
 
 # scripting
-rhai = "1.24.0"
+rhai = "1.25.1"
 
 # logging
 tracing = "0.1.41"
 tracing-core = "0.1.34"
 
 # networking
-aeronet = "0.20.0"
-aeronet_webtransport = "0.20.0"
+aeronet = "0.21.0"
+aeronet_webtransport = "0.21.0"
 url = "2.5.8"
 
 # async
@@ -111,7 +111,7 @@ features = [
 ]
 
 [workspace.dependencies.bevy]
-version = "0.18.1"
+version = "0.19.0"
 default-features = false
 features = [
     "bevy_log",

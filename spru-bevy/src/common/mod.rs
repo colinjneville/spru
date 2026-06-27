@@ -56,6 +56,8 @@ impl TriggerEvent for prelude::Commands<'_, '_> {
 
 impl TriggerEvent for bevy::ecs::world::CommandQueue {
     fn trigger<'a, E: prelude::Event<Trigger<'a>: Default>>(&mut self, event: E) {
-        self.push(bevy::ecs::system::command::trigger(event));
+        use prelude::Command as _;
+        
+        self.push(bevy::ecs::system::command::trigger(event).handle_error());
     }
 }

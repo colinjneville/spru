@@ -20,7 +20,9 @@ impl<Server: server::ServerSSS, Client: client::ClientSSS> AddLocalPlayer<Server
     }
 }
 
-impl<Server: server::ServerSSS<Common = Client::Common>, Client: client::ClientSSS> prelude::EntityCommand<prelude::Result> for AddLocalPlayer<Server, Client> {
+impl<Server: server::ServerSSS<Common = Client::Common>, Client: client::ClientSSS> prelude::EntityCommand for AddLocalPlayer<Server, Client> {
+    type Out = prelude::Result;
+    
     fn apply(self, mut entity: bevy::ecs::world::EntityWorldMut) -> prelude::Result {
         let Self {
             input,

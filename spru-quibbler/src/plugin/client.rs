@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use bevy::prelude;
 
 pub(crate) struct Client;
@@ -20,17 +18,16 @@ impl prelude::Plugin for Client {
                         ));
                 }
             )
-            // .add_observer(|
-            //         client_remove: prelude::On<prelude::Remove, spru_bevy::client::component::Runner<crate::Client>>,
-            //     | {
-            //         // TODO don't destroy the Log for now, because spru_bevy currently removes and reinserts the Runner 
-            //         // every frame in order to split the World into Runner and The Rest of the World.
-            //         // commands.entity(client_remove.entity)
-            //         //     .remove::<(
-            //         //         crate::Log,
-            //         //     )>();
-            //     }
-            // )
+            .add_observer(|
+                    client_remove: prelude::On<prelude::Remove, spru_bevy::client::component::Runner<crate::Client>>,
+                    mut commands: prelude::Commands,
+                | {
+                    commands.entity(client_remove.entity)
+                        .remove::<(
+                            crate::Log,
+                        )>();
+                }
+            )
             .add_observer(
                 |stage_interaction: prelude::On<spru_bevy::client::event::StageInteraction<crate::Client>>,
                 mut q_log: prelude::Query<&mut crate::Log>|
