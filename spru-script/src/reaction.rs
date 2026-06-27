@@ -22,7 +22,7 @@ impl<Root, Trigger, GameOutcome, Language> Reaction<Root, Trigger, GameOutcome, 
 impl<Root, Trigger, GameOutcome, Language> spru::Reaction for Reaction<Root, Trigger, GameOutcome, Language> 
 where 
     Language: 
-        for<'r> crate::LanguageExec<
+        for<'r> crate::DialectExec<
             Trigger, 
             (),
             spru::reaction::Context<'r, Root>, 
@@ -32,7 +32,7 @@ where
     ,
     Trigger: Clone,
 {
-    type Action = <Language as crate::Language>::Action;
+    type Action = <Language as crate::Dialect>::Action;
     type Root = Root;
     type Trigger = Trigger;
     type GameOutcome = GameOutcome;

@@ -23,7 +23,7 @@ impl<Root, Language, Args> GameInit<Root, Language, Args> {
 
 impl<Root, Language, Args> spru::game::Init for GameInit<Root, Language, Args> 
 where 
-    Language: crate::LanguageExec<
+    Language: crate::DialectExec<
         Args,
         Root,
         spru::game::init::Context, 
@@ -33,7 +33,7 @@ where
     >,
 {
     type Root = Root;
-    type Action = <Language as crate::Language>::Action;
+    type Action = <Language as crate::Dialect>::Action;
 
     fn initialize(self, interactor: &mut spru::game::init::Interactor<Self>) -> spru::game::init::Result<Self::Root> {
         let root = self.language.exec(interactor, &self.script, self.args)?;

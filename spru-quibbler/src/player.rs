@@ -1,11 +1,22 @@
 use std::fmt;
 
 use rust_fsm::state_machine;
+use itertools::Itertools as _;
 use spru::{common::error::PseudoError as _, interactor::with, item::IdT};
 use spru_script::script;
 use spru_util::{cloned, counter, fsm, pile, player_map, rotating, state_cell};
 
 use crate::data;
+
+pub(crate) fn validate_usernames<'u>(usernames: impl Iterator<Item = &'u str>) -> bool {
+    for (username, count) in usernames.counts() {
+        if count > 1 || username.trim().is_empty() {
+            return false;
+        }
+    }
+
+    true
+}
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[script(state = false)]

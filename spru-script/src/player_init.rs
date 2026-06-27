@@ -22,7 +22,7 @@ impl<Root, Language, Args> PlayerInit<Root, Language, Args> {
 impl<Root, Language, Args> spru::player::Init for PlayerInit<Root, Language, Args> 
 where 
     Language: 
-        for<'r> crate::LanguageExec<
+        for<'r> crate::DialectExec<
             Args, 
             (),
             spru::player::init::Context<'r, Root>, 
@@ -33,7 +33,7 @@ where
 {
     type In = Args;
     type Root = Root;
-    type Action = <Language as crate::Language>::Action;
+    type Action = <Language as crate::Dialect>::Action;
 
     fn initialize(&self, interactor: &mut spru::player::init::Interactor<Self>, input: Self::In) -> spru::player::init::Result<()> {
         let () = self.language.exec(interactor, &self.script, input)?;

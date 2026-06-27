@@ -10,9 +10,9 @@ keywords = ["gamedev", "framework", "game", "wasm", "bevy"]
 
 [features]
 default = ["server", "client", "remote", "script"]
-server = []
-client = []
-remote = ["dep:aeronet", "aeronet_webtransport/server"]
+server = ["aeronet_webtransport?/server"]
+client = ["aeronet_webtransport?/client"]
+remote = ["dep:aeronet", "aeronet_webtransport/server", "dep:url"]
 script = ["dep:spru-script"]
 
 [dependencies]
@@ -23,6 +23,8 @@ bevy.workspace = true
 
 serde.workspace = true
 rmp-serde.workspace = true
+
+scopeguard.workspace = true
 
 thiserror.workspace = true
 
@@ -35,6 +37,7 @@ tagset.workspace = true
 
 aeronet = { workspace = true, optional = true }
 aeronet_webtransport = { workspace = true, optional = true }
+url = { workspace = true, optional = true }
 
 [dev-dependencies]
 spru-test = { path = "../spru-test/" }

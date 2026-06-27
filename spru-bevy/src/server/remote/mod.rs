@@ -1,10 +1,14 @@
+pub mod command;
 pub mod component;
 pub mod event;
 pub mod observer;
 mod plugin;
 use std::fmt;
 
+use derive_where::derive_where;
 pub use plugin::Plugin;
+
+use crate::common;
 pub mod system;
 
 #[derive(Debug)]
@@ -30,4 +34,9 @@ impl<PlayerInitIn> fmt::Display for JoinRequestResponse<PlayerInitIn> {
         
         write!(f, "{s}")
     }
+}
+
+#[derive_where(Debug; spru::common::Seed<Common>)]
+pub struct PendingClient<Common: common::CommonSSS> {
+    pub seed: spru::common::Seed<Common>,
 }

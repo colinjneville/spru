@@ -80,7 +80,7 @@ impl Internal {
         Lexicon: spru_script::StatelessLexicon<Language = Rhai>,
     {
         let mut rhai = Self::init_internal(settings);
-        let mut registration = crate::Registration1::new(&mut rhai);
+        let mut registration = crate::Registration::new(&mut rhai);
         Lexicon::register_stateless(&mut registration);
         let scope = registration.apply();
 
@@ -160,7 +160,7 @@ impl Internal {
             *pid != pid2
         });
 
-        let mut registration = crate::Registration1::new(&mut rhai);
+        let mut registration = crate::Registration::new(&mut rhai);
         Lexicon::register_stateless(&mut registration);
         Lexicon::register_state::<Storage>(&mut registration);
         let scope = registration.apply();
@@ -195,7 +195,7 @@ impl Cached {
 pub struct Rhai;
 
 impl spru_script::LanguageActual for Rhai {
-    type Registration<'r> = crate::Registration1<'r>;
+    type Registration<'r> = crate::Registration<'r>;
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -223,18 +223,18 @@ impl<Lexicon: 'static> RhaiInstance<Lexicon> {
     }
 }
 
-impl<Lexicon> spru_script::StatelessLanguage for RhaiInstance<Lexicon> {
+impl<Lexicon> spru_script::StatelessDialect for RhaiInstance<Lexicon> {
     type Error = Box<rhai::EvalAltResult>;
 }
 
-impl<Lexicon> spru_script::Language for RhaiInstance<Lexicon>
+impl<Lexicon> spru_script::Dialect for RhaiInstance<Lexicon>
 where
     Lexicon: spru_script::Lexicon<Language = Rhai>,
 {
     type Action = Lexicon::Action;
 }
 
-impl<Lexicon, Args, Ret> spru_script::LanguageStatelessEval<Args, Ret> for RhaiInstance<Lexicon> 
+impl<Lexicon, Args, Ret> spru_script::StatelessDialectEval<Args, Ret> for RhaiInstance<Lexicon> 
 where
     Lexicon: spru_script::StatelessLexicon<Language = Rhai>,
     Ret: Clone + Send + Sync + 'static,
@@ -254,7 +254,7 @@ where
     }
 }
 
-impl<Lexicon, Args, Ret, Root> spru_script::LanguageEval<Args, Ret, Root> for RhaiInstance<Lexicon>
+impl<Lexicon, Args, Ret, Root> spru_script::DialectEval<Args, Ret, Root> for RhaiInstance<Lexicon>
 where
     Lexicon: spru_script::Lexicon<Language = Rhai>,
     Ret: Clone + Send + Sync + 'static,
@@ -266,7 +266,7 @@ where
     where 
         Storage: spru::item::Storage<State = <Self::Action as spru::Action>::State>,
     {
-        let ledger_handle = crate::LedgerHandle::new_readonly::<Storage>(storage);
+        let ledger_handle = crate::storage_handle::StorageHandle::new_readonly::<Storage>(storage);
 
         let cached = RHAI_CACHE.get::<Storage, Lexicon>(&self.settings);
         let mut rhai = cached.rhai_mut();
@@ -288,7 +288,7 @@ where
     }
 }
 
-impl<Lexicon, Args, Ret, Context, Output> spru_script::LanguageExec<Args, Ret, Context, Output> for RhaiInstance<Lexicon> 
+impl<Lexicon, Args, Ret, Context, Output> spru_script::DialectExec<Args, Ret, Context, Output> for RhaiInstance<Lexicon> 
 where
     Lexicon: spru_script::Lexicon<Language = Rhai>,
     Context: crate::Context,
@@ -312,7 +312,7 @@ where
             output,
         } = interactor.split_mut();
 
-        let ledger_handle = crate::LedgerHandle::new(ledger);
+        let ledger_handle = crate::storage_handle::StorageHandle::new(ledger);
 
         let cached = RHAI_CACHE.get::<Storage, Lexicon>(&self.settings);
         let mut rhai = cached.rhai_mut();

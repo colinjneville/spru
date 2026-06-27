@@ -1,13 +1,288 @@
+use std::{any, cmp, fmt, iter};
 use std::collections::{HashMap, HashSet};
 
 use bevy::prelude;
 use bevy_egui::egui;
 
 #[cfg(feature = "server")]
-use crate::plugin::server::ServerMap;
+use spru_bevy::server::resource::ServerMap;
 
 #[cfg(feature = "client")]
-use crate::plugin::client::ClientMap;
+use spru_bevy::client::resource::ClientMap;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PanelState {
+    Hidden,
+    Active,
+    Inactive,
+}
+
+impl PanelState {
+    fn from_step(current_step: usize, panel_step: usize) -> Self {
+        match current_step.cmp(&panel_step) {
+            cmp::Ordering::Less => Self::Hidden,
+            cmp::Ordering::Equal => Self::Active,
+            cmp::Ordering::Greater => Self::Inactive,
+        }
+    }
+}
+
+#[derive(Debug, Default)]
+#[derive(prelude::Resource)]
+pub struct ConfigState(Option<Box<dyn Config>>);
+
+impl ConfigState {
+    fn ui(
+        mut commands: prelude::Commands,
+        mut egui: bevy_egui::EguiContexts,
+        mut config_state: prelude::ResMut<Self>,
+        mut next_state: prelude::ResMut<prelude::NextState<crate::AppState>>,
+    ) -> prelude::Result {
+        if let Some(config) = &mut config_state.0 {
+            let ctx = egui.ctx_mut()?;
+            if config.show(ctx) {
+                let config = config_state.0.take().unwrap();
+                config.complete(&mut commands);
+                next_state.set(crate::AppState::InGame);
+            }
+        }
+
+        Ok(())
+    }
+
+    fn set<C: Config>(&mut self, config: C) {
+        self.0 = Some(Box::new(config));
+    }
+}
+
+trait Config: fmt::Debug + Send + Sync + 'static {
+    fn show(&mut self, ctx: &mut egui::Context) -> bool;
+
+    fn complete(self: Box<Self>, commands: &mut prelude::Commands);
+}
+
+trait ConfigPanel {
+    fn show(&mut self, ui: &mut egui::Ui);
+
+    fn valid(&self) -> bool;
+
+    /// Returns true if the user has completed this panel
+    fn show_panel(&mut self, config_step: &mut usize, panel_step: usize, ctx: &mut egui::Context, next_text: &str) {
+        let state = PanelState::from_step(*config_step, panel_step);
+        let to_next = egui::SidePanel::left(any::type_name::<Self>())
+            .default_width(480.)
+            .show_animated(ctx, state != PanelState::Hidden, |ui| {
+                ui.add_enabled_ui(state == PanelState::Active, |ui| {
+                    self.show(ui);
+                    egui::TopBottomPanel::bottom(format!("{}Next", any::type_name::<Self>()))
+                        .show(ctx, |ui| {
+                            let next_button = egui::Button::new(next_text);
+                                    
+                            ui.add_enabled(self.valid(), next_button).clicked()
+                        }).inner
+                }).inner
+            }).map_or(false, |resp| resp.inner);
+
+        if to_next {
+            *config_step += 1;
+        }
+    }
+}
+
+cfg_select! {
+    feature = "local" => {
+        #[derive(Debug, Default)]
+        struct ConfigLocal {
+            step: usize,
+            player_panel: ConfigManyPlayerPanel,
+        }
+
+        impl Config for ConfigLocal {
+            fn show(&mut self, ctx: &mut egui::Context) -> bool {
+                self.player_panel.show_panel(&mut self.step, 0, ctx, "Next");
+
+                self.step == 1
+            }
+
+            fn complete(self: Box<Self>, commands: &mut prelude::Commands) {
+                let mut entity = commands.spawn_empty();
+
+                entity.queue(move |mut entity: prelude::EntityWorldMut| {
+                    use prelude::EntityCommand as _;
+
+                    entity.reborrow_scope(|entity| {
+                        spru_bevy::server::command::Init::<crate::Server, crate::GameInit> {
+                            game_init: crate::game::init::new(),
+                            player_init: crate::player::init::new(),
+                            reaction: crate::reaction::new(),
+                        }.apply(entity);
+                    });
+                });
+
+                for username in self.player_panel.usernames().cloned() {
+                    entity.queue(spru_bevy::local::command::AddLocalPlayer::<crate::Server, crate::Client>::new( 
+                        crate::player::Input {
+                            username,
+                        } 
+                    ));
+                }
+
+                entity.queue(spru_bevy::server::command::ManualTrigger::<crate::Server> { 
+                    trigger: crate::reaction::Trigger::StartGame,
+                });
+            }
+        }
+    }
+    _ => { }
+}
+
+cfg_select! {
+    all(feature = "dedicated-client", feature = "local") => {
+        #[derive(Debug, Default)]
+        struct ConfigHost {
+            step: usize,
+            // player_panel: ConfigManyPlayerPanel,
+        }
+
+        impl Config for ConfigHost {
+            fn show(&mut self, ctx: &mut egui::Context) -> bool {
+                self.step == 1
+            }
+
+            fn complete(self: Box<Self>, commands: &mut prelude::Commands) {
+                commands.spawn_empty()
+                    .queue(
+                        spru_bevy::server::command::Init::<crate::Server, crate::GameInit> {
+                            game_init: crate::game::init::new(),
+                            player_init: crate::player::init::new(),
+                            reaction: crate::reaction::new(),
+                        }
+                    )
+                    .queue(
+                        spru_bevy::local::command::AddLocalPlayer::<crate::Server, crate::Client>::new( 
+                            crate::player::Input {
+                                username: todo!(),
+                            } 
+                        )
+                    )
+                ;
+            }
+        }
+    }
+    _ => { }
+}
+
+
+cfg_select! {
+    feature = "dedicated-client" => {
+        #[derive(Debug, Default)]
+        struct ConfigJoin {
+            step: usize,
+            // player_panel: ConfigManyPlayerPanel,
+        }
+
+        impl Config for ConfigJoin {
+            fn show(&mut self, ctx: &mut egui::Context) -> bool {
+                self.step == 1
+            }
+
+            fn complete(self: Box<Self>, commands: &mut prelude::Commands) {
+                todo!()
+            }
+        }
+    }
+    _ => { }
+}
+
+
+cfg_select! {
+    feature = "dedicated-server" => {
+        #[derive(Debug, Default)]
+        struct ConfigDedicatedServer {
+            step: usize,
+            // player_panel: ConfigManyPlayerPanel,
+        }
+
+        impl Config for ConfigDedicatedServer {
+            fn show(&mut self, ctx: &mut egui::Context) -> bool {
+                self.step == 1
+            }
+
+            fn complete(self: Box<Self>, commands: &mut prelude::Commands) {
+                todo!()
+            }
+        }
+    }
+    _ => { }
+}
+
+#[derive(Debug, Default)]
+struct ConfigPlayerPanel {
+    username: String,
+}
+
+// impl ConfigPanel for ConfigPlayerPanel {
+//     fn show(&mut self, ui: &mut egui::Ui) {
+//         todo!()
+//     }
+// }
+
+#[derive(Debug, Default)]
+struct ConfigManyPlayerPanel {
+    username0: String,
+    usernames: Vec<String>,
+}
+
+impl ConfigManyPlayerPanel {
+    fn usernames(&self) -> impl Iterator<Item = &String> {
+        iter::once(&self.username0).chain(&self.usernames)
+    }
+
+    fn usernames_mut(&mut self) -> impl Iterator<Item = &mut String> {
+        iter::once(&mut self.username0).chain(&mut self.usernames)
+    }
+}
+
+impl ConfigPanel for ConfigManyPlayerPanel {
+    fn valid(&self) -> bool {
+        crate::player::validate_usernames(iter::once(&self.username0).chain(&self.usernames).map(|s| s.as_str()))
+    }
+    
+    fn show(&mut self, ui: &mut egui::Ui) {
+        ui.vertical(|ui| {
+            ui.label("Player Names");
+            ui.end_row();
+            
+            let can_remove_player = !self.usernames.is_empty();
+
+            let mut remove_index = None;
+            for (i, username) in self.usernames_mut().enumerate() {
+                ui.horizontal(|ui| {
+                    ui.text_edit_singleline(username);
+                    
+                    if can_remove_player && ui.button("-").clicked() {
+                        remove_index = Some(i);
+                    }
+                    ui.end_row();
+                });
+            }
+
+            let add_button = egui::Button::new("+");
+                
+            if ui.add(add_button).clicked() {
+                self.usernames.push(String::new());
+            }
+            ui.end_row();
+            
+            if let Some(remove_index) = remove_index {
+                let removed = self.usernames.remove(remove_index.saturating_sub(1));
+                if remove_index == 0 {
+                    self.username0 = removed;
+                }
+            }
+        });
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[derive(prelude::SystemSet)]
@@ -18,10 +293,6 @@ enum UiPhase {
     Server,
     Client,
 }
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-#[derive(bevy::ecs::schedule::ScheduleLabel)]
-pub struct UiPhaseLabel;
 
 #[derive(Debug, Default, PartialEq, prelude::Resource)]
 struct WorldInspectorToggle(bool);
@@ -84,6 +355,7 @@ struct UiData {
     active_game_id: spru::game::Id,
     active_client_id: spru::player::Id,
     active_client_entity: prelude::Entity,
+    has_pending_interactions: bool,
     snapshot: UiSnapshot,
 }
 
@@ -165,6 +437,63 @@ impl Ui {
         if keys.just_pressed(prelude::KeyCode::F1) {
             world_inspector_toggle.0 = !world_inspector_toggle.0;
         }
+    }
+
+    fn main_menu_ui(
+        mut egui: bevy_egui::EguiContexts,
+        mut next_state: prelude::ResMut<prelude::NextState<crate::AppState>>,
+        mut config_state: prelude::ResMut<ConfigState>,
+        mut app_exit: prelude::MessageWriter<prelude::AppExit>,
+    ) -> prelude::Result {
+        let ctx = egui.ctx_mut()?;
+
+        egui::Window::new("Main Menu")
+            .open(&mut true)
+            .resizable([false, false])
+            .show(ctx, |ui| {
+                ui.vertical(|ui| {
+                    #[cfg(feature = "local")]
+                    {
+                        if ui.button("Local Game").clicked() {
+                            config_state.set(ConfigLocal::default());
+                            next_state.set_if_neq(crate::AppState::Config);
+                        }
+                        ui.end_row();
+                    }
+                    #[cfg(all(feature = "dedicated-client", feature = "local"))]
+                    {
+                        if ui.button("Host Game").clicked() {
+                            config_state.set(ConfigHost::default());
+                            next_state.set_if_neq(crate::AppState::Config);
+                        }
+                        ui.end_row();
+                    }
+                    #[cfg(all(feature = "dedicated-client"))]
+                    {
+                        if ui.button("Join Game").clicked() {
+                            config_state.set(ConfigJoin::default());
+                            next_state.set_if_neq(crate::AppState::Config);
+                        }
+                        ui.end_row();
+                    }
+                    #[cfg(all(feature = "dedicated-server"))]
+                    {
+                        if ui.button("Dedicated Server").clicked() {
+                            config_state.set(ConfigDedicatedServer::default());
+                            next_state.set_if_neq(crate::AppState::Config);
+                        }
+                        ui.end_row();
+                    }
+                    {
+                        if ui.button("Exit").clicked() {
+                            app_exit.write_default();
+                        }
+                        ui.end_row();
+                    }
+                });
+            });
+
+        Ok(())
     }
 
     fn application_ui(
@@ -294,11 +623,13 @@ impl Ui {
     #[cfg(feature = "server")]
     fn server_ui_control(
         mut egui: bevy_egui::EguiContexts,
+        mut commands: prelude::Commands,
         server_map: prelude::Res<ServerMap>,
         mut add_player_string: prelude::Local<String>,
         active_game: prelude::Res<ActiveGame>,
-        mut q_server: prelude::Query<(
-            &mut spru_bevy::server::component::FromUser<crate::Server>,
+        #[cfg(feature = "remote")]
+        q_server: prelude::Query<(
+            Option<&aeronet::io::connection::LocalAddr>,
         )>,
     ) -> prelude::Result {
         let Some(active_game_id) = active_game.0 else {
@@ -308,15 +639,24 @@ impl Ui {
             return Ok(());
         };
 
+        #[cfg(feature = "remote")]
+        let (local_addr, ) = q_server.get(server_entity)?;
+
         let ctx = egui.ctx_mut()?;
         
-        let (mut server_from_user, ) = q_server.get_mut(server_entity)?;
-
         egui::TopBottomPanel::top("server_control").show(ctx, |ui| {
             ui.vertical(|ui| {
+                #[cfg(feature = "remote")]
+                {
+                    if let Some(local_addr) = local_addr {
+                        ui.label(format!("{local_addr:?}"));
+                    }
+                }
+
+                #[cfg(feature = "local")]
                 ui.horizontal(|ui| {
                     let response = ui
-                        .button("Add player")
+                        .button("Add local player")
                         .on_hover_text("Input player display name");
 
                     let confirmed = ui
@@ -327,12 +667,16 @@ impl Ui {
                     if (response.clicked() || confirmed) && !add_player_string.is_empty() {
                         let player_init_in =
                             crate::player::Input::new(std::mem::take(&mut *add_player_string));
-                        server_from_user.add_player(player_init_in);
+                        commands
+                            .entity(server_entity)
+                            .queue(spru_bevy::local::command::AddLocalPlayer::<crate::Server, crate::Client>::new(player_init_in));
                     }
                 });
 
                 if ui.button("Start game").clicked() {
-                    server_from_user.manual_trigger(crate::reaction::Trigger::StartGame);
+                    commands
+                        .entity(server_entity)
+                        .queue(spru_bevy::server::command::ManualTrigger::<crate::Server>::new(crate::reaction::Trigger::StartGame));
                 }
             });
         });
@@ -355,7 +699,10 @@ impl Ui {
         world: &prelude::World,
         client_map: prelude::Res<ClientMap>,
         active_game: prelude::Res<ActiveGame>,
-        active_client: prelude::Res<ActiveClient>,        
+        active_client: prelude::Res<ActiveClient>,
+        q_client: prelude::Query<(
+            &spru_bevy::client::component::Runner<crate::Client>,
+        )>,
     ) -> prelude::Result<Option<UiData>> {
         if let Some(active_game_id) = active_game.0 
             && let Some(active_client_id) = active_client.get(active_game_id)
@@ -382,10 +729,14 @@ impl Ui {
 
             let snapshot = UiSnapshot::from_dynamic(ui_snapshot);
 
+            let (client, ) = q_client.get(active_client_entity)?;
+            let has_pending_interactions = client.pending_interactions().next().is_some();
+
             Ok(Some(UiData {
                 active_game_id,
                 active_client_id,
                 active_client_entity,
+                has_pending_interactions,
                 snapshot,
             }))
         } else {
@@ -464,11 +815,9 @@ impl Ui {
     #[cfg(feature = "client")]
     fn client_ui_player_view(
         ui_data: prelude::In<Option<UiData>>,
+        mut commands: prelude::Commands,
         mut egui: bevy_egui::EguiContexts,
         mut play_string: prelude::Local<String>,
-        mut q_client_from_user: prelude::Query<(
-            &mut spru_bevy::client::component::FromUser<crate::Client>,
-        )>
     ) -> prelude::Result {
         let prelude::In(Some(ui_data)) = ui_data else {
             return Ok(());
@@ -478,6 +827,7 @@ impl Ui {
             active_game_id: _active_game_id,
             active_client_id,
             active_client_entity,
+            has_pending_interactions,
             snapshot,
         } = ui_data;
 
@@ -487,8 +837,6 @@ impl Ui {
         let player_turn_snapshot = snapshot.players.iter().filter(|p| Some(p.id) == snapshot.current_turn).next();
 
         let ctx = egui.ctx_mut()?;
-        let (mut from_user, ) = q_client_from_user.get_mut(active_client_entity)
-            .map_err(|_| "Client not found")?;
 
         egui::TopBottomPanel::bottom("player_view").show(ctx, |ui| {
             ui.vertical(|ui| -> prelude::Result {
@@ -504,12 +852,14 @@ impl Ui {
                 ui.separator();
                 ui.horizontal(|ui| {
                     if ui.button("Draw from deck").clicked() {
-                        from_user.stage_interaction(crate::interaction::draw::new(true).into());
+                        commands.entity(active_client_entity)
+                                .queue(spru_bevy::client::command::StageInteraction::<crate::Client>::new(crate::interaction::draw::new(true).into()));
                     }
                     if let Some(discard_top) = &snapshot.discard_top {
                         let button_message = format!("Draw '{}' from discard ({} points)", discard_top.face().letters_str(), discard_top.face().points);
                         if ui.button(button_message).clicked() {
-                            from_user.stage_interaction(crate::interaction::draw::new(false).into());
+                            commands.entity(active_client_entity)
+                                .queue(spru_bevy::client::command::StageInteraction::<crate::Client>::new(crate::interaction::draw::new(false).into()));
                         }
                     }
                 });
@@ -519,7 +869,8 @@ impl Ui {
                 ui.horizontal(|ui| {
                     for card in &active_client_snapshot.hand {
                         if render_card(ui, card, false).clicked() {
-                            from_user.stage_interaction(crate::interaction::discard::new(card.clone()).into());
+                            commands.entity(active_client_entity)
+                                .queue(spru_bevy::client::command::StageInteraction::<crate::Client>::new(crate::interaction::discard::new(card.clone()).into()));
                         }
                     }
                 });
@@ -539,11 +890,13 @@ impl Ui {
                         let play = crate::Play::parsed(&active_client_snapshot.hand, &words)
                             .map_err(|c| format!("Can't play '{}', missing '{c}'", String::from_utf8(words).unwrap()))?;
                         
-                        from_user.stage_interaction(crate::interaction::play::new(Some(play)).into());
+                        commands.entity(active_client_entity)
+                                .queue(spru_bevy::client::command::StageInteraction::<crate::Client>::new(crate::interaction::play::new(play).into()));
                     }
 
                     if ui.button("Pass").clicked() {
-                        from_user.stage_interaction(crate::interaction::play::new(None).into());
+                        commands.entity(active_client_entity)
+                                .queue(spru_bevy::client::command::StageInteraction::<crate::Client>::new(crate::interaction::play::pass().into()));
                     }
 
                     Ok(())
@@ -596,11 +949,19 @@ impl Ui {
                 ui.separator();
                 ui.label("Local Changes:");
                 ui.horizontal(|ui| {
-                    if ui.button("Apply").clicked() {
-                        from_user.apply_all_interactions();
+                    let mut apply_button = egui::Button::new("Apply");
+                    let mut revert_button = egui::Button::new("Revert");
+                    if has_pending_interactions {
+                        apply_button = apply_button.stroke(egui::Stroke::new(1.5, egui::Color32::ORANGE));
+                        revert_button = revert_button.stroke(egui::Stroke::new(1.5, egui::Color32::ORANGE));
                     }
-                    if ui.button("Revert").clicked() {
-                        from_user.revert_all_interactions();
+                    if ui.add(apply_button).clicked() {
+                        commands.entity(active_client_entity)
+                            .queue(spru_bevy::client::command::ApplyInteractions::<crate::Client>::all());
+                    }
+                    if ui.add(revert_button).clicked() {
+                        commands.entity(active_client_entity)
+                            .queue(spru_bevy::client::command::RevertInteractions::<crate::Client>::all());
                     }
                 });
 
@@ -625,6 +986,7 @@ impl prelude::Plugin for Ui {
             .init_resource::<WorldInspectorToggle>()
             .init_resource::<ActiveGame>()
             .init_resource::<ActiveClient>()
+            .init_resource::<ConfigState>()
             .edit_schedule(bevy_egui::EguiPrimaryContextPass, |schedule| {
                 schedule.configure_sets((
                     UiPhase::Application,
@@ -635,14 +997,22 @@ impl prelude::Plugin for Ui {
                 ).chain());
             })
             .add_systems(bevy_egui::EguiPrimaryContextPass, (
-                Self::application_ui.in_set(UiPhase::Application),
-                Self::game_select_ui.in_set(UiPhase::GameSelect),
-                #[cfg(feature = "client")]
-                Self::client_select_ui.in_set(UiPhase::ClientSelect),
-                #[cfg(feature = "server")]
-                (Self::server_ui_control, Self::server_ui_log).in_set(UiPhase::Server),
-                #[cfg(feature = "client")]
-                Self::client_ui.in_set(UiPhase::Client),
+                (
+                    Self::main_menu_ui,
+                ).run_if(prelude::in_state(crate::AppState::MainMenu)),
+                (
+                    ConfigState::ui,
+                ).run_if(prelude::in_state(crate::AppState::Config)),
+                (
+                    Self::application_ui.in_set(UiPhase::Application),
+                    Self::game_select_ui.in_set(UiPhase::GameSelect),
+                    #[cfg(feature = "client")]
+                    Self::client_select_ui.in_set(UiPhase::ClientSelect),
+                    #[cfg(feature = "server")]
+                    (Self::server_ui_control, Self::server_ui_log).in_set(UiPhase::Server),
+                    #[cfg(feature = "client")]
+                    Self::client_ui.in_set(UiPhase::Client),
+                ).run_if(prelude::in_state(crate::AppState::InGame)),
             ))
             .add_systems(prelude::Startup, Self::startup)
             .add_systems(prelude::Update, Self::misc_input)

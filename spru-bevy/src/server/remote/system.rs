@@ -5,16 +5,18 @@ use bevy::prelude;
 use crate::{common, remote, server};
 
 pub fn propagate_remote_queues<Server>(
+    mut commands: prelude::Commands,
     q_server: prelude::Query<(
         &common::component::GameId,
         &mut server::component::FromClient<Server>,
         &mut server::component::ToClient<Server>,
-        Option<&mut server::component::PendingClients<Server>>,
     )>,
     mut q_transport: prelude::Query<(
+        prelude::Entity,
         &common::component::GameId,
         &server::remote::component::RemoteClient,
         &mut aeronet::transport::Transport,
+        Option<&mut server::remote::component::PendingRemote<Server::Common>>,
     )>
 ) where
     Server: server::ServerSSS<
@@ -25,8 +27,9 @@ pub fn propagate_remote_queues<Server>(
         State: spru::State<Repr: serde::Serialize>,
     >,
 {
-    for (game_id, mut from_client, mut to_client, mut pending_clients) in q_server {
-        for (session_game_id, remote_client, mut transport) in q_transport.reborrow() {
+    // TODO convert to use Resource Maps
+    for (game_id, mut from_client, mut to_client) in q_server {
+        for (transport_entity, session_game_id, remote_client, mut transport, mut pending_remote) in q_transport.reborrow() {
             let player_id = remote_client.player_id;
             
             if game_id == session_game_id {
@@ -46,12 +49,16 @@ pub fn propagate_remote_queues<Server>(
                                     prelude::trace!("Received signal");
                                 }
                                 Err(err) => {
-                                    prelude::warn!("Invalid signal: {err}");
+                                    let message = format!("Invalid signal: {err}");
+                                    prelude::warn!("{message}");
+                                    commands.trigger(aeronet::io::connection::Disconnect::new(transport_entity, message));
                                 }
                             }
                         }
                         lane @ _ => {
-                            prelude::warn!("Invalid lane {lane}");
+                            let message = format!("Invalid lane {lane}");
+                            prelude::warn!("{message}");
+                            commands.trigger(aeronet::io::connection::Disconnect::new(transport_entity, message));
                         }
                     }
                 }
@@ -59,11 +66,14 @@ pub fn propagate_remote_queues<Server>(
                 // ACKs are not used currently
                 let _ = transport.recv.acks.drain();
 
-                if let Some(pending_clients) = pending_clients.as_mut() {
-                    while let Some(pending_client) = pending_clients.dequeue() {
-                        let _span = prelude::error_span!("seed client", player_id = %pending_client.seed.local_player_id()).entered();
+                if let Some(pending_remote) = &mut pending_remote {
+                    if let Some(seed) = pending_remote.seed.take() {
+                        commands.entity(transport_entity)
+                            .remove::<server::remote::component::PendingRemote<Server::Common>>();
 
-                        match rmp_serde::to_vec(&pending_client.seed) {
+                        let _span = prelude::error_span!("seed client", player_id = %seed.local_player_id()).entered();
+
+                        match rmp_serde::to_vec(&seed) {
                             Ok(msg) => {
                                 match transport.send.push(remote::SERVER_TO_CLIENT_LANE_COORDINATION, msg.into(), time::Instant::now()) {
                                     Ok(_key) => {
@@ -75,7 +85,11 @@ pub fn propagate_remote_queues<Server>(
                                 }
                             }
                             Err(err) => {
-                                prelude::error!("Failed to serialize seed: {err}");
+                                // Most likely the server's application is buggy, but we will disconnect the client and maybe
+                                // on reconnect they will avoid the bugged serialization
+                                let message = format!("Failed to serialize seed: {err}");
+                                prelude::error!("{message}");
+                                commands.trigger(aeronet::io::connection::Disconnect::new(transport_entity, message));
                             }
                         }
                     }
@@ -94,7 +108,11 @@ pub fn propagate_remote_queues<Server>(
                             }
                         }
                         Err(err) => {
-                            prelude::error!("Signal could not be serialized: {err}");
+                            // Most likely the server's application is buggy, but we will disconnect the client and maybe
+                            // on reconnect they will avoid the bugged serialization
+                            let message = format!("Signal could not be serialized: {err}");
+                            prelude::error!("{message}");
+                            commands.trigger(aeronet::io::connection::Disconnect::new(transport_entity, message));
                         }
                     }
                 }

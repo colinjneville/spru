@@ -6,7 +6,7 @@ pub struct Lexicon;
 impl spru_script::StatelessLexicon for Lexicon {
     type Language = spru_script_rhai::Rhai;
 
-    fn register_stateless(registration: &mut spru_script_rhai::Registration1<'_>) {
+    fn register_stateless(registration: &mut spru_script_rhai::Registration<'_>) {
         spru_script_rhai::rhai! { registration {
             player::register_Root           => player::Root as PlayerRoot;
             player::register_Input          => player::Input as PlayerInput;
@@ -41,7 +41,7 @@ impl spru_script::StatelessLexicon for Lexicon {
 impl spru_script::Lexicon for Lexicon {
     type Action = crate::Actions;
 
-    fn register_state<Storage>(registration: &mut spru_script_rhai::Registration1<'_>)
+    fn register_state<Storage>(registration: &mut spru_script_rhai::Registration<'_>)
     where
         Storage: spru::item::Storage<State = crate::State>,
     {

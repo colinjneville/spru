@@ -40,6 +40,14 @@ impl TriggerEvent for prelude::World {
     }
 }
 
+impl TriggerEvent for prelude::EntityWorldMut<'_> {
+    fn trigger<'a, E: prelude::Event<Trigger<'a>: Default>>(&mut self, event: E) {
+        self.world_scope(|world| {
+            world.trigger(event);
+        });
+    }
+}
+
 impl TriggerEvent for prelude::Commands<'_, '_> {
     fn trigger<'a, E: prelude::Event<Trigger<'a>: Default>>(&mut self, event: E) {
         self.trigger(event);

@@ -30,6 +30,7 @@ where
             )
             .add_observer(super::observer::on_opened)
             .add_observer(super::observer::on_session_request::<Server>)
+            .add_observer(super::observer::on_connected::<Server>)
         ;
     }
 }

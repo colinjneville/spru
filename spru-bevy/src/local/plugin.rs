@@ -26,7 +26,6 @@ where
             prelude::FixedUpdate,
             (
                 super::system::propagate_local_queues::<Server, Client>,
-                super::system::create_local_clients::<Server, Client>,
             ),
         );
     }

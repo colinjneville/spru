@@ -26,7 +26,7 @@ impl<Root, Trigger, Language, Args> Interaction<Root, Trigger, Language, Args> {
 impl<Root, Trigger, Language, Args> spru::Interaction for Interaction<Root, Trigger, Language, Args> 
 where 
     Language: 
-        for<'r> crate::LanguageExec<
+        for<'r> crate::DialectExec<
             Args, 
             (),
             spru::interaction::Context<'r, Root>, 
@@ -36,7 +36,7 @@ where
     ,
     Args: Clone,
 {
-    type Action = <Language as crate::Language>::Action;
+    type Action = <Language as crate::Dialect>::Action;
     type Root = Root;
     type Trigger = Trigger;
 

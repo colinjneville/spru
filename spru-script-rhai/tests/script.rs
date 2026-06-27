@@ -54,7 +54,7 @@ struct MyLexicon;
 impl spru_script::StatelessLexicon for MyLexicon {
     type Language = spru_script_rhai::Rhai;
 
-    fn register_stateless(registration: &mut spru_script_rhai::Registration1<'_>) {
+    fn register_stateless(_registration: &mut spru_script_rhai::Registration<'_>) {
         
     }
 }
@@ -63,20 +63,19 @@ impl spru_script::Lexicon for MyLexicon {
     
     type Action = MyAction;
 
-    fn register_state<Storage>(registration: &mut spru_script_rhai::Registration1<'_>)
+    fn register_state<Storage>(registration: &mut spru_script_rhai::Registration<'_>)
     where
         Storage: spru::item::Storage<State = MyState>,
     {
         spru_script_rhai::rhai! { <Storage, MyAction> registration {
             register_S => S as S;
         } };
-        // register_S!(<Storage, MyAction> registration => S);
     }
 }
 
 #[test]
 fn script() {
-    use spru_script::LanguageExec as _;
+    use spru_script::DialectExec as _;
     let storage = spru_util::storage::Standalone::<MyState>::new();
     let rhai = spru_script_rhai::RhaiInstance::<MyLexicon>::default();
     let mut test_interactor = spru::interactor::test_util::TestInteractor::new(storage);
@@ -103,7 +102,7 @@ fn script() {
 
 #[test]
 fn eval() {
-    use spru_script::{LanguageExec as _, LanguageEval as _};
+    use spru_script::{DialectExec as _, DialectEval as _};
     let storage = spru_util::storage::Standalone::<MyState>::new();
     let rhai = spru_script_rhai::RhaiInstance::<MyLexicon>::default();
     let mut test_interactor = spru::interactor::test_util::TestInteractor::new(storage);

@@ -3,16 +3,19 @@ pub mod component;
 pub mod event;
 #[cfg(feature = "remote")]
 pub mod remote;
+pub mod resource;
 mod storage;
-use bevy::prelude;
 pub use storage::BevyStorage;
 mod plugin;
 pub use plugin::Plugin;
-use spru::item;
-
-use crate::common;
 pub mod system;
 
+use spru::item;
+use bevy::prelude;
+
+use crate::common;
+
+/// A [spru::Client] whose constituent types are [Send] + [Sync] + `'static`
 pub trait ClientSSS:
     spru::client::Client<
         State: spru::State<Repr: Send + Sync + 'static> + Send + Sync + 'static,
@@ -113,29 +116,11 @@ pub enum BevyError {
 
 pub type BevyResult<T> = std::result::Result<T, BevyError>;
 
-#[derive(Debug, thiserror::Error)]
-#[error("An error occurred while running a Client: {0}")]
-pub enum RunClientError {
-    Init(spru::common::error::FatalError),
-    StageInteraction(#[from] spru::client::error::StageInteractionError),
-    ApplyInteraction(#[from] spru::client::error::ApplyInteractionError),
-    RevertInteraction(#[from] spru::client::error::RevertInteractionError),
-    Signal(spru::common::error::FatalError),
-}
-
-pub type RunClientResult<T> = std::result::Result<T, RunClientError>;
-
-#[derive(Debug, Clone, Copy)]
-pub struct ClientInfo {
-    pub entity: prelude::Entity,
-    pub client_id: component::ClientId,
-}
-
 #[cfg(feature = "script")]
 pub fn eval<Client, Args, Ret>(
     world: &prelude::World,
     client_entity: prelude::Entity,
-    language: &impl spru_script::LanguageEval<Args, Ret, Client::Root, Error: std::error::Error + Send + Sync + 'static>,
+    language: &impl spru_script::DialectEval<Args, Ret, Client::Root, Error: std::error::Error + Send + Sync + 'static>,
     script: &str,
     args: Args,
 ) 
@@ -143,18 +128,32 @@ pub fn eval<Client, Args, Ret>(
 where
     Client: ClientSSS,
 {
-    let (root, entity_map, game_id, client_id) = world.get_entity(client_entity)?
+    let (root, entity_map) = world.get_entity(client_entity)?
         .components::<(
             &common::component::Root<Client::Common>,
             &component::EntityMap,
-            &common::component::GameId,
-            &component::ClientId,
         )>();
 
-    let game_id = **game_id;
-    let client_id = **client_id;
-    let storage = storage::BevyReadOnlyStorage::new(world, entity_map, game_id, client_id);
+    let storage = storage::BevyReadOnlyStorage::new(world, entity_map);
 
     let ret = language.eval(&storage, &root.0, script, args)?;
     Ok(ret)
+}
+
+fn trigger_events<Client: ClientSSS>(entity: prelude::Entity, event_trigger: &mut impl common::TriggerEvent, events: Vec<spru::client::Event<Client>>) {
+    for event in events {
+        #[allow(clippy::single_match)]
+        match event {
+            spru::client::Event::InteractionResult(interaction_result) => {
+                // TODO
+            }
+            spru::client::Event::GameComplete(game_complete) => {
+                event_trigger.trigger(event::GameComplete::<Client> {
+                    entity,
+                    game_outcome: game_complete.game_outcome,
+                });
+            }
+            _ => {}
+        }
+    }
 }

@@ -87,9 +87,9 @@ impl TupleArgument {
         let unconverted_pat = syn::parse_quote_spanned!(span => #ident: #ty);
         let converted_pat = syn::parse_quote_spanned!(span => #ident: ::rhai::Dynamic);
 
-        let conversion: syn::Stmt = syn::parse_quote_spanned!(span => let #ident: #ty = FromDynamic::from_dynamic(&ctx, #ident)?; );
+        let conversion: syn::Stmt = syn::parse_quote_spanned!(span => let #ident: #ty = crate::dynamic::FromDynamic::from_dynamic(&ctx, #ident)?; );
 
-        let converted_bound: syn::WherePredicate = syn::parse_quote_spanned!(span => #ty: FromDynamic );
+        let converted_bound: syn::WherePredicate = syn::parse_quote_spanned!(span => #ty: crate::dynamic::FromDynamic );
         let unconverted_bound: syn::WherePredicate = syn::parse_quote_spanned!(span => #ty: Clone + Send + Sync + 'static );
 
         let mut tuple_inner_types = vec![];
@@ -108,8 +108,8 @@ impl TupleArgument {
 
         let tuple_value = syn::parse_quote_spanned!(span => (#(#tuple_inner_values, )*));
 
-        let pop_unconverted_arg: syn::Stmt = syn::parse_quote_spanned!(span => let #ident: #ty = crate::pop_type(&ctx, &mut args)?; );
-        let pop_converted_arg: syn::Stmt = syn::parse_quote_spanned!(span => let #ident: rhai::Dynamic = crate::pop_type(&ctx, &mut args)?; );
+        let pop_unconverted_arg: syn::Stmt = syn::parse_quote_spanned!(span => let #ident: #ty = crate::dynamic::pop_type(&ctx, &mut args)?; );
+        let pop_converted_arg: syn::Stmt = syn::parse_quote_spanned!(span => let #ident: rhai::Dynamic = crate::dynamic::pop_type(&ctx, &mut args)?; );
 
         Self {
             ty,
@@ -250,13 +250,13 @@ impl Ret {
         let ty = syn::Ident::new("Ret", span);
 
         let unconverted_bound: syn::WherePredicate = syn::parse_quote_spanned!(span => #ty: Clone + Send + Sync + 'static);
-        let converted_bound: syn::WherePredicate = syn::parse_quote_spanned!(span => #ty: IntoDynamic);    
+        let converted_bound: syn::WherePredicate = syn::parse_quote_spanned!(span => #ty: crate::dynamic::IntoDynamic);    
         let method_unconverted_bound: syn::WherePredicate = syn::parse_quote_spanned!(span => #ty: spru_script_base::MethodReturn<Action, T: Clone + Send + Sync + 'static> + 'static);
-        let method_converted_bound: syn::WherePredicate = syn::parse_quote_spanned!(span => #ty: spru_script_base::MethodReturn<Action, T: IntoDynamic> + 'static);
+        let method_converted_bound: syn::WherePredicate = syn::parse_quote_spanned!(span => #ty: spru_script_base::MethodReturn<Action, T: crate::dynamic::IntoDynamic> + 'static);
         let set_bound: syn::WherePredicate = syn::parse_quote_spanned!(span => #ty: spru_script_base::SetReturn<Action> + 'static);
         let create_bound: syn::WherePredicate = syn::parse_quote_spanned!(span => #ty: Into<Action> + 'static);
         
-        let conversion: syn::Stmt = syn::parse_quote_spanned!(span => let #ident = IntoDynamic::into_dynamic(#ident););
+        let conversion: syn::Stmt = syn::parse_quote_spanned!(span => let #ident = crate::dynamic::IntoDynamic::into_dynamic(#ident););
 
         let set_to_actions = vec![
             syn::parse_quote_spanned!(span => let actions = #ident.convert(); ),
@@ -414,17 +414,17 @@ impl Receiver {
         let param_ident = syn::Ident::new("this", span);
         let param_ty = syn::Ident::new("This", span);
         let type_ty: syn::Type = syn::parse_quote_spanned!(span => #param_ty);
-        let state_ty: syn::Type = syn::parse_quote_spanned!(span => IdT<#param_ty>);
+        let state_ty: syn::Type = syn::parse_quote_spanned!(span => ::spru::item::IdT<#param_ty>);
         let type_bound = syn::parse_quote_spanned!(span => #type_ty: Clone + Send + Sync + 'static);
         let state_bound = syn::parse_quote_spanned!(span => #state_ty: Clone + Send + Sync + 'static);
-        let storable_bound = syn::parse_quote_spanned!(span => #param_ty: spru::item::storage::Storable<Action::State>);
+        let storable_bound = syn::parse_quote_spanned!(span => #param_ty: ::spru::item::storage::Storable<Action::State>);
         let type_pat = syn::parse_quote_spanned!(span => #param_ident: &mut #type_ty);
         let state_pat = syn::parse_quote_spanned!(span => #param_ident: &mut #state_ty);
 
         // Vec<Stmt> is not directly parseable
         let get_ledger_block: syn::Block = syn::parse_quote_spanned! { span => 
             {
-                let mut handle = crate::LedgerHandle::from_rhai(&ctx);
+                let mut handle = crate::storage_handle::StorageHandle::from_rhai(&ctx);
                 let mut ledger = unsafe { handle.get_mut::<Storage, Action>() };
             }
         };
@@ -622,7 +622,7 @@ fn make_register_fn(member_kind: &MemberKind, receiver: &Receiver, tuple_args: &
                     // Self parameter is unused
                     args.split_off_first_mut();
                     #(#args_pop_args)*
-                    extra_args_error(&ctx, args)?;
+                    crate::dynamic::extra_args_error(&ctx, args)?;
 
                     let ret = method(#(#args_tuple_value, )* );
 
@@ -823,7 +823,7 @@ pub(crate) fn impl_dynamic_fn(input: TokenStream) -> syn::Result<TokenStream> {
                         {
                             #state_assoc
 
-                            fn #trait_fn <#storage_param> (&mut self, registration: &mut Registration2<'_, '_>, ) 
+                            fn #trait_fn <#storage_param> (&mut self, registration: &mut MemberRegistration<'_, '_>, ) 
                             where
                                 #storage_bound
                             {

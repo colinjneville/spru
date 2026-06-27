@@ -839,7 +839,7 @@ mod test {
     impl spru_script::StatelessLexicon for MyLexicon {
         type Language = spru_script_rhai::Rhai;
         
-        fn register_stateless(_registration: &mut spru_script_rhai::Registration1<'_>) {
+        fn register_stateless(_registration: &mut spru_script_rhai::Registration<'_>) {
             
         }
     }
@@ -847,7 +847,7 @@ mod test {
     impl spru_script::Lexicon for MyLexicon {
         type Action = MyAction;
     
-        fn register_state<Storage>(registration: &mut spru_script_rhai::Registration1<'_>)
+        fn register_state<Storage>(registration: &mut spru_script_rhai::Registration<'_>)
         where
             Storage: spru::item::Storage<State = MyState>,
         {
@@ -894,7 +894,7 @@ mod test {
 
     #[test]
     fn test_script() {
-        use spru_script::LanguageExec as _;
+        use spru_script::DialectExec as _;
 
         let storage = crate::storage::Standalone::<MyState>::new();
 

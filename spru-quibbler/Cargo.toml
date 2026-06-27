@@ -32,9 +32,14 @@ rhai = { workspace = true, features = ["serde"] }
 
 tracing.workspace = true
 
+itertools.workspace = true
+
 wordnik_list = "0.2.1"
-bevy-inspector-egui = "0.36.0"
-bevy_egui = "0.39.1"
+bevy-inspector-egui = { version = "0.36.0", optional = true }
+bevy_egui = { version = "0.39.1", optional = true }
+
+aeronet = { workspace = true, optional = true }
+aeronet_webtransport = { workspace = true, optional = true }
 
 [target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dependencies]
 # no clipboard on wasm
@@ -56,11 +61,11 @@ dedicated-client = ["client", "remote", "ui"]
 local = ["server", "client", "ui"]
 # non-WASM compatible
 dedicated-server = ["server", "remote"]
-hybrid = ["local", "dedicated-server"]
+hybrid = ["local", "dedicated-server", "dedicated-client"]
 
 # sub-features
 client = ["spru-bevy/client"]
 server = ["spru-bevy/server"]
-remote = ["spru-bevy/remote"]
+remote = ["spru-bevy/remote", "dep:aeronet", "dep:aeronet_webtransport"]
 # TODO bevy/bevy_egui should be trimmed for dedicated servers
-ui = []
+ui = ["dep:bevy_egui", "dep:bevy-inspector-egui"]

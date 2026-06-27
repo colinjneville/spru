@@ -33,6 +33,16 @@ type Reaction = spru_script::Reaction<spru::item::IdT<game::Root>, reaction::Tri
 type Server = spru::server::Impl<Interaction, Reaction, PlayerInit>;
 type Common = <Client as spru::Client>::Common;
 
+#[derive(Debug, Default, Clone, PartialEq, Eq, Hash, prelude::States)]
+enum AppState {
+    #[default]
+    MainMenu,
+    
+    Config,
+
+    InGame,
+}
+
 fn main() {
     #[rustfmt::skip]
     let _app_exit = bevy::app::App::new()
@@ -43,6 +53,7 @@ fn main() {
             plugin::Client,
             plugin::Local,
             plugin::Remote,
+            plugin::DedicatedClient,
             plugin::DedicatedServer,
         ))
         .run();

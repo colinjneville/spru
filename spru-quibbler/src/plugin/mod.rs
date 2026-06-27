@@ -10,6 +10,15 @@ cfg_select! {
     }
 }
 cfg_select! {
+    feature = "dedicated-client" => {
+        mod dedicated_client;
+        pub(crate) use dedicated_client::DedicatedClient;
+    }
+    _ => {
+        pub(crate) use Noop as DedicatedClient;
+    }
+}
+cfg_select! {
     feature = "dedicated-server" => {
         mod dedicated_server;
         pub(crate) use dedicated_server::DedicatedServer;

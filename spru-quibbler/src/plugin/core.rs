@@ -1,4 +1,4 @@
-use bevy::prelude;
+use bevy::{prelude, state::app::AppExtStates as _};
 
 pub(crate) struct Core;
 
@@ -35,6 +35,7 @@ impl prelude::Plugin for Core {
                     ..Default::default()
                 }),
             ))
+            .init_state::<crate::AppState>()
             .add_systems(prelude::FixedUpdate, (
                 Self::print_piles,
             ))
