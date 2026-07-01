@@ -15,7 +15,7 @@ impl Server {
 }
 
 impl prelude::Plugin for Server {
-    fn build(&self, app: &mut bevy::app::App) {
+    fn build(&self, app: &mut prelude::App) {
         app
             .add_plugins((
                 spru_bevy::server::Plugin::<crate::Server>::default(),

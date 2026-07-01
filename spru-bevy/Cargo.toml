@@ -9,9 +9,10 @@ categories = ["game-development", "wasm"]
 keywords = ["gamedev", "framework", "game", "wasm", "bevy"]
 
 [features]
-default = ["server", "client", "remote", "script"]
+default = ["server", "client", "local", "remote", "script"]
 server = ["aeronet_webtransport?/server"]
 client = ["aeronet_webtransport?/client"]
+local = ["client", "server"]
 remote = ["dep:aeronet", "aeronet_webtransport/server", "dep:url"]
 script = ["dep:spru-script"]
 
@@ -19,7 +20,7 @@ script = ["dep:spru-script"]
 spru.workspace = true
 spru-script = { workspace = true, optional = true }
 
-bevy.workspace = true
+bevy = { workspace = true, features = ["system_clipboard" ] }
 
 serde.workspace = true
 rmp-serde.workspace = true

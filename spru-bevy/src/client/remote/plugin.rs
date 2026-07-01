@@ -20,15 +20,24 @@ where
         State: spru::State<Repr: serde::de::DeserializeOwned>,
     >,
 {
-    fn build(&self, app: &mut bevy::app::App) {
+    fn build(&self, app: &mut prelude::App) {
+        // Equivalent to aeronet::AeronetPlugins, but AeronetPlugins
+        // does not check for existing plugins
+        if !app.is_plugin_added::<aeronet::io::AeronetIoPlugin>() {
+            app.add_plugins(aeronet::io::AeronetIoPlugin);
+        }
+        if !app.is_plugin_added::<aeronet::transport::AeronetTransportPlugin>() {
+            app.add_plugins(aeronet::transport::AeronetTransportPlugin);
+        }
+
         app
             .add_plugins((
-                aeronet::AeronetPlugins,
                 aeronet_webtransport::client::WebTransportClientPlugin,
             ))
             .add_systems(
                 prelude::FixedUpdate,
                 (
+                    remote::system::seed_client::<Client>,
                     remote::system::propagate_remote_queues::<Client>,
                 ),
             )

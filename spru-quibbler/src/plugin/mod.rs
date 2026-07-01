@@ -10,21 +10,21 @@ cfg_select! {
     }
 }
 cfg_select! {
-    feature = "dedicated-client" => {
-        mod dedicated_client;
-        pub(crate) use dedicated_client::DedicatedClient;
+    all(feature = "remote", feature = "client") => {
+        mod remote_client;
+        pub(crate) use remote_client::RemoteClient;
     }
     _ => {
-        pub(crate) use Noop as DedicatedClient;
+        pub(crate) use Noop as RemoteClient;
     }
 }
 cfg_select! {
-    feature = "dedicated-server" => {
-        mod dedicated_server;
-        pub(crate) use dedicated_server::DedicatedServer;
+    all(feature = "remote", feature = "server") => {
+        mod remote_server;
+        pub(crate) use remote_server::RemoteServer;
     }
     _ => {
-        pub(crate) use Noop as DedicatedServer;
+        pub(crate) use Noop as RemoteServer;
     }
 }
 cfg_select! {
@@ -71,7 +71,7 @@ use bevy::prelude;
 pub(crate) struct Noop;
 
 impl prelude::Plugin for Noop {
-    fn build(&self, _app: &mut bevy::app::App) { }
+    fn build(&self, _app: &mut prelude::App) { }
     
     fn is_unique(&self) -> bool {
         false

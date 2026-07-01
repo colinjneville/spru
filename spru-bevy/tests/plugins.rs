@@ -17,7 +17,7 @@ fn headless_plugins_with_logging() -> bevy::app::PluginGroupBuilder {
 
 #[test]
 fn just_plugins() -> impl std::process::Termination {
-    let exit = bevy::app::App::new()
+    let exit = prelude::App::new()
         .add_plugins((
             headless_plugins_with_logging(),
             spru_bevy::client::Plugin::<minimal::MyClient>::default(),
@@ -42,7 +42,7 @@ fn local_multiplayer() -> impl std::process::Termination {
             });
     }
 
-    let exit = bevy::app::App::new()
+    let exit = prelude::App::new()
         .add_plugins((
             headless_plugins_with_logging(),
             spru_bevy::client::Plugin::<minimal::MyClient>::default(),

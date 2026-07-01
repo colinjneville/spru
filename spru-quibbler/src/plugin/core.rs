@@ -23,7 +23,7 @@ impl Core {
 }
 
 impl prelude::Plugin for Core {
-    fn build(&self, app: &mut bevy::app::App) {
+    fn build(&self, app: &mut prelude::App) {
         use prelude::PluginGroup as _;
 
         let _frame_duration = std::time::Duration::from_secs_f32(1. / 30.);
@@ -31,7 +31,7 @@ impl prelude::Plugin for Core {
         app
             .add_plugins((
                 bevy::DefaultPlugins.set(bevy::log::LogPlugin {
-                    filter: "spru=info,spru_bevy=info,spru_quibbler=trace".to_string(),
+                    filter: "spru=info,spru_bevy=info,spru_quibbler=trace,aeronet_webtransport=debug".to_string(),
                     ..Default::default()
                 }),
             ))

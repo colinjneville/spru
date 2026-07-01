@@ -3,6 +3,8 @@ use std::marker::PhantomData;
 use bevy::prelude;
 use derive_where::derive_where;
 
+use crate::server;
+
 #[derive_where(Debug, Default; )]
 pub struct Plugin<Server: crate::server::ServerSSS> {
     _server: PhantomData<fn() -> Server>,
@@ -18,19 +20,32 @@ where
         State: spru::State<Repr: serde::Serialize>,
     >,
 {
-    fn build(&self, app: &mut bevy::app::App) {
+    fn build(&self, app: &mut prelude::App) {
+        // Equivalent to aeronet::AeronetPlugins, but AeronetPlugins
+        // does not check for existing plugins
+        if !app.is_plugin_added::<aeronet::io::AeronetIoPlugin>() {
+            app.add_plugins(aeronet::io::AeronetIoPlugin);
+        }
+        if !app.is_plugin_added::<aeronet::transport::AeronetTransportPlugin>() {
+            app.add_plugins(aeronet::transport::AeronetTransportPlugin);
+        }
+
         app
-            .add_plugins(aeronet::AeronetPlugins)
+            .add_plugins((
+                aeronet_webtransport::server::WebTransportServerPlugin,
+            ))
             .add_systems(
                 prelude::FixedUpdate,
                 (
-                    super::system::propagate_remote_queues::<Server>,
-                    // super::system::create_local_clients::<Server, Client>,
+                    server::remote::system::seed_client::<Server>,
+                    server::remote::system::propagate_remote_queues::<Server>,
                 ),
             )
-            .add_observer(super::observer::on_opened)
-            .add_observer(super::observer::on_session_request::<Server>)
-            .add_observer(super::observer::on_connected::<Server>)
+            .add_observer(server::remote::observer::on_opened)
+            .add_observer(server::remote::observer::on_session_request::<Server>)
+            .add_observer(server::remote::observer::on_connecting::<Server>)
+            .add_observer(server::remote::observer::on_connected::<Server>)
+            .add_observer(server::remote::observer::on_disconnected::<Server>)
         ;
     }
 }

@@ -3,7 +3,7 @@ use bevy::prelude;
 pub(crate) struct Client;
 
 impl prelude::Plugin for Client {
-    fn build(&self, app: &mut bevy::app::App) {
+    fn build(&self, app: &mut prelude::App) {
         app
             .add_plugins((
                 spru_bevy::client::Plugin::<crate::Client>::default(),

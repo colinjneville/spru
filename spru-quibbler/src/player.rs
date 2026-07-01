@@ -8,14 +8,14 @@ use spru_util::{cloned, counter, fsm, pile, player_map, rotating, state_cell};
 
 use crate::data;
 
-pub(crate) fn validate_usernames<'u>(usernames: impl Iterator<Item = &'u str>) -> bool {
+pub(crate) fn validate_usernames<'u>(usernames: impl Iterator<Item = &'u str>) -> Result<(), &'static str> {
     for (username, count) in usernames.counts() {
         if count > 1 || username.trim().is_empty() {
-            return false;
+            return Err("Players cannot share the same name");
         }
     }
 
-    true
+    Ok(())
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]

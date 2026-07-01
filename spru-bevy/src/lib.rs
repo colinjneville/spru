@@ -5,7 +5,7 @@
 //! type MyServer = spru::server::Impl< /* ... */ >;
 //! type MyClient = spru::client::Impl< /* ... */ >;
 //!
-//! bevy::app::App::new()
+//! prelude::App::new()
 //! // ...
 //!     .add_plugins((
 //!         // Add the client plugin if any Clients will run on this App
@@ -64,7 +64,7 @@
 #[cfg(feature = "client")]
 pub mod client;
 pub mod common;
-#[cfg(all(feature = "server", feature = "client"))]
+#[cfg(feature = "local")]
 pub mod local;
 #[cfg(feature = "remote")]
 pub mod remote;

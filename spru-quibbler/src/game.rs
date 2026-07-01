@@ -97,6 +97,7 @@ impl Root {
 }
 
 #[derive(Debug, Clone)]
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct Outcome {
     pub winners: Vec<spru::player::Id>,
     pub final_scores: HashMap<spru::player::Id, u32>,

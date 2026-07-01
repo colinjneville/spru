@@ -25,7 +25,7 @@ impl ServerMap {
         self.map.get(&crate::reflect::spru::game::Id(game_id)).copied()
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = (&spru::game::Id, &prelude::Entity)> {
-        self.map.iter().map(|(id, entity)| (&id.0, entity))
+    pub fn iter(&self) -> impl Iterator<Item = (spru::game::Id, prelude::Entity)> {
+        self.map.iter().map(|(id, &entity)| (id.0, entity))
     }
 }

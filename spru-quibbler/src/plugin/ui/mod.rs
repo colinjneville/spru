@@ -1,6 +1,21 @@
-use std::{any, cmp, fmt, iter};
+#[cfg(feature = "dedicated-server")]
+mod dedicated_server;
+
+#[cfg(feature = "host")]
+mod host;
+
+#[cfg(feature = "hotseat")]
+mod hotseat;
+
+#[cfg(feature = "join")]
+mod join;
+
+use std::borrow::Cow;
+use std::{any, cmp, fmt};
 use std::collections::{HashMap, HashSet};
 
+#[cfg(feature = "client")]
+use bevy::ecs::system::IntoSystem as _;
 use bevy::prelude;
 use bevy_egui::egui;
 
@@ -64,7 +79,7 @@ trait Config: fmt::Debug + Send + Sync + 'static {
 trait ConfigPanel {
     fn show(&mut self, ui: &mut egui::Ui);
 
-    fn valid(&self) -> bool;
+    fn valid(&self) -> Result<(), Cow<'static, str>>;
 
     /// Returns true if the user has completed this panel
     fn show_panel(&mut self, config_step: &mut usize, panel_step: usize, ctx: &mut egui::Context, next_text: &str) {
@@ -79,7 +94,8 @@ trait ConfigPanel {
         // how to properly do so when the panels are distributed among different functions.
         // Just use the deprecated functions for now.
         let to_next = egui::Panel::left(any::type_name::<Self>())
-            .default_size(480.)
+            .default_size(320.)
+            .resizable(false)
             .show_animated(ctx, state != PanelState::Hidden, |ui| {
                 ui.add_enabled_ui(state == PanelState::Active, |ui| {
                     self.show(ui);
@@ -87,7 +103,16 @@ trait ConfigPanel {
                         .show_inside(ui, |ui| {
                             let next_button = egui::Button::new(next_text);
                                     
-                            ui.add_enabled(self.valid(), next_button).clicked()
+                            let is_valid = match self.valid() {
+                                Ok(()) => true,
+                                Err(err) => {
+                                    ui.colored_label(egui::Color32::RED, err);
+                                    ui.end_row();
+
+                                    false
+                                }
+                            };
+                            ui.add_enabled(is_valid, next_button).clicked()
                         }).inner
                 }).inner
             }).map_or(false, |resp| resp.inner);
@@ -98,200 +123,252 @@ trait ConfigPanel {
     }
 }
 
-cfg_select! {
-    feature = "local" => {
-        #[derive(Debug, Default)]
-        struct ConfigLocal {
-            step: usize,
-            player_panel: ConfigManyPlayerPanel,
+
+fn player_row(ui: &mut egui::Ui, username: &mut Validated<String>, can_remove_player: bool) -> bool {
+    let do_remove = ui.horizontal(|ui| {
+        if ui.text_edit_singleline(username.text_mut())
+            .lost_focus()
+        {
+            username.validate(validate_username);
         }
+        
+        let do_remove = can_remove_player && ui.button("-").clicked();
 
-        impl Config for ConfigLocal {
-            fn show(&mut self, ctx: &mut egui::Context) -> bool {
-                self.player_panel.show_panel(&mut self.step, 0, ctx, "Next");
+        ui.end_row();
 
-                self.step == 1
-            }
+        do_remove
+    }).inner;
 
-            fn complete(self: Box<Self>, commands: &mut prelude::Commands) {
-                let mut entity = commands.spawn_empty();
-
-                entity.queue(move |mut entity: prelude::EntityWorldMut| {
-                    use prelude::EntityCommand as _;
-
-                    entity.reborrow_scope(|entity| {
-                        spru_bevy::server::command::Init::<crate::Server, crate::GameInit> {
-                            game_init: crate::game::init::new(),
-                            player_init: crate::player::init::new(),
-                            reaction: crate::reaction::new(),
-                        }.apply(entity);
-                    });
-                });
-
-                for username in self.player_panel.usernames().cloned() {
-                    entity.queue(spru_bevy::local::command::AddLocalPlayer::<crate::Server, crate::Client>::new( 
-                        crate::player::Input {
-                            username,
-                        } 
-                    ));
-                }
-
-                entity.queue(spru_bevy::server::command::ManualTrigger::<crate::Server> { 
-                    trigger: crate::reaction::Trigger::StartGame,
-                });
-            }
-        }
-    }
-    _ => { }
-}
-
-cfg_select! {
-    all(feature = "dedicated-client", feature = "local") => {
-        #[derive(Debug, Default)]
-        struct ConfigHost {
-            step: usize,
-            // player_panel: ConfigManyPlayerPanel,
-        }
-
-        impl Config for ConfigHost {
-            fn show(&mut self, ctx: &mut egui::Context) -> bool {
-                self.step == 1
-            }
-
-            fn complete(self: Box<Self>, commands: &mut prelude::Commands) {
-                commands.spawn_empty()
-                    .queue(
-                        spru_bevy::server::command::Init::<crate::Server, crate::GameInit> {
-                            game_init: crate::game::init::new(),
-                            player_init: crate::player::init::new(),
-                            reaction: crate::reaction::new(),
-                        }
-                    )
-                    .queue(
-                        spru_bevy::local::command::AddLocalPlayer::<crate::Server, crate::Client>::new( 
-                            crate::player::Input {
-                                username: todo!(),
-                            } 
-                        )
-                    )
-                ;
-            }
-        }
-    }
-    _ => { }
-}
-
-
-cfg_select! {
-    feature = "dedicated-client" => {
-        #[derive(Debug, Default)]
-        struct ConfigJoin {
-            step: usize,
-            // player_panel: ConfigManyPlayerPanel,
-        }
-
-        impl Config for ConfigJoin {
-            fn show(&mut self, ctx: &mut egui::Context) -> bool {
-                self.step == 1
-            }
-
-            fn complete(self: Box<Self>, commands: &mut prelude::Commands) {
-                todo!()
-            }
-        }
-    }
-    _ => { }
-}
-
-
-cfg_select! {
-    feature = "dedicated-server" => {
-        #[derive(Debug, Default)]
-        struct ConfigDedicatedServer {
-            step: usize,
-            // player_panel: ConfigManyPlayerPanel,
-        }
-
-        impl Config for ConfigDedicatedServer {
-            fn show(&mut self, ctx: &mut egui::Context) -> bool {
-                self.step == 1
-            }
-
-            fn complete(self: Box<Self>, commands: &mut prelude::Commands) {
-                todo!()
-            }
-        }
-    }
-    _ => { }
-}
-
-#[derive(Debug, Default)]
-struct ConfigPlayerPanel {
-    username: String,
-}
-
-// impl ConfigPanel for ConfigPlayerPanel {
-//     fn show(&mut self, ui: &mut egui::Ui) {
-//         todo!()
-//     }
-// }
-
-#[derive(Debug, Default)]
-struct ConfigManyPlayerPanel {
-    username0: String,
-    usernames: Vec<String>,
-}
-
-impl ConfigManyPlayerPanel {
-    fn usernames(&self) -> impl Iterator<Item = &String> {
-        iter::once(&self.username0).chain(&self.usernames)
+    if let Some(error) = username.error() {
+        ui.colored_label(egui::Color32::RED, error);
+        ui.end_row();
     }
 
-    fn usernames_mut(&mut self) -> impl Iterator<Item = &mut String> {
-        iter::once(&mut self.username0).chain(&mut self.usernames)
+    do_remove
+}
+
+/// The maximum number of players we allow creating a server for.
+/// The only hard limit here is the number of cards in deck (~110)
+const MAX_MAX_PLAYERS: u32 = 8;
+
+const DEFAULT_PORT: u16 = 57298;
+const MIN_PORT: u16 = 49152;
+const MAX_PORT: u16 = 65535;
+
+fn validate_port(s: &str) -> Result<u16, &'static str> {
+    if s.is_empty() {
+        Ok(DEFAULT_PORT)
+    } else {
+        let port = s.parse()
+            .map_err(|_| "Port must be blank or an integer between 49152 and 65535 inclusive")?;
+
+        (port < MIN_PORT || port > MAX_PORT)
+            .then_some(port)
+            .ok_or("Port must be between 49152 and 65535 inclusive")
     }
 }
 
-impl ConfigPanel for ConfigManyPlayerPanel {
-    fn valid(&self) -> bool {
-        crate::player::validate_usernames(iter::once(&self.username0).chain(&self.usernames).map(|s| s.as_str()))
+fn validate_username(s: &str) -> Result<String, &'static str> {
+    if s.trim_ascii().is_empty() {
+        Err("Username must cannot be blank")
+    } else {
+        Ok(s.to_string())
     }
-    
+}
+
+#[derive(Debug)]
+struct Validated<T: ToString> {
+    text: String,
+    value: T,
+    last_error: Option<Cow<'static, str>>,
+}
+
+impl<T: ToString> Validated<T> {
+    pub fn new(value: T) -> Self {
+        Self {
+            text: value.to_string(),
+            value,
+            last_error: None,
+        }
+    }
+
+    pub fn new_with_text_override(value: T, text: String) -> Self {
+        Self {
+            text,
+            value,
+            last_error: None,
+        }
+    }
+
+    pub fn text(&self) -> &str {
+        &self.text
+    }
+
+    pub fn text_mut(&mut self) -> &mut String {
+        &mut self.text
+    }
+
+    pub fn into_value(self) -> T {
+        self.value
+    }
+
+    pub fn validate<E: Into<Cow<'static, str>>>(&mut self, validator: impl FnOnce(&str) -> Result<T, E>) -> bool {
+        match validator(&self.text) {
+            Ok(value) => {
+                self.value = value;
+                self.last_error = None;
+                true
+            }
+            Err(err) => {
+                self.text = self.value.to_string();
+                self.last_error = Some(err.into());
+                false
+            }
+        }
+    }
+
+    pub fn error(&self) -> Option<&str> {
+        self.last_error
+            .as_ref()
+            .map(Cow::as_ref)
+    }
+}
+
+
+
+
+#[derive(Debug)]
+struct ConfigGamePanel {
+    max_players: Validated<u32>,
+}
+
+impl Default for ConfigGamePanel {
+    fn default() -> Self {
+        Self { 
+            max_players: Validated::new(2),
+        }
+    }
+}
+
+impl ConfigGamePanel {
+    fn validate_max_players(s: &str) -> Result<u32, &'static str> {
+        let value = s.parse()
+            .map_err(|_| "Max players must be an integer")?;
+        (value >= 1 && value <= MAX_MAX_PLAYERS)
+            .then_some(value)
+            .ok_or("Max players must be between 1 and 8, inclusive")
+    }
+}
+
+impl ConfigPanel for ConfigGamePanel {
     fn show(&mut self, ui: &mut egui::Ui) {
         ui.vertical(|ui| {
-            ui.label("Player Names");
-            ui.end_row();
-            
-            let can_remove_player = !self.usernames.is_empty();
-
-            let mut remove_index = None;
-            for (i, username) in self.usernames_mut().enumerate() {
-                ui.horizontal(|ui| {
-                    ui.text_edit_singleline(username);
-                    
-                    if can_remove_player && ui.button("-").clicked() {
-                        remove_index = Some(i);
-                    }
-                    ui.end_row();
-                });
-            }
-
-            let add_button = egui::Button::new("+");
+            ui.horizontal(|ui| {
+                ui.label("Max Players");
                 
-            if ui.add(add_button).clicked() {
-                self.usernames.push(String::new());
-            }
-            ui.end_row();
-            
-            if let Some(remove_index) = remove_index {
-                let removed = self.usernames.remove(remove_index.saturating_sub(1));
-                if remove_index == 0 {
-                    self.username0 = removed;
+                if egui::TextEdit::singleline(self.max_players.text_mut())
+                    .show(ui)
+                    .response
+                    .lost_focus()
+                {
+                    self.max_players.validate(Self::validate_max_players);
                 }
+            });
+            if let Some(max_players_error) = self.max_players.error() {
+                ui.colored_label(egui::Color32::RED, max_players_error);
+                ui.end_row();
             }
         });
     }
+
+    fn valid(&self) -> Result<(), Cow<'static, str>> {
+        Ok(())
+    }
 }
+
+#[derive(Debug)]
+struct ConfigRemoteCreatePanel {
+    port: Validated<u16>,
+    password: String,
+}
+
+impl Default for ConfigRemoteCreatePanel {
+    fn default() -> Self {
+        Self { 
+            port: Validated::new(DEFAULT_PORT),
+            password: String::new(),
+        }
+    }
+}
+
+impl ConfigRemoteCreatePanel {
+    
+}
+
+impl ConfigPanel for ConfigRemoteCreatePanel {
+    fn show(&mut self, ui: &mut egui::Ui) {
+        ui.vertical(|ui| {
+            ui.horizontal(|ui| {
+                ui.label("Port");
+                if egui::TextEdit::singleline(self.port.text_mut())
+                    .hint_text("Auto")
+                    .show(ui)
+                    .response
+                    .lost_focus()
+                {
+                    self.port.validate(validate_port);
+                }
+            });
+            if let Some(port_error) = self.port.error() {
+                ui.colored_label(egui::Color32::RED, port_error);
+                ui.end_row();
+            }
+            ui.horizontal(|ui| {
+                ui.label("Password");
+                egui::TextEdit::singleline(&mut self.password)
+                    .hint_text("Optional")
+                    .show(ui);
+            });
+        });
+    }
+
+    fn valid(&self) -> Result<(), Cow<'static, str>> {
+        Ok(())
+    }
+}
+
+#[derive(Debug)]
+struct ConfigPlayerPanel {
+    username: Validated<String>,
+}
+
+impl ConfigPlayerPanel {
+    
+}
+
+impl Default for ConfigPlayerPanel {
+    fn default() -> Self {
+        Self { 
+            username: Validated::new("Player 1".to_string()), 
+        }
+    }
+}
+
+impl ConfigPanel for ConfigPlayerPanel {
+    fn show(&mut self, ui: &mut egui::Ui) {
+        ui.vertical(|ui| {
+            ui.label("Local Player Name");
+            ui.end_row();
+            player_row(ui, &mut self.username, false);
+        });
+    }
+
+    fn valid(&self) -> Result<(), Cow<'static, str>> {
+        crate::player::validate_usernames(std::iter::once(self.username.text()))?;
+        Ok(())
+    }
+}
+
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[derive(prelude::SystemSet)]
@@ -461,26 +538,26 @@ impl Ui {
             .resizable([false, false])
             .show(ctx, |ui| {
                 ui.vertical(|ui| {
-                    #[cfg(feature = "local")]
+                    #[cfg(feature = "hotseat")]
                     {
                         if ui.button("Local Game").clicked() {
-                            config_state.set(ConfigLocal::default());
+                            config_state.set(hotseat::ConfigLocal::default());
                             next_state.set_if_neq(crate::AppState::Config);
                         }
                         ui.end_row();
                     }
-                    #[cfg(all(feature = "dedicated-client", feature = "local"))]
+                    #[cfg(feature = "host")]
                     {
                         if ui.button("Host Game").clicked() {
-                            config_state.set(ConfigHost::default());
+                            config_state.set(host::ConfigHost::default());
                             next_state.set_if_neq(crate::AppState::Config);
                         }
                         ui.end_row();
                     }
-                    #[cfg(all(feature = "dedicated-client"))]
+                    #[cfg(feature = "join")]
                     {
                         if ui.button("Join Game").clicked() {
-                            config_state.set(ConfigJoin::default());
+                            config_state.set(join::ConfigJoin::default());
                             next_state.set_if_neq(crate::AppState::Config);
                         }
                         ui.end_row();
@@ -488,7 +565,7 @@ impl Ui {
                     #[cfg(all(feature = "dedicated-server"))]
                     {
                         if ui.button("Dedicated Server").clicked() {
-                            config_state.set(ConfigDedicatedServer::default());
+                            config_state.set(dedicated_server::ConfigDedicatedServer::default());
                             next_state.set_if_neq(crate::AppState::Config);
                         }
                         ui.end_row();
@@ -518,7 +595,7 @@ impl Ui {
             .default_pos([32., 64.])
             .resizable([true, false])
             .show(ctx, |ui| {
-                let mut help_text = include_str!("../../spru_help.txt");
+                let mut help_text = include_str!("../../../spru_help.txt");
                 let multiline = egui::TextEdit::multiline(&mut help_text).interactive(false);
                 ui.add(multiline);
             });
@@ -529,7 +606,7 @@ impl Ui {
             .default_pos([756., 64.])
             .resizable([true, false])
             .show(ctx, |ui| {
-                let mut help_text = include_str!("../../quibbler_help.txt");
+                let mut help_text = include_str!("../../../quibbler_help.txt");
                 let multiline = egui::TextEdit::multiline(&mut help_text).interactive(false);
                 ui.add(multiline);
             });
@@ -648,7 +725,10 @@ impl Ui {
         #[cfg(feature = "remote")]
         q_server: prelude::Query<(
             Option<&aeronet::io::connection::LocalAddr>,
+            Option<&spru_bevy::server::remote::component::Certificate>,
         )>,
+        #[cfg(feature = "remote")]
+        mut clipboard: prelude::ResMut<prelude::Clipboard>,
     ) -> prelude::Result {
         let Some(active_game_id) = active_game.0 else {
             return Ok(());
@@ -658,7 +738,7 @@ impl Ui {
         };
 
         #[cfg(feature = "remote")]
-        let (local_addr, ) = q_server.get(server_entity)?;
+        let (local_addr, certificate, ) = q_server.get(server_entity)?;
 
         let ctx = egui.ctx_mut()?;
         let builder = egui::UiBuilder::new().layer_id(egui::LayerId::background()).max_rect(ctx.content_rect());
@@ -670,6 +750,18 @@ impl Ui {
                 {
                     if let Some(local_addr) = local_addr {
                         ui.label(format!("{local_addr:?}"));
+                        ui.end_row();
+                    }
+                    if let Some(certificate) = certificate {
+                        let hash = aeronet_webtransport::cert::hash_to_b64(Box::new(certificate.hash));
+                        if ui.label(format!("Certificate Hash: {hash}"))
+                            .on_hover_text("Click to copy to clipboard")
+                            .clicked()
+                        {
+                            if let Err(err) = clipboard.set_text(hash) {
+                                prelude::warn!("Failed to copy certificate hash to clipboard: {err}");
+                            }
+                        }
                     }
                 }
 
@@ -1000,7 +1092,7 @@ impl Ui {
 }
 
 impl prelude::Plugin for Ui {
-    fn build(&self, app: &mut bevy::app::App) {
+    fn build(&self, app: &mut prelude::App) {
         use prelude::IntoScheduleConfigs as _;
 
         app
@@ -1024,20 +1116,20 @@ impl prelude::Plugin for Ui {
             })
             .add_systems(bevy_egui::EguiPrimaryContextPass, (
                 (
-                    Self::main_menu_ui,
+                    Self::main_menu_ui.pipe(crate::error_to_console),
                 ).run_if(prelude::in_state(crate::AppState::MainMenu)),
                 (
-                    ConfigState::ui,
+                    ConfigState::ui.pipe(crate::error_to_console),
                 ).run_if(prelude::in_state(crate::AppState::Config)),
                 (
-                    Self::application_ui.in_set(UiPhase::Application),
-                    Self::game_select_ui.in_set(UiPhase::GameSelect),
+                    Self::application_ui.pipe(crate::error_to_console).in_set(UiPhase::Application),
+                    Self::game_select_ui.pipe(crate::error_to_console).in_set(UiPhase::GameSelect),
                     #[cfg(feature = "client")]
-                    Self::client_select_ui.in_set(UiPhase::ClientSelect),
+                    Self::client_select_ui.pipe(crate::error_to_console).in_set(UiPhase::ClientSelect),
                     #[cfg(feature = "server")]
-                    (Self::server_ui_control, Self::server_ui_log).in_set(UiPhase::Server),
+                    (Self::server_ui_control.pipe(crate::error_to_console), Self::server_ui_log.pipe(crate::error_to_console)).in_set(UiPhase::Server),
                     #[cfg(feature = "client")]
-                    Self::client_ui.in_set(UiPhase::Client),
+                    Self::client_ui.pipe(crate::error_to_console).in_set(UiPhase::Client),
                 ).run_if(prelude::in_state(crate::AppState::InGame)),
             ))
             .add_systems(prelude::Startup, Self::startup)

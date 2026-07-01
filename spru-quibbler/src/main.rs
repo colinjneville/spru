@@ -45,7 +45,7 @@ enum AppState {
 
 fn main() {
     #[rustfmt::skip]
-    let _app_exit = bevy::app::App::new()
+    let _app_exit = prelude::App::new()
         .add_plugins((
             plugin::Core,
             plugin::Ui,
@@ -53,8 +53,8 @@ fn main() {
             plugin::Client,
             plugin::Local,
             plugin::Remote,
-            plugin::DedicatedClient,
-            plugin::DedicatedServer,
+            plugin::RemoteClient,
+            plugin::RemoteServer,
         ))
         .run();
 }

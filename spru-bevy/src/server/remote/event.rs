@@ -4,7 +4,9 @@ use bevy::prelude;
 
 #[derive(Debug)]
 #[derive(prelude::EntityEvent)]
+#[entity_event(propagate, auto_propagate)]
 pub struct AttemptedConnection<PlayerInitIn> {
+    // Triggers on the newly created remote client entity, which is a child of the server.
     pub entity: prelude::Entity,
     pub headers: collections::HashMap<String, String>,
     pub response: Option<super::JoinRequestResponse<PlayerInitIn>>,

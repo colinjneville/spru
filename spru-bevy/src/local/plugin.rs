@@ -21,7 +21,7 @@ where
             Common = Server::Common,
         >,
 {
-    fn build(&self, app: &mut bevy::app::App) {
+    fn build(&self, app: &mut prelude::App) {
         app.add_systems(
             prelude::FixedUpdate,
             (
