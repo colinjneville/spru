@@ -722,7 +722,7 @@ impl Ui {
         server_map: prelude::Res<ServerMap>,
         mut add_player_string: prelude::Local<String>,
         active_game: prelude::Res<ActiveGame>,
-        #[cfg(feature = "remote")]
+        #[cfg(all(feature = "remote", not(target_family = "wasm")))]
         q_server: prelude::Query<(
             Option<&aeronet::io::connection::LocalAddr>,
             Option<&spru_bevy::server::remote::component::Certificate>,
@@ -737,7 +737,7 @@ impl Ui {
             return Ok(());
         };
 
-        #[cfg(feature = "remote")]
+        #[cfg(all(feature = "remote", not(target_family = "wasm")))]
         let (local_addr, certificate, ) = q_server.get(server_entity)?;
 
         let ctx = egui.ctx_mut()?;
@@ -746,14 +746,15 @@ impl Ui {
         
         egui::Panel::top("server_control").show(ctx, |ui| {
             ui.vertical(|ui| {
-                #[cfg(feature = "remote")]
+                #[cfg(all(feature = "remote", not(target_family = "wasm")))]
                 {
                     if let Some(local_addr) = local_addr {
                         ui.label(format!("{local_addr:?}"));
                         ui.end_row();
                     }
                     if let Some(certificate) = certificate {
-                        let hash = aeronet_webtransport::cert::hash_to_b64(Box::new(certificate.hash));
+                        let hash = encode_base64(&certificate.hash);
+                        
                         if ui.label(format!("Certificate Hash: {hash}"))
                             .on_hover_text("Click to copy to clipboard")
                             .clicked()
@@ -1137,5 +1138,50 @@ impl prelude::Plugin for Ui {
         ;
 
         // panel_ui.pipe(error_to_console),
+    }
+}
+
+fn encode_base64(hash: &[u8; 32]) -> String {
+    let mut s = vec![0u8; 44];
+
+    let (chunks, remainder) = hash.as_chunks::<3>();
+    let padded_chunk = [remainder[0], remainder[1], 0];
+    
+    for (i, &[a, b, c]) in chunks.iter().chain(std::iter::once(&padded_chunk)).enumerate() {
+        s[i * 4] = a >> 2;
+        s[i * 4 + 1] = (a << 6 >> 2) | (b >> 4);
+        s[i * 4 + 2] = (b << 4 >> 2) | (c >> 6);
+        s[i * 4 + 3] = c << 2 >> 2;
+    }
+    for c in &mut s {
+        *c = match *c {
+            0..26 => {
+                *c + b'A'
+            }
+            26..52 => {
+                *c + b'a' - 26
+            }
+            52..62 => {
+                *c + b'0' - 52
+            }
+            62 => {
+                *c + b'+' - 62
+            }
+            63.. => {
+                *c + b'/' - 63
+            }
+        };
+    }
+    s[43] = b'=';
+
+    String::from_utf8(s).unwrap()
+}
+
+#[cfg(test)]
+mod test {
+    #[test]
+    fn test_encode_base64() {
+        assert_eq!(&super::encode_base64(&[0; _]), "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=");
+        assert_eq!(&super::encode_base64(&[0x75, 0xca, 0xc5, 0x52, 0x00, 0x16, 0x30, 0x36, 0x63, 0xc6, 0x2c, 0xc2, 0x46, 0xf4, 0x68, 0x85, 0x21, 0xf4, 0x66, 0x4e, 0xe5, 0x96, 0xdf, 0x3d, 0xe4, 0x80, 0x4c, 0x42, 0x10, 0x5c, 0x74, 0x60]), "dcrFUgAWMDZjxizCRvRohSH0Zk7llt895IBMQhBcdGA=");
     }
 }

@@ -21,7 +21,7 @@ impl fmt::Display for CertHash {
         if self.0 == CertHash::default().0 {
             Ok(())
         } else {
-            let s = aeronet_webtransport::cert::hash_to_b64(self);
+            let s = super::encode_base64(&self.0);
             write!(f, "{s}")
         }
     }
@@ -145,7 +145,21 @@ impl super::Config for ConfigJoin {
 
         let config = cfg_select! {
             all(target_family = "wasm", target_os = "unknown") => {
-                unimplemented!()
+                {
+                    let server_certificate_hashes = if cert_hash == CertHash::default() {
+                        vec![]
+                    } else {
+                        vec![aeronet_webtransport::xwt_web::CertificateHash {
+                            algorithm: aeronet_webtransport::xwt_web::HashAlgorithm::Sha256,
+                            value: cert_hash.0.to_vec(),
+                        }]
+                    };
+                    
+                    aeronet_webtransport::xwt_web::WebTransportOptions {
+                        server_certificate_hashes,
+                        .. Default::default()
+                    }
+                }
             }
             _ => {
                 {
@@ -156,13 +170,13 @@ impl super::Config for ConfigJoin {
                         config.with_native_certs()
                     } else {
                         config.with_server_certificate_hashes([aeronet_webtransport::wtransport::tls::Sha256Digest::new(cert_hash.0)])
-                    }
+                    }.build()
                 }
             }
         };
 
         let mut join_remote = spru_bevy::client::remote::command::JoinRemote::<crate::Client>::new(address)
-            .with_config(config.build())
+            .with_config(config)
             .with_header("username", &username);
 
         if !password.is_empty() {

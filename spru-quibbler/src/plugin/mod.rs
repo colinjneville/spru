@@ -19,7 +19,7 @@ cfg_select! {
     }
 }
 cfg_select! {
-    all(feature = "remote", feature = "server") => {
+    all(feature = "remote", feature = "server", not(target_family = "wasm")) => {
         mod remote_server;
         pub(crate) use remote_server::RemoteServer;
     }

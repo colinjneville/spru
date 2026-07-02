@@ -10,7 +10,6 @@ pub use plugin::Plugin;
 pub mod system;
 
 use bevy::prelude;
-use derive_where::derive_where;
 
 use crate::common;
 
