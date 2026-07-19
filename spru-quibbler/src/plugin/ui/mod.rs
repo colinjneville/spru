@@ -24,6 +24,7 @@ use bevy::ecs::schedule::SystemCondition;
 #[cfg(feature = "client")]
 use bevy::ecs::system::IntoSystem as _;
 use bevy::prelude;
+use bevy::state::app::AppExtStates;
 use bevy_egui::egui;
 
 #[cfg(feature = "server")]
@@ -33,6 +34,15 @@ use spru_bevy::server::resource::ServerMap;
 use spru_bevy::client::resource::ClientMap;
 
 use crate::plugin;
+
+#[derive(Debug, Default, Clone, PartialEq, Eq, Hash)]
+#[derive(prelude::States, prelude::Reflect)]
+enum MenuState {
+    #[default]
+    None,
+    
+    Esc,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum PanelState {
@@ -592,6 +602,64 @@ impl Ui {
         }
     }
 
+    fn menu_none_ui(
+        keys: prelude::Res<prelude::ButtonInput<prelude::KeyCode>>,
+        mut next_menu_state: prelude::ResMut<prelude::NextState<MenuState>>,
+    ) -> prelude::Result {
+        if keys.just_pressed(prelude::KeyCode::Escape) {
+            next_menu_state.set_if_neq(MenuState::Esc);
+        }
+
+        Ok(())
+    }
+
+    fn menu_esc_ui(
+        mut egui: bevy_egui::EguiContexts,
+        keys: prelude::Res<prelude::ButtonInput<prelude::KeyCode>>,
+        app_state: prelude::Res<prelude::State<crate::AppState>>,
+        mut next_menu_state: prelude::ResMut<prelude::NextState<MenuState>>,
+        mut app_exit: prelude::MessageWriter<prelude::AppExit>,
+    ) -> prelude::Result {
+        let ctx = egui.ctx_mut()?;
+
+        if keys.just_pressed(prelude::KeyCode::Escape) {
+            next_menu_state.set_if_neq(MenuState::None);
+        }
+
+        let layer = egui::LayerId::new(egui::Order::Foreground, "esc_menu_backdrop".into());
+
+        ctx.layer_painter(layer)
+            .rect_filled(ctx.viewport_rect(), 0, egui::Color32::from_black_alpha(128));
+
+        let screen_center = ctx.content_rect().center();
+        let width = 280.;
+
+        egui::Window::new("esc_menu_ui")
+            .title_bar(false)
+            .order(egui::Order::Foreground)
+            .pivot(egui::Align2::CENTER_CENTER)
+            .fixed_pos(screen_center)
+            .min_width(width)
+            .max_width(width)
+            .default_width(width)
+            .resizable(false)
+            .frame(egui::Frame::window(&ctx.global_style()).inner_margin(12.))
+            .show(ctx, |ui| {
+                ui.with_layout(egui::Layout::top_down_justified(egui::Align::Center), |ui| {
+                    ui.spacing_mut().item_spacing.y = 12.;
+
+                    if ui.button("Exit").clicked() {
+                        app_exit.write(prelude::AppExit::Success);
+                    }
+                    if ui.button("Return to Game").clicked() {
+                        next_menu_state.set_if_neq(MenuState::None);
+                    }
+                });
+            });
+
+        Ok(())
+    }
+
     fn main_menu_ui(
         mut egui: bevy_egui::EguiContexts,
         mut next_state: prelude::ResMut<prelude::NextState<crate::AppState>>,
@@ -1126,6 +1194,7 @@ impl prelude::Plugin for Ui {
             .init_resource::<ActiveGame>()
             .init_resource::<ActiveClient>()
             .init_resource::<ConfigState>()
+            .init_state::<MenuState>()
             .edit_schedule(bevy_egui::EguiPrimaryContextPass, |schedule| {
                 schedule.configure_sets((
                     UiPhase::Application,
@@ -1136,6 +1205,7 @@ impl prelude::Plugin for Ui {
                 ).chain());
             })
             .add_systems(bevy_egui::EguiPrimaryContextPass, (
+                // AppState-based
                 (
                     Self::main_menu_ui.pipe(crate::error_to_console),
                 ).run_if(prelude::in_state(crate::AppState::MainMenu)),
@@ -1164,6 +1234,13 @@ impl prelude::Plugin for Ui {
                     #[cfg(feature = "client")]
                     Self::client_ui.pipe(crate::error_to_console).in_set(UiPhase::Client),
                 ).run_if(prelude::in_state(crate::AppState::InGame)),
+                // MenuState-based
+                (
+                    Self::menu_none_ui.pipe(crate::error_to_console),
+                ).run_if(prelude::in_state(MenuState::None)),
+                (
+                    Self::menu_esc_ui.pipe(crate::error_to_console),
+                ).run_if(prelude::in_state(MenuState::Esc)),
             ))
             .add_systems(prelude::Startup, Self::startup)
             .add_systems(prelude::PreUpdate, (
