@@ -286,7 +286,7 @@ impl FatalErrorState {
     /// Use [Result::map_err] to convert the error to a fatal error and record it in the [FatalErrorState].
     /// ```rust,ignore
     /// i32::from_str("not a number")
-    ///     .map_err(fatal_error_state.into_fatal())
+    ///     .map_err(fatal_error_state.make_fatal())
     /// ```
     pub(crate) fn make_fatal<E: Into<AnyError>>(&mut self) -> impl FnOnce(E) -> FatalError {
         |err| {
@@ -298,6 +298,12 @@ impl FatalErrorState {
                 self.0 = Err(err.clone());
                 err
             }
+        }
+    }
+
+    pub(crate) fn set_fatal<E: Into<AnyError>>(&mut self, error: E) {
+        if self.0.is_ok() {
+            self.0 = Err(FatalError::new(error.into()));
         }
     }
 }
@@ -336,3 +342,35 @@ impl std::error::Error for FatalError {
         self.inner.source()
     }
 }
+
+/// Convenience trait to check for fatal errors in a uniform way
+pub trait GetFatalError {
+    fn as_fatal_error(&self) -> Option<&FatalError>;
+
+    fn into_fatal_error(self) -> Result<FatalError, Self>
+    where Self: Sized;
+}
+
+macro_rules! impl_get_fatal_error {
+    ($ty:ident) => {
+        impl crate::common::error::GetFatalError for $ty {
+            fn as_fatal_error(&self) -> Option<&crate::common::error::FatalError> {
+                match self {
+                    Self::Fatal(fatal_error) => Some(fatal_error),
+                    #[allow(unreachable_patterns)]
+                    _ => None,
+                }
+            }
+
+            fn into_fatal_error(self) -> Result<crate::common::error::FatalError, Self>
+            where Self: Sized {
+                match self {
+                    Self::Fatal(fatal_error) => Ok(fatal_error),
+                    #[allow(unreachable_patterns)]
+                    nonfatal_error @ _ => Err(nonfatal_error),
+                }
+            }
+        }
+    }
+}
+pub(crate) use impl_get_fatal_error;

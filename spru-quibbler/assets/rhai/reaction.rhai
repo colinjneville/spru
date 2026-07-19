@@ -112,8 +112,8 @@ if trigger == type.Trigger.start_game() {
     let max_score = 0;
     let final_scores = [];
 
-    for player_id in context.root.player_map.ids {
-        let player_root = context.root.player_map.get(player_id);
+    for player_id in context.root.players.ids {
+        let player_root = context.root.players.get(player_id);
         max_score = max_score.max(player_root.score.value);
         final_scores.push([player_id, player_root.score.value]);
     }

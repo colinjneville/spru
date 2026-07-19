@@ -1,23 +1,20 @@
 use std::marker::PhantomData;
 
 use bevy::prelude;
+use tracing::instrument;
 
-use crate::client;
+use crate::{client, remote};
 
 #[derive(Debug)]
 pub struct JoinRemote<Client> {
-    config: aeronet_webtransport::client::ClientConfig,
-    url: url::Url,
-    // headers: HashMap<String, String>,
+    config: client::remote::component::ConnectionConfig,
     _p: PhantomData<Client>,
 }
 
 impl<Client> JoinRemote<Client> {
-    pub fn new(url: url::Url) -> Self {
+    pub fn new(config: client::remote::component::ConnectionConfig) -> Self {
         Self {
-            config: Default::default(),
-            url,
-            // headers: HashMap::new(),
+            config,
             _p: PhantomData,
         }
     }
@@ -28,10 +25,8 @@ impl<Client> JoinRemote<Client> {
     /// This appears to be changing, and implementation may be able to switch to actual headers: 
     /// https://github.com/w3c/webtransport/issues/263
     #[must_use]
-    pub fn with_header(mut self, key: &str, value: &str) -> Self {
-        self.url.query_pairs_mut()
-            .append_pair(key, value);
-        // self.headers.insert(key.to_string(), value.to_string());
+    pub fn with_header(mut self, key: String, value: String) -> Self {
+        self.config.headers.insert(key, value);
         self
     }
 
@@ -40,53 +35,150 @@ impl<Client> JoinRemote<Client> {
     /// don't currently support adding to the request headers.
     /// This appears to be changing, and implementation may be able to switch to actual headers: 
     /// https://github.com/w3c/webtransport/issues/263
-    pub fn set_header(&mut self, key: &str, value: &str) {
-        self.url.query_pairs_mut()
-            .append_pair(key, value);
-        // self.headers.insert(key.to_string(), value.to_string());
+    pub fn set_header(&mut self, key: String, value: String) {
+        self.config.headers.insert(key, value);
+    }
+}
+
+impl<Client: client::ClientSSS> JoinRemote<Client> {
+    #[instrument(skip_all)]
+    fn on_connected(
+        trigger: prelude::On<prelude::Add, aeronet::io::Session>, 
+        mut commands: prelude::Commands,
+        q_client: prelude::Query<(
+            &aeronet::io::Session,
+            &client::remote::component::RemoteFor,
+        )>,
+    ) -> prelude::Result {
+        let remote_client_entity = trigger.entity;
+        let Ok((session, remote_for)) = q_client.get(remote_client_entity) else {
+            return Ok(());
+        };
+        let server_entity = remote_for.remote_for();
+
+        commands.entity(remote_client_entity)
+            .insert(aeronet::transport::Transport::new(
+                session,
+                crate::remote::SERVER_TO_CLIENT_LANES,
+                crate::remote::CLIENT_TO_SERVER_LANES,
+                bevy::platform::time::Instant::now(),
+            )?);
+
+        commands.entity(server_entity)
+            .trigger(|entity| client::remote::event::Connected { 
+                entity, 
+            });
+
+        prelude::info!("{remote_client_entity} connected to server");
+
+        Ok(())
     }
 
-    /// Set the connection configuration.  
-    /// Note: [ClientConfig](aeronet_webtransport::client::ClientConfig) is a different
-    /// underlying type on WASM and non-WASM targets.
-    #[must_use]
-    pub fn with_config(mut self, config: aeronet_webtransport::client::ClientConfig) -> Self {
-        self.config = config;
-        self
-    }
+    #[instrument(skip_all)]
+    fn on_disconnected(
+        disconnected: prelude::On<aeronet::io::connection::Disconnected>,
+        mut commands: prelude::Commands,
+        q_session: prelude::Query<(
+            &client::remote::component::RemoteFor,
+        )>,
+    ) {
+        let (remote_for, ) = q_session.get(disconnected.entity).expect("Expected RemoteFor");
+        let client_entity = remote_for.remote_for();
 
-    /// Set the connection configuration.  
-    /// Note: [ClientConfig](aeronet_webtransport::client::ClientConfig) is a different
-    /// underlying type on WASM and non-WASM targets.
-    pub fn set_config(&mut self, config: aeronet_webtransport::client::ClientConfig) {
-        self.config = config;
-    }
+        prelude::info!("Forwarding aeronet Disconnected as spru_bevy Disconnected");
 
-    /// The base url combined with any header entries as queries.  
-    pub fn url(&self) -> &url::Url {
-        &self.url
+        commands
+            .entity(client_entity)
+            .trigger(|entity| {
+                client::remote::event::Disconnected {
+                    entity,
+                    reason: remote::DisconnectedReason::from_aeronet(&disconnected.reason),
+                }
+            })
+            ;
     }
 }
 
 impl<Client: client::ClientSSS> prelude::EntityCommand for JoinRemote<Client> {
     type Out = ();
     
+    #[instrument(skip_all)]
     fn apply(self, mut entity: bevy::ecs::world::EntityWorldMut) -> Self::Out {
         let Self {
-            url,
             config,
             _p,
         } = self;
 
+        let url = config.url();
+        let client_config = config.client_config();
+
         prelude::info!("Requesting connection to server at {url}");
-        
+        let client_entity = entity.id();
         entity
             .insert((
                 client::component::FromServer::<Client>::default(),
-                client::remote::component::PendingClient::<Client>::default(),
-            ));
-        aeronet_webtransport::client::WebTransportClient::connect(config, url)
-            .apply(entity);
+                config,
+            ))
+            ;
+
+        // Keep aeronet on a separate child entity as aeronet will despawn it on disconnect
+        entity.world_scope(|world| {
+            let mut remote_entity = world
+                .spawn((
+                    client::remote::component::PendingClient::<Client>::default(),
+                    prelude::ChildOf(client_entity),
+                    client::remote::component::RemoteFor(client_entity),
+                ));
+
+            remote_entity
+                .observe(Self::on_connected)
+                .observe(Self::on_disconnected)
+                ;
+
+            aeronet_webtransport::client::WebTransportClient::connect(client_config, url)
+                .apply(remote_entity);
+        });
+
     }
 }
 
+/// Trigger a disconnect from the server.
+#[derive(Debug)]
+pub struct Disconnect<Client> {
+    pub reason: String,
+    _p: PhantomData<Client>,
+}
+
+impl<Client> Disconnect<Client> {
+    pub fn new(reason: String) -> Self {
+        Self {
+            reason,
+            _p: PhantomData,
+        }
+    }
+}
+
+impl<Client: client::ClientSSS> prelude::EntityCommand for Disconnect<Client> {
+    type Out = ();
+
+    #[instrument(skip_all)]
+    fn apply(self, mut entity: bevy::ecs::world::EntityWorldMut) -> Self::Out {
+        let Self {
+            reason,
+            _p,
+        } = self;
+
+        if let Ok((remote, )) = entity.get_components::<(&client::remote::component::Remote, )>() {
+            let remote_entity = remote.remote();
+            entity.world_scope(|world| {
+                world
+                    .entity_mut(remote_entity)
+                    .trigger(|entity| aeronet::io::connection::Disconnect {
+                        entity,
+                        reason,
+                    })
+                    ;
+            });
+        }
+    }
+}

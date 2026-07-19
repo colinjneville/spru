@@ -22,55 +22,74 @@ impl prelude::Plugin for Client {
                     client_remove: prelude::On<prelude::Remove, spru_bevy::client::component::Runner<crate::Client>>,
                     mut commands: prelude::Commands,
                 | {
-                    commands.entity(client_remove.entity)
-                        .remove::<(
+                    commands
+                        .entity(client_remove.entity)
+                        .try_remove::<(
                             crate::Log,
                         )>();
                 }
             )
             .add_observer(
-                |stage_interaction: prelude::On<spru_bevy::client::event::StageInteraction<crate::Client>>,
+                |interaction_staged: prelude::On<spru_bevy::client::event::InteractionStaged<crate::Client>>,
                 mut q_log: prelude::Query<&mut crate::Log>|
                 {
-                    let message = match &stage_interaction.result {
-                        Ok(pending_id) => format!("Interaction staged ({pending_id})"),
-                        Err(err) => format!("Stage failed: {err}"),
-                    };
-                    let mut log = q_log.get_mut(stage_interaction.entity).ok();
+                    let message = format!("Interaction staged ({})", interaction_staged.pending_id);
+
+                    let mut log = q_log.get_mut(interaction_staged.entity).ok();
                     crate::Log::try_log(&mut log, message);
                 },
             )
             .add_observer(
-                |apply_interactions: prelude::On<spru_bevy::client::event::ApplyInteractions<crate::Client>>,
+                |interaction_stage_error: prelude::On<spru_bevy::client::event::InteractionStageError<crate::Client>>,
                 mut q_log: prelude::Query<&mut crate::Log>|
                 {
-                    let message = match &apply_interactions.result {
-                        Ok(count) => {
-                            if *count == 0 {
-                                return;
-                            }
-                            format!("{count} Interactions applied")
-                        }
-                        Err(err) => format!("Apply failed: {err}"),
-                    };
-                    let mut log = q_log.get_mut(apply_interactions.entity).ok();
+                    let message = format!("Stage failed: {}", interaction_stage_error.error);
+                    
+                    let mut log = q_log.get_mut(interaction_stage_error.entity).ok();
                     crate::Log::try_log(&mut log, message);
                 },
             )
             .add_observer(
-                |revert_interactions: prelude::On<spru_bevy::client::event::RevertInteractions<crate::Client>>,
+                |interactions_applied: prelude::On<spru_bevy::client::event::InteractionsApplied>,
                 mut q_log: prelude::Query<&mut crate::Log>|
                 {
-                    let message = match &revert_interactions.result {
-                        Ok(count) => {
-                            if *count == 0 {
-                                return;
-                            }
-                            format!("{count} Interactions reverted")
-                        }
-                        Err(err) => format!("Revert failed: {err}"),
-                    };
-                    let mut log = q_log.get_mut(revert_interactions.entity).ok();
+                    if interactions_applied.count > 0 {
+                        let message = format!("{} Interactions applied", interactions_applied.count);
+                        
+                        let mut log = q_log.get_mut(interactions_applied.entity).ok();
+                        crate::Log::try_log(&mut log, message);
+                    }
+                },
+            )
+            .add_observer(
+                |interactions_apply_error: prelude::On<spru_bevy::client::event::InteractionsApplyError>,
+                mut q_log: prelude::Query<&mut crate::Log>|
+                {
+                    let message = format!("Apply failed: {}", interactions_apply_error.error);
+                    
+                    let mut log = q_log.get_mut(interactions_apply_error.entity).ok();
+                    crate::Log::try_log(&mut log, message);
+                },
+            )
+            .add_observer(
+                |interactions_reverted: prelude::On<spru_bevy::client::event::InteractionsReverted>,
+                mut q_log: prelude::Query<&mut crate::Log>|
+                {
+                    if interactions_reverted.count > 0 {
+                        let message = format!("{} Interactions reverted", interactions_reverted.count);
+                        
+                        let mut log = q_log.get_mut(interactions_reverted.entity).ok();
+                        crate::Log::try_log(&mut log, message);
+                    }
+                },
+            )
+            .add_observer(
+                |interactions_revert_error: prelude::On<spru_bevy::client::event::InteractionsRevertError>,
+                mut q_log: prelude::Query<&mut crate::Log>|
+                {
+                    let message = format!("Revert failed: {}", interactions_revert_error.error);
+
+                    let mut log = q_log.get_mut(interactions_revert_error.entity).ok();
                     crate::Log::try_log(&mut log, message);
                 },
             )

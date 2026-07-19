@@ -165,8 +165,33 @@ pub trait Server: crate::sealed::Sealed + Sized {
     /// initialize a new [Client](crate::Client).
     fn add_player(
         &mut self,
-        init_input: <Self::PlayerInit as crate::player::Init>::In,
+        init_input: <Self::PlayerInit as player::Init>::In,
     ) -> Result<Output<Self, common::Seed<Self::Common>>, error::AddPlayerError>;
+
+    /// Attempt to remove a player from the game.
+    /// Whether it is possible to remove a player depends on the game's [player::Init] implementation.
+    fn remove_player(
+        &mut self,
+        player_id: player::Id,
+    ) -> Result<Output<Self, ()>, error::RemovePlayerError>;
+
+    /// Deactivate a player.
+    /// A deactivated player is still in the game, but the server will stop generating
+    /// signals to send that player (and the client will not be updated).  
+    /// This would usually be done in response to a dropped connection.
+    /// When the player is ready to rejoin, use [Self::reseed_player]
+    fn deactivate_player(
+        &mut self,
+        player_id: player::Id,
+    ) -> Result<Output<Self, ()>, error::DeactivatePlayerError>;
+
+    /// Generates a [Seed](common::Seed) to create a new client, like [Self::add_player], but
+    /// for an existing player. This is used to recreate a client that has crashed, become disconnected, 
+    /// deactivated, etc.
+    fn reseed_player(
+        &mut self,
+        player_id: player::Id,
+    ) -> Result<Output<Self, common::Seed<Self::Common>>, error::ReseedPlayerError>;
 
     /// Save the current game state.
     /// [Server::load] can use this [Save] can create a new server instance at this
@@ -453,10 +478,24 @@ where
         match result {
             // No reactions are currently permitted on init, so no GameOutcome is possible
             Ok((_transaction, added_player_id)) => {
+
+                self.inner.log.force_release_undo();
+
                 let game_id = self.inner.game_id;
-                // TODO cache snapshots and reuse them if they are recent enough
-                let snapshot = self.inner.create_snapshot(&self.root)?;
-                let transactions = Transactions::new(self.inner.log.next_id());
+
+                // TODO CORRECTNESS
+                // If the snapshot fails, the player has been added locally to the server,
+                // but we can't create the seed for the client. This could be handled by requiring 
+                // the server to make a reseed request, or attempt snapshot before running the 
+                // add player transaction, and include the transaction as records with the seed.
+                let (snapshot, transactions) = self.inner.get_snapshot_and_catchup(&self.root)
+                    .expect("Failed snapshot cannot be recovered from");
+
+                for player_id in self.inner.player_manager.iter_active() {
+                    if player_id != added_player_id {
+                        messaging.push_signal(player_id, common::signal::PlayerUpdate::new_add(added_player_id));
+                    }
+                }
 
                 let client_init = common::Seed::<Self::Common> {
                     game_id,
@@ -486,6 +525,103 @@ where
                 }
             }
         }
+    }
+
+    #[instrument(err, skip_all, fields(player_id = %player_id))]
+    fn remove_player(
+        &mut self,
+        player_id: player::Id,
+    ) 
+        -> Result<Output<Self, ()>, error::RemovePlayerError>
+    {
+        self.inner.error_state.check()?;
+
+        let mut messaging = Messaging::new();
+
+        let context = player::init::Context {
+            root: &self.root,
+            player: player_id,
+        };
+        let interactor = Interactor::new(&mut self.inner.storage, &self.inner.reservation, context);
+
+        let result = match self.inner.player_manager.remove(interactor) {
+            Ok(complete) => {
+                self.inner
+                    .build_transaction(&self.root, &mut messaging, None, complete)
+                    .map_err(RecoverableError::map::<player::init::Error>)
+                    .map_err(RecoverableError::map)
+            }
+            Err(err) => Err(err),
+        };
+
+        match result {
+            // No reactions are currently permitted on remove, so no GameOutcome is possible
+            Ok(_transaction) => {
+                self.inner.log.force_release_undo();
+
+                // player_id is no longer a player as far as the server is concerned, but sending them their
+                // own remove event lets them handle it gracefully, if the coordination layer is able to deliver it.
+                messaging.push_signal(player_id, common::signal::PlayerUpdate::new_remove(player_id));
+
+                for target_player_id in self.inner.player_manager.iter_active() {
+                    messaging.push_signal(target_player_id, common::signal::PlayerUpdate::new_remove(player_id));
+                }
+
+                Ok(messaging.into_output(()))
+            }
+            Err(err) => {
+                if err.recovery_error.is_some() {
+                    Err(error::RemovePlayerError::Fatal(self
+                        .inner
+                        .error_state
+                        .make_fatal()(
+                        err
+                    )))
+                } else {
+                    Err(err.initial_error)
+                }
+            }
+        }
+    }
+
+    fn deactivate_player(
+        &mut self,
+        player_id: player::Id,
+    ) -> Result<Output<Self, ()>, error::DeactivatePlayerError> {
+        let messaging = Messaging::new();
+        self.inner.player_manager.deactivate(player_id)?;
+
+        Ok(messaging.into_output(()))
+    }
+
+    fn reseed_player(
+        &mut self,
+        player_id: player::Id,
+    ) -> Result<Output<Self, common::Seed<Self::Common>>, error::ReseedPlayerError> {
+        let messaging = Messaging::new();
+
+        // Continue whether or not the player was formerly inactive
+        self.inner.player_manager.reactivate(player_id)?;
+        let high_watermark = self.inner.player_manager.get(player_id)?.high_watermark();
+
+        let reservation_range = self.inner.player_manager
+            .get(player_id)?
+            .reservation_range()
+            .skip(high_watermark);
+
+        let reservation = reservation_range.reservation();
+
+        let (snapshot, transactions) = self.inner.get_snapshot_and_catchup(&self.root)?;
+
+        let seed = common::Seed {
+            game_id: self.game_id(),
+            local_player_id: player_id,
+            snapshot,
+            transactions,
+            reservation,
+        };
+
+        Ok(messaging.into_output(seed))
     }
 
     #[instrument(err, skip_all)]
@@ -577,18 +713,25 @@ where
                 },
         } = apply_interaction;
 
+        let mut watermark = None;
         let result = (|| {
             // Each player is given a range of ids to use so that they don't step on each other's toes.
             // To protect against malicious clients, check each creation record belongs to that client.
-            if let Err(err) = self
+            match self
                 .player_manager
                 .get(sender)
-                .check_created_ids(&expected_versions)
+                .expect("The player should exist") // TODO is it possible to ever enter here with a removed player?
+                .check_created_ids(sender, &expected_versions)
             {
-                tracing::event!(name: "interaction_invalid_range", tracing::Level::INFO, { });
+                Ok(max_id) => {
+                    watermark = max_id;
+                }
+                Err(err) => {
+                    tracing::event!(name: "interaction_invalid_range", tracing::Level::INFO, { });
 
-                return Err(RecoverableError::<interaction::Error>::new(err.into()));
-            }
+                    return Err(RecoverableError::<interaction::Error>::new(err.into()));
+                }
+            };
 
             let context = interaction::Context::new(root, sender);
             let mut interactor = Interactor::new(&mut self.storage, &self.reservation, context);
@@ -615,6 +758,12 @@ where
         match result {
             Ok(transaction) => {
                 tracing::info!(name: "confirmed_interaction", id = transaction.id.into_u32());
+                if let Some(watermark) = watermark {
+                    self.player_manager.get_mut(sender)
+                        .expect("Player must exist to successfully interact")
+                        .make_watermark(watermark);
+                }
+
                 Ok(())
             }
             Err(err) => {
@@ -671,9 +820,9 @@ where
                 // Everything succeeded, exit before the failure signal below
 
                 // Send the whole transaction to all other players
-                for player_id in self.player_manager.iter() {
+                for player_id in self.player_manager.iter_active() {
                     if Some(player_id) != player_context {
-                        // TODO We should discard empty transactions so 'checking' Reactions don't generate
+                        // TODO We should discard empty transactions so 'validating' Reactions don't generate
                         // unnecessary spam. We need to be sure culled transactions have no side effects,
                         // such as GameOutcome, however
                         messaging.push_signal(
@@ -705,7 +854,7 @@ where
                 }
 
                 if let Some(game_outcome) = game_outcome {
-                    for player_id in self.player_manager.iter() {
+                    for player_id in self.player_manager.iter_active() {
                         messaging.push_signal(
                             player_id,
                             common::signal::EndGame {
@@ -714,7 +863,7 @@ where
                         )
                     }
 
-                    messaging.push_event(event::GameComplete { game_outcome });
+                    messaging.push_event(event::GameCompleted { game_outcome });
                 }
 
                 Ok(confirmed_transaction)
@@ -830,5 +979,20 @@ where
         Root: Clone,
     {
         common::Snapshot::new(root.clone(), &self.storage)
+    }
+
+    fn get_snapshot_and_catchup(
+        &mut self,
+        root: &Root,
+    ) -> Result<(common::Snapshot<Repr, State, Root>, Transactions<Action>), common::error::Save>
+    where 
+        Root: Clone,
+    {
+        // TODO cache snapshots and reuse them if they are recent enough
+        // For now we always create a new snapshot, with no catchup log
+        let snapshot = self.create_snapshot(root)?;
+        let transactions = Transactions::new(self.log.next_id());
+
+        Ok((snapshot, transactions))
     }
 }

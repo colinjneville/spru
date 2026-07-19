@@ -109,6 +109,21 @@ impl<Action> Records<Action> {
     pub(crate) fn len(&self) -> usize {
         self.records.len()
     }
+
+    pub(crate) fn retain<F>(&mut self, f: F)
+    where
+        F: Fn(&Packed<Action>) -> bool,
+    {
+        self.records.retain(f);
+    }
+
+    pub(crate) fn any<F>(&self, f: F)
+        -> bool
+    where
+        F: Fn(&Packed<Action>) -> bool,
+    {
+        self.records.iter().any(f)
+    }
 }
 
 impl<Action> Default for Records<Action> {

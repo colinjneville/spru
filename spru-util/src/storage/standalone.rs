@@ -14,7 +14,7 @@ use spru::{
 #[derive_where(Debug, Default; )]
 pub struct Standalone<State> {
     map: HashMap<any::TypeId, Box<dyn any::Any>>,
-    _state: PhantomData<fn() -> State>,
+    _state: PhantomData<State>,
 }
 
 impl<State> Standalone<State> {
@@ -103,6 +103,11 @@ impl<State: spru::State> spru::item::Storage for Standalone<State> {
         };
 
         item.ok_or(Error::IdNotFound(id.untyped()).into())
+    }
+    
+    fn clear(&mut self) -> item::storage::Result<()> {
+        self.map.clear();
+        Ok(())
     }
 }
 

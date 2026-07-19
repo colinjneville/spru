@@ -1,58 +1,105 @@
-use std::marker::PhantomData;
+use std::sync::Arc;
 
 use bevy::prelude;
 use derive_where::derive_where;
 
 use crate::{client, common};
 
-#[derive_where(Debug; )]
+#[derive(Debug)]
 #[derive(prelude::EntityEvent)]
-#[non_exhaustive]
-pub struct Init<Client: client::ClientSSS> {
-    pub entity: prelude::Entity,
-    pub game_id: common::component::GameId,
-    pub result: Result<client::component::ClientId, spru::client::error::InitError>,
-    pub(crate) _client: PhantomData<fn() -> Client>,
-}
-
-#[derive_where(Debug; )]
-#[derive(prelude::EntityEvent)]
-#[non_exhaustive]
-pub struct Signal<Client: client::ClientSSS> {
+pub struct Initialized {
     pub entity: prelude::Entity,
     pub game_id: common::component::GameId,
     pub client_id: client::component::ClientId,
-    pub result: Result<(), spru::client::error::SignalError>,
-    pub(crate) _client: PhantomData<fn() -> Client>,
+}
+
+#[derive(Debug)]
+#[derive(prelude::EntityEvent)]
+pub struct InitializeError {
+    pub entity: prelude::Entity,
+    pub game_id: common::component::GameId,
+    pub error: Arc<spru::client::error::InitError>,
+}
+
+#[derive(Debug)]
+#[derive(prelude::EntityEvent)]
+pub struct Signal {
+    pub entity: prelude::Entity,
+    pub game_id: common::component::GameId,
+    pub client_id: client::component::ClientId,
+}
+
+#[derive(Debug)]
+#[derive(prelude::EntityEvent)]
+pub struct SignalError {
+    pub entity: prelude::Entity,
+    pub game_id: common::component::GameId,
+    pub client_id: client::component::ClientId,
+    pub error: Arc<spru::client::error::SignalError>,
 }
 
 #[derive_where(Debug; Client::Interaction)]
 #[derive(prelude::EntityEvent)]
-#[non_exhaustive]
-pub struct StageInteraction<Client: client::ClientSSS> {
+pub struct InteractionStaged<Client: client::ClientSSS> {
     pub entity: prelude::Entity,
     pub interaction: Client::Interaction,
-    pub result: Result<spru::interaction::Pending, spru::client::error::StageInteractionError>,
+    pub pending_id: spru::interaction::Pending,
 }
 
-#[derive_where(Debug; )]
+#[derive_where(Debug; Client::Interaction)]
 #[derive(prelude::EntityEvent)]
-#[non_exhaustive]
-pub struct RevertInteractions<Client: client::ClientSSS> {
+pub struct InteractionStageError<Client: client::ClientSSS> {
     pub entity: prelude::Entity,
-    pub pending_interaction_id: Option<spru::interaction::Pending>,
-    pub result: Result<usize, spru::client::error::RevertInteractionError>,
-    pub(crate) _client: PhantomData<fn() -> Client>,
+    pub interaction: Client::Interaction,
+    pub error: Arc<spru::client::error::StageInteractionError>,
 }
 
-#[derive_where(Debug; )]
+#[derive(Debug)]
 #[derive(prelude::EntityEvent)]
-#[non_exhaustive]
-pub struct ApplyInteractions<Client: client::ClientSSS> {
+pub struct InteractionsReverted {
     pub entity: prelude::Entity,
     pub pending_interaction_id: Option<spru::interaction::Pending>,
-    pub result: Result<usize, spru::client::error::ApplyInteractionError>,
-    pub(crate) _client: PhantomData<fn() -> Client>,
+    pub count: usize,
+}
+
+#[derive(Debug)]
+#[derive(prelude::EntityEvent)]
+pub struct InteractionsRevertError {
+    pub entity: prelude::Entity,
+    pub pending_interaction_id: Option<spru::interaction::Pending>,
+    pub error: Arc<spru::client::error::RevertInteractionError>,
+}
+
+#[derive(Debug)]
+#[derive(prelude::EntityEvent)]
+pub struct InteractionsApplied {
+    pub entity: prelude::Entity,
+    pub pending_interaction_id: Option<spru::interaction::Pending>,
+    pub count: usize,
+}
+
+#[derive(Debug)]
+#[derive(prelude::EntityEvent)]
+pub struct InteractionsApplyError {
+    pub entity: prelude::Entity,
+    pub pending_interaction_id: Option<spru::interaction::Pending>,
+    pub error: Arc<spru::client::error::ApplyInteractionError>,
+}
+
+#[derive(Debug)]
+#[derive(prelude::EntityEvent)]
+#[non_exhaustive]
+pub struct PlayerAdded {
+    pub entity: prelude::Entity,
+    pub player_id: spru::player::Id,
+}
+
+#[derive(Debug)]
+#[derive(prelude::EntityEvent)]
+#[non_exhaustive]
+pub struct PlayerRemoved {
+    pub entity: prelude::Entity,
+    pub player_id: spru::player::Id,
 }
 
 #[derive_where(Debug; Client::GameOutcome)]

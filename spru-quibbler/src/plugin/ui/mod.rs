@@ -4,16 +4,23 @@ mod dedicated_server;
 #[cfg(feature = "host")]
 mod host;
 
+#[cfg(feature = "host")]
+mod host_lobby;
+
 #[cfg(feature = "hotseat")]
 mod hotseat;
 
 #[cfg(feature = "join")]
 mod join;
 
+#[cfg(feature = "join")]
+mod join_lobby;
+
 use std::borrow::Cow;
 use std::{any, cmp, fmt};
 use std::collections::{HashMap, HashSet};
 
+use bevy::ecs::schedule::SystemCondition;
 #[cfg(feature = "client")]
 use bevy::ecs::system::IntoSystem as _;
 use bevy::prelude;
@@ -24,6 +31,8 @@ use spru_bevy::server::resource::ServerMap;
 
 #[cfg(feature = "client")]
 use spru_bevy::client::resource::ClientMap;
+
+use crate::plugin;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum PanelState {
@@ -51,14 +60,12 @@ impl ConfigState {
         mut commands: prelude::Commands,
         mut egui: bevy_egui::EguiContexts,
         mut config_state: prelude::ResMut<Self>,
-        mut next_state: prelude::ResMut<prelude::NextState<crate::AppState>>,
     ) -> prelude::Result {
         if let Some(config) = &mut config_state.0 {
             let ctx = egui.ctx_mut()?;
             if config.show(ctx) {
                 let config = config_state.0.take().unwrap();
                 config.complete(&mut commands);
-                next_state.set(crate::AppState::InGame);
             }
         }
 
@@ -149,7 +156,7 @@ fn player_row(ui: &mut egui::Ui, username: &mut Validated<String>, can_remove_pl
 
 /// The maximum number of players we allow creating a server for.
 /// The only hard limit here is the number of cards in deck (~110)
-const MAX_MAX_PLAYERS: u32 = 8;
+const MAX_MAX_PLAYERS: usize = 8;
 
 const DEFAULT_PORT: u16 = 57298;
 const MIN_PORT: u16 = 49152;
@@ -162,9 +169,23 @@ fn validate_port(s: &str) -> Result<u16, &'static str> {
         let port = s.parse()
             .map_err(|_| "Port must be blank or an integer between 49152 and 65535 inclusive")?;
 
-        (port < MIN_PORT || port > MAX_PORT)
+        (port >= MIN_PORT && port <= MAX_PORT)
             .then_some(port)
             .ok_or("Port must be between 49152 and 65535 inclusive")
+    }
+}
+
+fn validate_ip(s: &str) -> Result<String, &'static str> {
+    cfg_select! {
+        feature = "remote-server" => {
+            spru_bevy::remote::aeronet_webtransport::wtransport::Identity::self_signed([s])
+                .map(|_| s.to_string())
+                .map_err(|_| "Invalid address")
+        }
+        _ => {
+            // TODO this and the panel should just be moved somewhere remote-server specific
+            Ok(s.to_string())
+        }
     }
 }
 
@@ -239,7 +260,7 @@ impl<T: ToString> Validated<T> {
 
 #[derive(Debug)]
 struct ConfigGamePanel {
-    max_players: Validated<u32>,
+    max_players: Validated<usize>,
 }
 
 impl Default for ConfigGamePanel {
@@ -251,7 +272,7 @@ impl Default for ConfigGamePanel {
 }
 
 impl ConfigGamePanel {
-    fn validate_max_players(s: &str) -> Result<u32, &'static str> {
+    fn validate_max_players(s: &str) -> Result<usize, &'static str> {
         let value = s.parse()
             .map_err(|_| "Max players must be an integer")?;
         (value >= 1 && value <= MAX_MAX_PLAYERS)
@@ -288,6 +309,7 @@ impl ConfigPanel for ConfigGamePanel {
 
 #[derive(Debug)]
 struct ConfigRemoteCreatePanel {
+    external_ip: Validated<String>,
     port: Validated<u16>,
     password: String,
 }
@@ -295,6 +317,7 @@ struct ConfigRemoteCreatePanel {
 impl Default for ConfigRemoteCreatePanel {
     fn default() -> Self {
         Self { 
+            external_ip: Validated::new(String::new()),
             port: Validated::new(DEFAULT_PORT),
             password: String::new(),
         }
@@ -302,12 +325,34 @@ impl Default for ConfigRemoteCreatePanel {
 }
 
 impl ConfigRemoteCreatePanel {
-    
+    pub fn new(external_ip: Option<&str>) -> Self {
+        Self {
+            external_ip: Validated::new(external_ip.unwrap_or("").to_string()),
+            .. Default::default()
+        }
+    } 
 }
 
 impl ConfigPanel for ConfigRemoteCreatePanel {
     fn show(&mut self, ui: &mut egui::Ui) {
         ui.vertical(|ui| {
+            ui.horizontal(|ui| {
+                ui.label("External IP");
+                if egui::TextEdit::singleline(self.external_ip.text_mut())
+                    .hint_text("localhost")
+                    .show(ui)
+                    .response
+                    .lost_focus()
+                {
+                    self.external_ip.validate(validate_ip);
+                }
+            }).response.on_hover_text("Leave blank for localhost");
+
+            if let Some(external_ip_error) = self.external_ip.error() {
+                ui.colored_label(egui::Color32::RED, external_ip_error);
+                ui.end_row();
+            }
+
             ui.horizontal(|ui| {
                 ui.label("Port");
                 if egui::TextEdit::singleline(self.port.text_mut())
@@ -319,6 +364,7 @@ impl ConfigPanel for ConfigRemoteCreatePanel {
                     self.port.validate(validate_port);
                 }
             });
+            
             if let Some(port_error) = self.port.error() {
                 ui.colored_label(egui::Color32::RED, port_error);
                 ui.end_row();
@@ -396,9 +442,28 @@ impl Default for DefaultTrue {
 #[derive(prelude::Resource)]
 struct ActiveGame(Option<spru::game::Id>);
 
+impl ActiveGame {
+    fn auto_select(
+        game_list: prelude::Res<plugin::core::GameList>,
+        mut active_game: prelude::ResMut<ActiveGame>,
+    ) {
+        prelude::info!("auto_select");
+        if let Some(game_id) = active_game.0 {
+            if let Err(_) = game_list.get().binary_search(&game_id) {
+                active_game.0 = None;
+            }
+        }
+
+        if active_game.0 == None && let Some(&first_game_id) = game_list.get().first() {
+            prelude::info_once!("Defaulting to {}", first_game_id);
+            active_game.0 = Some(first_game_id);
+        }
+    }
+}
+
 #[derive(Default)]
 #[derive(prelude::Resource)]
-struct ActiveClient(HashMap<spru::game::Id, spru::player::Id>);
+pub(crate) struct ActiveClient(HashMap<spru::game::Id, spru::player::Id>);
 
 impl ActiveClient {
     pub fn get(&self, active_game: spru::game::Id) -> Option<spru::player::Id> {
@@ -407,8 +472,10 @@ impl ActiveClient {
 
     pub fn set(&mut self, active_game: spru::game::Id, value: Option<spru::player::Id>) {
         if let Some(value) = value {
+            prelude::trace!("Setting ActiveClient for {active_game} to {value}");
             self.0.insert(active_game, value);
         } else {
+            prelude::trace!("Setting ActiveClient for {active_game} to None");
             self.0.remove(&active_game);
         }
     }
@@ -530,6 +597,8 @@ impl Ui {
         mut next_state: prelude::ResMut<prelude::NextState<crate::AppState>>,
         mut config_state: prelude::ResMut<ConfigState>,
         mut app_exit: prelude::MessageWriter<prelude::AppExit>,
+        #[cfg(feature = "host")]
+        mut external_ip: prelude::ResMut<crate::plugin::remote_server::ExternalIp>,
     ) -> prelude::Result {
         let ctx = egui.ctx_mut()?;
 
@@ -549,7 +618,7 @@ impl Ui {
                     #[cfg(feature = "host")]
                     {
                         if ui.button("Host Game").clicked() {
-                            config_state.set(host::ConfigHost::default());
+                            config_state.set(host::ConfigHost::new(external_ip.get()));
                             next_state.set_if_neq(crate::AppState::Config);
                         }
                         ui.end_row();
@@ -615,47 +684,28 @@ impl Ui {
     }
 
     fn game_select_ui(
-        world: &mut prelude::World,
-        q_game_id: &mut prelude::QueryState<(
-            &spru_bevy::common::component::GameId,
-        )>,
-        s_egui: &mut bevy::ecs::system::SystemState<(
-            bevy_egui::EguiContexts,
-            prelude::ResMut<ActiveGame>,
-        )>,
-        
+        mut egui: bevy_egui::EguiContexts,
+        game_list: prelude::Res<plugin::core::GameList>,
+        mut active_game: prelude::ResMut<ActiveGame>,
     ) -> prelude::Result {
-        let mut game_ids = HashSet::new();
-        for (game_id, ) in q_game_id.query(world) {
-            game_ids.insert(*game_id);
-        }
-
-        let mut game_ids: Vec<_> = game_ids.into_iter().collect();
-        game_ids.sort_unstable();
-
-        let (mut egui, mut active_game) = s_egui.get_mut(world)?;
-        if game_ids.len() > 1 {
+        if game_list.get().len() > 1 {
             let ctx = egui.ctx_mut()?;
             let builder = egui::UiBuilder::new().layer_id(egui::LayerId::background()).max_rect(ctx.content_rect());
             let mut ui = egui::Ui::new(ctx.clone(), "game_select".into(), builder);
 
             egui::Panel::bottom("game_select").show(ctx, |ui| {
                     ui.horizontal(|ui| {
-                        for &game_id in &game_ids {
+                        for &game_id in game_list.get() {
                             let button = egui::Button::selectable(
-                                Some(*game_id) == active_game.0,
+                                Some(game_id) == active_game.0,
                                 &game_id.friendly_display().to_string(),
                             );
                             if ui.add(button).clicked() {
-                                active_game.0 = Some(*game_id);
+                                active_game.0 = Some(game_id);
                             }
                         }
                     });
                 });
-        } else if game_ids.len() == 1 && active_game.0 != Some(*game_ids[0]) {
-            active_game.0 = Some(*game_ids[0]);
-        } else if game_ids.is_empty() && active_game.0 != None {
-            active_game.0 = None;
         }
 
         Ok(())
@@ -707,8 +757,6 @@ impl Ui {
                         }
                     });
                 });
-            } else if player_names.len() == 1 {
-                active_client.set(active_game, Some(player_names[0].0));
             }
         }
 
@@ -722,13 +770,7 @@ impl Ui {
         server_map: prelude::Res<ServerMap>,
         mut add_player_string: prelude::Local<String>,
         active_game: prelude::Res<ActiveGame>,
-        #[cfg(all(feature = "remote", not(target_family = "wasm")))]
-        q_server: prelude::Query<(
-            Option<&aeronet::io::connection::LocalAddr>,
-            Option<&spru_bevy::server::remote::component::Certificate>,
-        )>,
-        #[cfg(feature = "remote")]
-        mut clipboard: prelude::ResMut<prelude::Clipboard>,
+        
     ) -> prelude::Result {
         let Some(active_game_id) = active_game.0 else {
             return Ok(());
@@ -737,40 +779,16 @@ impl Ui {
             return Ok(());
         };
 
-        #[cfg(all(feature = "remote", not(target_family = "wasm")))]
-        let (local_addr, certificate, ) = q_server.get(server_entity)?;
-
         let ctx = egui.ctx_mut()?;
         let builder = egui::UiBuilder::new().layer_id(egui::LayerId::background()).max_rect(ctx.content_rect());
         let mut ui = egui::Ui::new(ctx.clone(), "server_control".into(), builder);
         
         egui::Panel::top("server_control").show(ctx, |ui| {
             ui.vertical(|ui| {
-                #[cfg(all(feature = "remote", not(target_family = "wasm")))]
-                {
-                    if let Some(local_addr) = local_addr {
-                        ui.label(format!("{local_addr:?}"));
-                        ui.end_row();
-                    }
-                    if let Some(certificate) = certificate {
-                        let hash = encode_base64(&certificate.hash);
-                        
-                        if ui.label(format!("Certificate Hash: {hash}"))
-                            .on_hover_text("Click to copy to clipboard")
-                            .clicked()
-                        {
-                            if let Err(err) = clipboard.set_text(hash) {
-                                prelude::warn!("Failed to copy certificate hash to clipboard: {err}");
-                            }
-                        }
-                    }
-                }
-
                 #[cfg(feature = "local")]
                 ui.horizontal(|ui| {
                     let response = ui
-                        .button("Add local player")
-                        .on_hover_text("Input player display name");
+                        .button("Add local player");
 
                     let confirmed = ui
                         .text_edit_singleline(&mut *add_player_string)
@@ -779,12 +797,14 @@ impl Ui {
 
                     if (response.clicked() || confirmed) && !add_player_string.is_empty() {
                         let player_init_in =
-                            crate::player::Input::new(std::mem::take(&mut *add_player_string));
+                            crate::player::Data {
+                                username: std::mem::take(&mut *add_player_string),
+                            };
                         commands
                             .entity(server_entity)
                             .queue(spru_bevy::local::command::AddLocalPlayer::<crate::Server, crate::Client>::new(player_init_in));
                     }
-                });
+                }).response.on_hover_text("Input player display name");
 
                 if ui.button("Start game").clicked() {
                     commands
@@ -1123,6 +1143,18 @@ impl prelude::Plugin for Ui {
                     ConfigState::ui.pipe(crate::error_to_console),
                 ).run_if(prelude::in_state(crate::AppState::Config)),
                 (
+                    #[cfg(feature = "join")]
+                    join_lobby::join_lobby_connecting_ui.pipe(crate::error_to_console),
+                ).run_if(prelude::in_state(crate::AppState::Connecting)),
+                (
+                    #[cfg(feature = "join")]
+                    join_lobby::join_lobby_ui_get_client
+                        .pipe(join_lobby::join_lobby_ui_get_data)
+                        .pipe(join_lobby::join_lobby_ui),
+                    #[cfg(feature = "host")]
+                    host_lobby::host_lobby_ui,
+                ).run_if(prelude::in_state(crate::AppState::InLobby)),
+                (
                     Self::application_ui.pipe(crate::error_to_console).in_set(UiPhase::Application),
                     Self::game_select_ui.pipe(crate::error_to_console).in_set(UiPhase::GameSelect),
                     #[cfg(feature = "client")]
@@ -1134,6 +1166,11 @@ impl prelude::Plugin for Ui {
                 ).run_if(prelude::in_state(crate::AppState::InGame)),
             ))
             .add_systems(prelude::Startup, Self::startup)
+            .add_systems(prelude::PreUpdate, (
+                ActiveGame::auto_select.run_if(
+                    prelude::resource_changed::<ActiveGame>
+                        .or_eager(prelude::resource_changed::<plugin::core::GameList>)),
+            ))
             .add_systems(prelude::Update, Self::misc_input)
         ;
 
@@ -1141,47 +1178,3 @@ impl prelude::Plugin for Ui {
     }
 }
 
-fn encode_base64(hash: &[u8; 32]) -> String {
-    let mut s = vec![0u8; 44];
-
-    let (chunks, remainder) = hash.as_chunks::<3>();
-    let padded_chunk = [remainder[0], remainder[1], 0];
-    
-    for (i, &[a, b, c]) in chunks.iter().chain(std::iter::once(&padded_chunk)).enumerate() {
-        s[i * 4] = a >> 2;
-        s[i * 4 + 1] = (a << 6 >> 2) | (b >> 4);
-        s[i * 4 + 2] = (b << 4 >> 2) | (c >> 6);
-        s[i * 4 + 3] = c << 2 >> 2;
-    }
-    for c in &mut s {
-        *c = match *c {
-            0..26 => {
-                *c + b'A'
-            }
-            26..52 => {
-                *c + b'a' - 26
-            }
-            52..62 => {
-                *c + b'0' - 52
-            }
-            62 => {
-                *c + b'+' - 62
-            }
-            63.. => {
-                *c + b'/' - 63
-            }
-        };
-    }
-    s[43] = b'=';
-
-    String::from_utf8(s).unwrap()
-}
-
-#[cfg(test)]
-mod test {
-    #[test]
-    fn test_encode_base64() {
-        assert_eq!(&super::encode_base64(&[0; _]), "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=");
-        assert_eq!(&super::encode_base64(&[0x75, 0xca, 0xc5, 0x52, 0x00, 0x16, 0x30, 0x36, 0x63, 0xc6, 0x2c, 0xc2, 0x46, 0xf4, 0x68, 0x85, 0x21, 0xf4, 0x66, 0x4e, 0xe5, 0x96, 0xdf, 0x3d, 0xe4, 0x80, 0x4c, 0x42, 0x10, 0x5c, 0x74, 0x60]), "dcrFUgAWMDZjxizCRvRohSH0Zk7llt895IBMQhBcdGA=");
-    }
-}

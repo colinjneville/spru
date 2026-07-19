@@ -12,6 +12,7 @@ pub fn run_server<Server: server::ServerSSS>(
         &mut server::component::ToClient<Server>,
     )>,
 ) -> server::RunServerResult<()> {
+
     // TODO this should probably be done as async-compute since we don't touch bevy from the server:
     // https://bevy-cheatbook.github.io/fundamentals/async-compute.html
     for (

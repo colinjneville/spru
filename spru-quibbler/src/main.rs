@@ -26,25 +26,29 @@ use bevy::prelude;
 
 type Language = spru_script_rhai::RhaiInstance::<self::Lexicon>;
 type GameInit = spru_script::GameInit<spru::item::IdT<game::Root>, Language, ()>;
-type PlayerInit = spru_script::PlayerInit<spru::item::IdT<game::Root>, Language, player::Input>;
+type PlayerInit = spru_script::PlayerInit<spru::item::IdT<game::Root>, Language, player::Data>;
 type Client = spru::client::Impl<Interaction, game::Outcome>;
 
 type Reaction = spru_script::Reaction<spru::item::IdT<game::Root>, reaction::Trigger, game::Outcome, Language>;
 type Server = spru::server::Impl<Interaction, Reaction, PlayerInit>;
 type Common = <Client as spru::Client>::Common;
 
-#[derive(Debug, Default, Clone, PartialEq, Eq, Hash, prelude::States)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, Hash)]
+#[derive(prelude::States, prelude::Reflect)]
 enum AppState {
     #[default]
     MainMenu,
     
     Config,
 
+    Connecting,
+
+    InLobby,
+
     InGame,
 }
 
 fn main() {
-    #[rustfmt::skip]
     let _app_exit = prelude::App::new()
         .add_plugins((
             plugin::Core,
@@ -60,7 +64,7 @@ fn main() {
 }
 
 #[derive(Debug, Default)]
-#[derive(prelude::Component)]
+#[derive(prelude::Component, prelude::Reflect)]
 struct Log {
     log: Vec<String>,
 }

@@ -40,8 +40,9 @@ wordnik_list = "0.2.1"
 bevy-inspector-egui = { version = "0.37.0", optional = true }
 bevy_egui = { version = "0.40.1", optional = true }
 
-aeronet = { workspace = true, optional = true }
-aeronet_webtransport = { workspace = true, optional = true }
+ehttp = { version = "0.7.1", features = ["native-async"], optional = true }
+
+async-io = { workspace = true, optional = true }
 
 [target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dependencies]
 # no clipboard on wasm
@@ -65,13 +66,14 @@ default = ["hotseat", "join", "host", "dedicated-server"]
 hotseat = ["server", "client", "local", "ui"]
 join = ["client", "remote", "ui"]
 # non-WASM compatible
-host = ["server", "client", "remote", "ui"]
-dedicated-server = ["server", "remote"]
+host = ["server", "client", "remote", "ui", "remote-server"]
+dedicated-server = ["server", "remote", "remote-server"]
 
 # sub-features
 client = ["spru-bevy/client"]
 server = ["spru-bevy/server"]
 local = ["spru-bevy/local", "client", "server"]
-remote = ["spru-bevy/remote", "dep:aeronet", "dep:aeronet_webtransport"]
+remote = ["spru-bevy/remote"]
 # TODO bevy/bevy_egui should be trimmed for dedicated servers
 ui = ["dep:bevy_egui", "dep:bevy-inspector-egui"]
+remote-server = ["remote", "server", "dep:async-io", "dep:ehttp"]

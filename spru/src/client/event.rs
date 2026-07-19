@@ -4,23 +4,27 @@ use std::marker::PhantomData;
 
 use derive_where::derive_where;
 
-use crate::interaction;
+use crate::{interaction, player};
 
 /// An event which occurred on the [Server](crate::Server).
-#[derive_where(Debug; GameComplete<Client>)]
+#[derive_where(Debug; GameCompleted<Client>)]
 #[derive(derive_more::From)]
 #[non_exhaustive]
 pub enum Event<Client: super::Client> {
     /// The [Server](crate::Server) has responded with the fate of a pending [Interaction](trait@crate::Interaction)
-    InteractionResult(InteractionResult<Client>),
+    InteractionEvaluated(InteractionEvaluated<Client>),
+    /// A new player has been added
+    PlayerAdded(PlayerAdded<Client>),
+    /// A player has been removed
+    PlayerRemoved(PlayerRemoved<Client>),
     /// The game has completed
-    GameComplete(GameComplete<Client>),
+    GameCompleted(GameCompleted<Client>),
 }
 
 /// The game has completed
 #[derive_where(Debug; Client::GameOutcome)]
 #[non_exhaustive]
-pub struct GameComplete<Client: super::Client> {
+pub struct GameCompleted<Client: super::Client> {
     /// The outcome of the game, as defined by the [Reaction](trait@crate::Reaction).  
     /// Usually contains the winner of the game and any other notable stats.
     pub game_outcome: Client::GameOutcome,
@@ -29,11 +33,47 @@ pub struct GameComplete<Client: super::Client> {
 /// The [Server](crate::Server) has responded with the fate of a pending [Interaction](trait@crate::Interaction)
 #[derive_where(Debug; )]
 #[non_exhaustive]
-pub struct InteractionResult<Client: super::Client> {
+pub struct InteractionEvaluated<Client: super::Client> {
     /// The pending interaction
     pub pending_interaction_id: interaction::Pending,
     /// True if the interaction was confirmed, false if the interaction
     /// was rejected and rolled back.
     pub confirmed: bool,
-    pub(crate) _client: PhantomData<fn() -> Client>,
+    pub(crate) _p: PhantomData<Client>,
+}
+
+/// The [Server](crate::Server) has added a new player
+#[derive_where(Debug; )]
+#[non_exhaustive]
+pub struct PlayerAdded<Client: super::Client> {
+    /// The id of the new player
+    pub player_id: player::Id,
+    pub(crate) _p: PhantomData<Client>,
+}
+
+impl<Client: super::Client> PlayerAdded<Client> {
+    pub(crate) fn new(player_id: player::Id) -> Event<Client> {
+        Event::PlayerAdded(Self {
+            player_id,
+            _p: PhantomData,
+        })
+    }
+}
+
+/// The [Server](crate::Server) has removed a player
+#[derive_where(Debug; )]
+#[non_exhaustive]
+pub struct PlayerRemoved<Client: super::Client> {
+    /// The id of the removed player
+    pub player_id: player::Id,
+    pub(crate) _p: PhantomData<Client>,
+}
+
+impl<Client: super::Client> PlayerRemoved<Client> {
+    pub(crate) fn new(player_id: player::Id) -> Event<Client> {
+        Event::PlayerRemoved(Self {
+            player_id,
+            _p: PhantomData,
+        })
+    }
 }

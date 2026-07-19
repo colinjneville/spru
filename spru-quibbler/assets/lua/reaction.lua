@@ -116,8 +116,8 @@ function end_game()
     local max_score = 0
     local final_scores = { }
 
-    for _, player_id in ipairs(context.root.player_map.ids) do
-        local player_root = context.root.player_map:get(player_id)
+    for _, player_id in ipairs(context.root.players.ids) do
+        local player_root = context.root.players:get(player_id)
         max_score = math.max(max_score, player_root.score.value)
         final_scores[player_id] = player_root.score.value
     end

@@ -97,7 +97,7 @@ impl spru::player::Init for MyPlayerInit {
             let players = ~[root.players]?;
         };
 
-        players.update(player_map::add_player(
+        players.update(player_map::insert(
             player_id,
             PlayerData { color: input },
         ));

@@ -15,7 +15,7 @@ pub(crate) struct Snapshot<Repr, State, Root> {
     root: Root,
     items: Arc<[SnapshotType<Repr>]>,
     #[serde(skip)]
-    _p: PhantomData<fn(State) -> State>,
+    _p: PhantomData<State>,
 }
 
 impl<State: tagset::TagSet<Repr: Clone>, Root> Snapshot<State::Repr, State, Root> {

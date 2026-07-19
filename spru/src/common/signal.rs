@@ -1,8 +1,10 @@
 //! Abstracted communication between client and server.
 
+use std::marker::PhantomData;
+
 use derive_where::derive_where;
 
-use crate::{common, interaction, record::Records, transaction};
+use crate::{common, interaction, player, record::Records, transaction};
 
 /// A signal sent from a [Client](crate::Client) to the [Server](crate::Server).
 /// A signal is an abstraction of client-server communication and
@@ -42,18 +44,51 @@ pub struct ToClient<Common: crate::Common> {
 pub(crate) enum ToClientInternal<Common: crate::Common> {
     InteractionResult(InteractionResult<Common>),
     ConfirmedTransaction(ConfirmedTransaction<Common>),
+    PlayerUpdate(PlayerUpdate<Common>),
     EndGame(EndGame<Common>),
 }
 
 #[derive_where(Debug, Serialize, Deserialize; Records<Common::Action>)]
 pub(crate) struct InteractionResult<Common: crate::Common> {
-    pub pending_interaction_id: interaction::Pending,
-    pub confirmed_transaction_id: Option<(transaction::Id, Records<Common::Action>)>,
+    pub(crate) pending_interaction_id: interaction::Pending,
+    pub(crate) confirmed_transaction_id: Option<(transaction::Id, Records<Common::Action>)>,
 }
 
 #[derive_where(Debug, Serialize, Deserialize; transaction::Confirmed<Common::Action>)]
 pub(crate) struct ConfirmedTransaction<Common: crate::Common> {
-    pub confirmed_transaction: transaction::Confirmed<Common::Action>,
+    pub(crate) confirmed_transaction: transaction::Confirmed<Common::Action>,
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+pub(crate) enum PlayerUpdateKind {
+    Add,
+    Remove,
+}
+
+#[derive_where(Debug, Serialize, Deserialize; )]
+pub(crate) struct PlayerUpdate<Common: crate::Common> {
+    pub(crate) player_id: player::Id,
+    pub(crate) update_kind: PlayerUpdateKind,
+
+    pub(crate) _p: PhantomData<Common>,
+}
+
+impl<Common: crate::Common> PlayerUpdate<Common> {
+    pub(crate) fn new_add(player_id: player::Id) -> Self {
+        Self {
+            player_id,
+            update_kind: PlayerUpdateKind::Add,
+            _p: PhantomData,
+        }
+    }
+
+    pub(crate) fn new_remove(player_id: player::Id) -> Self {
+        Self {
+            player_id,
+            update_kind: PlayerUpdateKind::Remove,
+            _p: PhantomData,
+        }
+    }
 }
 
 #[derive_where(Debug, Serialize, Deserialize; Common::GameOutcome)]

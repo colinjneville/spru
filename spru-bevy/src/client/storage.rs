@@ -9,7 +9,7 @@ use crate::{client, common};
 pub(crate) struct BevyReadOnlyStorage<'l, State> {
     world: &'l prelude::World,
     entity_map: &'l super::component::EntityMap,
-    _state: PhantomData<fn() -> State>,
+    _state: PhantomData<State>,
 }
 
 impl<'l, State> BevyReadOnlyStorage<'l, State> {
@@ -71,6 +71,10 @@ impl<'l, State: spru::State> spru::item::Storage for BevyReadOnlyStorage<'l, Sta
     {
         panic!("BevyReadOnlyStorage cannot mutate state")
     }
+    
+    fn clear(&mut self) -> item::storage::Result<()> {
+        panic!("BevyReadOnlyStorage cannot mutate state")
+    }
 }
 
 
@@ -80,7 +84,7 @@ pub struct BevyStorage<'l, State> {
     entity_map: &'l mut super::component::EntityMap,
     game_id: spru::game::Id,
     client_id: spru::player::Id,
-    _state: PhantomData<fn() -> State>,
+    _state: PhantomData<State>,
 }
 
 impl<'l, State> BevyStorage<'l, State> {
@@ -186,6 +190,17 @@ impl<'l, State: spru::State> spru::item::Storage for BevyStorage<'l, State> {
                         any::type_name::<T>(),
                     )),
                 }
+            })
+            .map_err(Into::into)
+    }
+    
+    fn clear(&mut self) -> item::storage::Result<()> {
+        self.entity_map
+            .clear_as(|id, entity| {
+                self.world
+                    .try_despawn(entity)
+                    .map_err(|_| super::BevyError::IdNotFound(id))?;
+                Ok(())
             })
             .map_err(Into::into)
     }

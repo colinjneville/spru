@@ -5,8 +5,7 @@ use derive_where::derive_where;
 
 #[derive_where(Debug, Default; )]
 pub struct Plugin<Server: crate::server::ServerSSS, Client: crate::client::ClientSSS> {
-    _server: PhantomData<fn() -> Server>,
-    _client: PhantomData<fn() -> Client>,
+    _p: PhantomData<(Server, Client)>,
 }
 
 impl<Server, Client> prelude::Plugin for Plugin<Server, Client>

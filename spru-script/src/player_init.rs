@@ -6,6 +6,7 @@ use derive_where::derive_where;
 pub struct PlayerInit<Root, Language, Args> {
     language: Language,
     script: String,
+    remove_script: Option<String>,
     _p: PhantomData<(Root, Args)>,
 }
 
@@ -14,8 +15,14 @@ impl<Root, Language, Args> PlayerInit<Root, Language, Args> {
         Self {
             language,
             script,
+            remove_script: None,
             _p: PhantomData,
         }
+    }
+
+    pub fn with_remove_player(mut self, remove_player_script: String) -> Self {
+        self.remove_script = Some(remove_player_script);
+        self
     }
 }
 
@@ -24,6 +31,14 @@ where
     Language: 
         for<'r> crate::DialectExec<
             Args, 
+            (),
+            spru::player::init::Context<'r, Root>, 
+            spru::player::init::Output,
+            Error: std::error::Error + Send + Sync + 'static,
+        >,
+    Language: 
+        for<'r> crate::DialectExec<
+            (), 
             (),
             spru::player::init::Context<'r, Root>, 
             spru::player::init::Output,
@@ -40,4 +55,15 @@ where
 
         Ok(())
     }
+    
+    fn remove(&self, interactor: &mut spru::player::init::Interactor<Self>) -> spru::player::init::Result<()> {
+        if let Some(remove_script) = &self.remove_script {
+            let () = self.language.exec(interactor, remove_script, ())?;
+            Ok(())
+        } else {
+            Err(spru::common::error::AnyError::from_string("Removing players is not implemented").into())
+        }
+    }
+
+    
 }

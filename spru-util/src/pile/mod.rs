@@ -425,7 +425,8 @@ where
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize, spru::action::Update)]
 pub struct PopTop<T> {
     strictness: Strictness,
-    _p: PhantomData<fn() -> T>,
+    #[serde(skip)]
+    _p: PhantomData<T>,
 }
 
 impl<T> spru::action::Update for PopTop<T>

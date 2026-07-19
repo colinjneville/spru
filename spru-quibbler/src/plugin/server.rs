@@ -2,18 +2,6 @@ use bevy::prelude;
 
 pub(crate) struct Server;
 
-impl Server {
-    fn startup(mut commands: prelude::Commands) {
-        commands
-            .spawn_empty()
-            .queue(spru_bevy::server::command::Init::<crate::Server, _> {
-                game_init: crate::game::init::new(),
-                player_init: crate::player::init::new(),
-                reaction: crate::reaction::new(),
-            });
-    }
-}
-
 impl prelude::Plugin for Server {
     fn build(&self, app: &mut prelude::App) {
         app
@@ -41,31 +29,8 @@ impl prelude::Plugin for Server {
                         )>();
                 }
             )
-            // Server Init
-            // .add_observer(
-            //     |server_init: prelude::On<spru_bevy::server::event::Init<crate::Server>>,
-            //     mut game_id: prelude::ResMut<GameId>,
-            //     mut q_server: prelude::Query<(
-            //         &spru_bevy::common::component::GameId,
-            //         &mut spru_bevy::server::component::FromUser<crate::Server>,
-            //     )>|
-            //     -> prelude::Result {
-            //         let server_info = *server_init.result.as_ref().map_err(ToString::to_string)?;
-            //         game_id.set(server_info.game_id);
-
-            //         let (_, mut from_user) = q_server.get_mut(server_info.entity).map_err(|_| "Server not found")?;
-
-            //         for username in ["Alice", "Bob"] {
-            //             from_user.add_player(crate::player::Input {
-            //                 username: username.to_string(),
-            //             });
-            //         }
-
-            //         Ok(())
-            //     },
-            // )
             .add_observer(
-                |game_complete: prelude::On<spru_bevy::server::event::GameComplete<crate::Server>>,
+                |game_complete: prelude::On<spru_bevy::server::event::GameCompleted<crate::Server>>,
                 mut q_log: prelude::Query<&mut crate::Log>|
                 {
                     let mut log = q_log.get_mut(game_complete.entity).ok();
@@ -76,14 +41,20 @@ impl prelude::Plugin for Server {
                 },
             )
             .add_observer(
-                |add_player: prelude::On<spru_bevy::server::event::AddPlayer<crate::Server>>,
+                |player_added: prelude::On<spru_bevy::server::event::PlayerAdded>,
                 mut q_log: prelude::Query<&mut crate::Log>|
                 {
-                    let message = match &add_player.result {
-                        Ok(player_id) => format!("Player {player_id} added"),
-                        Err(err) => format!("Add player failed: {err}"),
-                    };
-                    let mut log = q_log.get_mut(add_player.entity).ok();
+                    let message = format!("Player {} added", player_added.player_id);
+                    let mut log = q_log.get_mut(player_added.entity).ok();
+                    crate::Log::try_log(&mut log, message);
+                },
+            )
+            .add_observer(
+                |player_add_error: prelude::On<spru_bevy::server::event::PlayerAddError>,
+                mut q_log: prelude::Query<&mut crate::Log>|
+                {
+                    let message = format!("Add player failed: {}", player_add_error.error);
+                    let mut log = q_log.get_mut(player_add_error.entity).ok();
                     crate::Log::try_log(&mut log, message);
                 },
             )
@@ -91,11 +62,17 @@ impl prelude::Plugin for Server {
                 |manual_trigger: prelude::On<spru_bevy::server::event::ManualTrigger<crate::Server>>,
                 mut q_log: prelude::Query<&mut crate::Log>|
                 {
-                    let message = match &manual_trigger.result {
-                        Ok(()) => "Manual trigger successful".to_string(),
-                        Err(err) => format!("Manual trigger failed: {err}"),
-                    };
+                    let message = "Manual trigger successful";
                     let mut log = q_log.get_mut(manual_trigger.entity).ok();
+                    crate::Log::try_log(&mut log, message);
+                },
+            )
+            .add_observer(
+                |manual_trigger_error: prelude::On<spru_bevy::server::event::ManualTriggerError<crate::Server>>,
+                mut q_log: prelude::Query<&mut crate::Log>|
+                {
+                    let message = format!("Manual trigger failed: {}", manual_trigger_error.error);
+                    let mut log = q_log.get_mut(manual_trigger_error.entity).ok();
                     crate::Log::try_log(&mut log, message);
                 },
             )

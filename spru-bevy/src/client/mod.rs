@@ -140,14 +140,54 @@ where
     Ok(ret)
 }
 
+pub trait IdTExt {
+    type T;
+
+    fn try_from_world<'w>(&self, world: &'w prelude::World, client_entity: prelude::Entity) -> Option<&'w Self::T>;
+
+    fn from_world<'w>(&self, world: &'w prelude::World, client_entity: prelude::Entity) -> &'w Self::T {
+        self.try_from_world(world, client_entity)
+            .expect("Item does not exist")
+    }
+}
+
+impl<T: Send + Sync + 'static> IdTExt for spru::item::IdT<T> {
+    type T = T;
+
+    fn try_from_world<'w>(&self, world: &'w prelude::World, client_entity: prelude::Entity) -> Option<&'w Self::T> {
+        let entity_map = world.entity(client_entity)
+            .get_components::<&component::EntityMap>()
+            .ok()?;
+        let item_entity = entity_map.get(*self)
+            .ok()?;
+        let item = world.entity(item_entity)
+            .get_components::<&component::Item<T>>()
+            .ok()?;
+
+        Some(&**item)
+    }
+}
+
 fn trigger_events<Client: ClientSSS>(entity: prelude::Entity, event_trigger: &mut impl common::TriggerEvent, events: Vec<spru::client::Event<Client>>) {
     for event in events {
         #[allow(clippy::single_match)]
         match event {
-            spru::client::Event::InteractionResult(interaction_result) => {
+            spru::client::Event::InteractionEvaluated(interaction_evaluated) => {
                 // TODO
             }
-            spru::client::Event::GameComplete(game_complete) => {
+            spru::client::Event::PlayerAdded(player_added) => {
+                event_trigger.trigger(event::PlayerAdded {
+                    entity,
+                    player_id: player_added.player_id,
+                });
+            }
+            spru::client::Event::PlayerRemoved(player_removed) => {
+                event_trigger.trigger(event::PlayerRemoved {
+                    entity,
+                    player_id: player_removed.player_id,
+                });
+            }
+            spru::client::Event::GameCompleted(game_complete) => {
                 event_trigger.trigger(event::GameComplete::<Client> {
                     entity,
                     game_outcome: game_complete.game_outcome,

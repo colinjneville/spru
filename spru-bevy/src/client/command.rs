@@ -1,7 +1,8 @@
-use std::marker::PhantomData;
+use std::{marker::PhantomData, sync::Arc};
 
 use bevy::prelude;
 use derive_where::derive_where;
+use tracing::instrument;
 
 use crate::{client, common};
 
@@ -13,6 +14,7 @@ pub struct Init<Client: super::ClientSSS> {
 impl<Client: super::ClientSSS> prelude::EntityCommand for Init<Client> {
     type Out = ();
 
+    #[instrument(skip_all)]
     fn apply(self, mut entity: prelude::EntityWorldMut) {
         let Self { seed } = self;
 
@@ -31,6 +33,7 @@ impl<Client: super::ClientSSS> prelude::EntityCommand for Init<Client> {
             let client_id = super::component::ClientId::new(client.local_player_id());
             let root = common::component::Root::<Client::Common>::new(client.root().clone());
 
+            // Keep this sync'ed with Shutdown
             entity.insert((
                 game_id,
                 client_id,
@@ -47,12 +50,22 @@ impl<Client: super::ClientSSS> prelude::EntityCommand for Init<Client> {
             Ok(client_id)
         })();
 
-        entity.trigger(|entity| client::event::Init::<Client> {
-            entity,
-            game_id,
-            result,
-            _client: PhantomData,
-        });
+        match result {
+            Ok(client_id) => {
+                entity.trigger(|entity| client::event::Initialized {
+                    entity,
+                    game_id,
+                    client_id,
+                });
+            }
+            Err(error) => {
+                entity.trigger(|entity| client::event::InitializeError {
+                    entity,
+                    game_id,
+                    error: Arc::new(error),
+                });
+            }
+        }
     }
 }
 
@@ -72,6 +85,7 @@ impl<Client: client::ClientSSS> StageInteraction<Client> {
 impl<Client: client::ClientSSS> prelude::EntityCommand for StageInteraction<Client> {
     type Out = prelude::Result;
 
+    #[instrument(skip_all)]
     fn apply(self, mut entity: bevy::ecs::world::EntityWorldMut) -> prelude::Result {
         let Self {
             interaction,
@@ -96,11 +110,22 @@ impl<Client: client::ClientSSS> prelude::EntityCommand for StageInteraction<Clie
             Err(err) => Err(err),
         };
 
-        entity.trigger(|entity| super::event::StageInteraction::<Client> {
-            entity,
-            interaction,
-            result,
-        });
+        match result {
+            Ok(pending_id) => {
+                entity.trigger(|entity| super::event::InteractionStaged::<Client> {
+                    entity,
+                    interaction,
+                    pending_id,
+                });
+            }
+            Err(error) => {
+                entity.trigger(|entity| super::event::InteractionStageError::<Client> {
+                    entity,
+                    interaction,
+                    error: Arc::new(error),
+                });
+            }
+        }
 
         Ok(())
     }
@@ -131,6 +156,7 @@ impl<Client: client::ClientSSS> ApplyInteractions<Client> {
 impl<Client: client::ClientSSS> prelude::EntityCommand for ApplyInteractions<Client> {
     type Out = prelude::Result;
 
+    #[instrument(skip_all)]
     fn apply(self, mut entity: bevy::ecs::world::EntityWorldMut) -> prelude::Result {
         let Self {
             pending_interaction_id,
@@ -156,12 +182,22 @@ impl<Client: client::ClientSSS> prelude::EntityCommand for ApplyInteractions<Cli
             Err(err) => Err(err),
         };
 
-        entity.trigger(|entity| super::event::ApplyInteractions::<Client> {
-            entity,
-            pending_interaction_id,
-            result,
-            _client: PhantomData,
-        });
+        match result {
+            Ok(count) => {
+                entity.trigger(|entity| super::event::InteractionsApplied {
+                    entity,
+                    pending_interaction_id,
+                    count,
+                });
+            }
+            Err(error) => {
+                entity.trigger(|entity| super::event::InteractionsApplyError {
+                    entity,
+                    pending_interaction_id,
+                    error: Arc::new(error),
+                });
+            }
+        }
 
         Ok(())
     }
@@ -192,6 +228,7 @@ impl<Client: client::ClientSSS> RevertInteractions<Client> {
 impl<Client: client::ClientSSS> prelude::EntityCommand for RevertInteractions<Client> {
     type Out = prelude::Result;
     
+    #[instrument(skip_all)]
     fn apply(self, mut entity: bevy::ecs::world::EntityWorldMut) -> prelude::Result {
         let Self {
             pending_interaction_id,
@@ -217,13 +254,81 @@ impl<Client: client::ClientSSS> prelude::EntityCommand for RevertInteractions<Cl
             Err(err) => Err(err),
         };
 
-        entity.trigger(|entity| client::event::RevertInteractions::<Client> {
-            entity,
-            pending_interaction_id,
-            result,
-            _client: PhantomData,
-        });
+        match result {
+            Ok(count) => {
+                entity.trigger(|entity| client::event::InteractionsReverted {
+                    entity,
+                    pending_interaction_id,
+                    count,
+                });
+            }
+            Err(error) => {
+                entity.trigger(|entity| client::event::InteractionsRevertError {
+                    entity,
+                    pending_interaction_id,
+                    error: Arc::new(error),
+                });
+            }
+        }
 
         Ok(())
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct Shutdown<Client> {
+    pub despawn: bool,
+    _p: PhantomData<Client>,
+}
+
+impl<Client> Shutdown<Client> {
+    pub fn new(despawn: bool) -> Self {
+        Self {
+            despawn,
+            _p: PhantomData,
+        }
+    }
+}
+
+impl<Client: client::ClientSSS> prelude::EntityCommand for Shutdown<Client> {
+    type Out = ();
+
+    #[instrument(skip_all)]
+    fn apply(self, mut entity: prelude::EntityWorldMut) -> Self::Out {
+        let Self {
+            despawn,
+            _p,
+        } = self;
+
+        if entity.get_components::<&client::component::Runner<Client>>().is_err() {
+            prelude::info!("No client detected, skipping shutdown");
+            return;
+        }
+
+        let (game_id, client_id) = entity.components::<(&common::component::GameId, &client::component::ClientId)>();
+        prelude::error_span!("Shutdown::apply", game_id = %**game_id, client_id = %**client_id, despawn);
+
+        prelude::info!("Shutting down client");
+        
+        if client::component::Runner::<Client>::storage_scope(&mut entity, |client, storage| {
+            if let Err(err) = client.shutdown(storage) {
+                prelude::warn!("Failed to shutdown client cleanly: {err}");
+            }
+        }).is_err() {
+            prelude::info!("Client appears to already have been shutdown");
+            return;
+        }
+
+        if despawn {
+            entity.despawn();
+        } else {
+            // Remove the functional components, leave markers like game_id, client_id
+            entity.remove::<(
+                client::component::Runner<Client>,
+                client::component::EntityMap,
+                client::component::FromServer<Client>,
+                client::component::ToServer<Client>,
+            )>();
+        }
     }
 }

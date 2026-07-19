@@ -16,6 +16,8 @@ pub enum InitError {
     Fatal(#[from] FatalError),
 }
 
+common::error::impl_get_fatal_error!(InitError);
+
 /// An error occurred during [Client::stage_interaction](crate::Client::stage_interaction)
 #[derive(Debug, thiserror::Error)]
 pub enum StageInteractionError {
@@ -26,6 +28,8 @@ pub enum StageInteractionError {
     #[error("{0}")]
     Fatal(#[from] FatalError),
 }
+
+common::error::impl_get_fatal_error!(StageInteractionError);
 
 /// An error occurred during [Client::revert_interactions](crate::Client::revert_interactions)
 #[derive(Debug, thiserror::Error)]
@@ -38,6 +42,8 @@ pub enum RevertInteractionError {
     Fatal(#[from] FatalError),
 }
 
+common::error::impl_get_fatal_error!(RevertInteractionError);
+
 /// An error occurred during [Client::apply_interactions](crate::Client::apply_interactions)
 #[derive(Debug, thiserror::Error)]
 pub enum ApplyInteractionError {
@@ -49,6 +55,8 @@ pub enum ApplyInteractionError {
     Fatal(#[from] FatalError),
 }
 
+common::error::impl_get_fatal_error!(ApplyInteractionError);
+
 /// An error occurred during [Client::signal](crate::Client::signal)
 #[derive(Debug, thiserror::Error)]
 pub enum SignalError {
@@ -56,6 +64,24 @@ pub enum SignalError {
     #[error("{0}")]
     Fatal(#[from] FatalError),
 }
+
+common::error::impl_get_fatal_error!(SignalError);
+
+/// An error occurred during [Client::shutdown](crate::Client::shutdown)
+#[derive(Debug, thiserror::Error)]
+pub enum ShutdownError {
+    /// All errors in `destroy` are fatal, as `destroy` itself is fatal`
+    #[error("{0}")]
+    Fatal(#[from] FatalError),
+}
+
+common::error::impl_get_fatal_error!(ShutdownError);
+
+/// The client has been shutdown by [Client::shutdown](crate::Client::shutdown)
+/// and cannot be used further.
+#[derive(Debug, thiserror::Error)]
+#[error("The client has been shutdown")]
+pub struct IsShutdownError;
 
 /// The provided pending interation does not exist, or has already been applied or reverted
 #[derive(Debug, thiserror::Error)]

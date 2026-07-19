@@ -189,6 +189,16 @@ pub trait Client: crate::sealed::Sealed + Sized {
 
     /// [Interaction](trait@crate::Interaction)s which have been staged, but not yet applied or reverted
     fn pending_interactions(&self) -> impl Iterator<Item = interaction::Pending>;
+
+    /// Prepare to drop the client by destroying all items in storage. 
+    /// Whetheror not the removals succeed, the client will be left in
+    /// an inoperable state. Reseed a new client from the server if 
+    /// the game is still ongoing.
+    fn shutdown<Storage>(&mut self, storage: &mut Storage) 
+        -> Result<(), error::ShutdownError>
+    where
+        Storage: item::Storage<State = Self::State>,
+    ;
 }
 
 impl<Action, Root, Interaction, GameOutcome> crate::sealed::Sealed
@@ -248,6 +258,7 @@ where
                 reservation,
                 root,
                 error_state,
+                is_shutdown: false,
             }
         };
 
@@ -381,21 +392,29 @@ where
 
         let common::signal::ToClient { seq: _seq, signal } = arg;
 
-        let mut state = self::Messaging::new();
+        let mut messaging = self::Messaging::new();
 
         let () = match signal {
             common::signal::ToClientInternal::InteractionResult(interaction_result) => {
-                self.interaction_result(&mut state, storage, interaction_result)?
+                self.interaction_result(&mut messaging, storage, interaction_result)?
             }
             common::signal::ToClientInternal::ConfirmedTransaction(confirmed_transaction) => {
-                self.confirmed_transaction(&mut state, storage, confirmed_transaction)?
+                self.confirmed_transaction(&mut messaging, storage, confirmed_transaction)?
+            }
+            common::signal::ToClientInternal::PlayerUpdate(player_update) => {
+                let player_id = player_update.player_id;
+                let event = match player_update.update_kind {
+                    common::signal::PlayerUpdateKind::Add => event::PlayerAdded::new(player_id),
+                    common::signal::PlayerUpdateKind::Remove => event::PlayerRemoved::new(player_id),
+                };
+                messaging.push_event(event);
             }
             common::signal::ToClientInternal::EndGame(end_game) => {
-                self.end_game(&mut state, storage, end_game)?
+                self.end_game(&mut messaging, storage, end_game)?
             }
         };
 
-        Ok(state.into_output(()))
+        Ok(messaging.into_output(()))
     }
 
     fn game_id(&self) -> game::Id {
@@ -408,6 +427,31 @@ where
 
     fn pending_interactions(&self) -> impl Iterator<Item = interaction::Pending> {
         self.inner.log.pending_interactions()
+    }
+
+    #[instrument(err, skip_all, fields(local_player_id = self.trace_id()))]
+    fn shutdown<Storage>(&mut self, storage: &mut Storage) 
+        -> Result<(), error::ShutdownError>
+    where
+        Storage: item::Storage<State = Self::State>,
+    {
+        // Even if we've already hit a fatal error, allow this to continue, so we
+        // can still clean up before reseeding.
+        // Also allow shutdown to be called multiple times, in case any 
+        // Storage::clear errors are transient/recoverable 
+        self.inner.is_shutdown = true;
+
+        // If clear fails, record that error as the fatal error reason
+        storage.clear()
+            .map_err(item::storage::Error::into_error)
+            .map_err(common::error::AnyError::new)
+            .map_err(self.inner.error_state.make_fatal())
+            .map_err(error::ShutdownError::Fatal)?;
+
+        // If clear is successful, any future operations will report the shutdown state error
+        self.inner.error_state.set_fatal(error::IsShutdownError);
+        
+        Ok(())
     }
 }
 
@@ -433,10 +477,10 @@ where
             confirmed_transaction_id,
         } = interaction_result;
 
-        messaging.push_event(event::InteractionResult::<Self> {
+        messaging.push_event(event::InteractionEvaluated::<Self> {
             pending_interaction_id,
             confirmed: confirmed_transaction_id.is_some(),
-            _client: PhantomData,
+            _p: PhantomData,
         });
 
         if let Some((confirmed_transaction_id, extra_records)) = confirmed_transaction_id {
@@ -498,7 +542,7 @@ where
 
         messaging
             .events
-            .push(event::GameComplete { game_outcome }.into());
+            .push(event::GameCompleted { game_outcome }.into());
 
         Ok(())
     }
@@ -508,7 +552,16 @@ where
 #[derive(Debug)]
 pub struct ClientImpl<Action, Root, Interaction, GameOutcome> {
     inner: ImplInner<Action, Root, Interaction>,
-    _game_outcome: PhantomData<fn() -> GameOutcome>,
+    _game_outcome: PhantomData<GameOutcome>,
+}
+
+impl<Action, Root, Interaction, GameOutcome> Drop for ClientImpl<Action, Root, Interaction, GameOutcome> {
+    fn drop(&mut self) {
+        if !self.inner.is_shutdown {
+            tracing::error_span!("ClientImpl::drop", game_id = %self.inner.game_id, local_player_id = %self.inner.local_player_id);
+            tracing::warn!("Client was dropped without calling Client::shutdown.");
+        }
+    }
 }
 
 impl<Action, Root, Interaction, GameOutcome>
@@ -527,4 +580,5 @@ struct ImplInner<Action, Root, Interaction> {
     pub(crate) root: Root,
     pub(crate) reservation: item::id::Reservation,
     pub(crate) error_state: common::error::FatalErrorState,
+    pub(crate) is_shutdown: bool,
 }

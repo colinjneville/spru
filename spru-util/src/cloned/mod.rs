@@ -57,7 +57,7 @@ where
 #[derive_where(Debug, Clone, Serialize, Deserialize)]
 #[derive(spru::action::Destroy)]
 #[must_use]
-pub struct Destroy<T>(PhantomData<fn() -> T>);
+pub struct Destroy<T>(#[serde(skip)] PhantomData<T>);
 
 impl<T> spru::action::Destroy for Destroy<T> {
     type T = T;

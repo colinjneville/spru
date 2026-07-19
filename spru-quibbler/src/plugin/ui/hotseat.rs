@@ -101,7 +101,7 @@ impl super::Config for ConfigLocal {
 
         for username in self.player_panel.usernames().map(|v| v.text().to_string()) {
             entity.queue(spru_bevy::local::command::AddLocalPlayer::<crate::Server, crate::Client>::new( 
-                crate::player::Input {
+                crate::player::Data {
                     username,
                 } 
             ));
@@ -110,5 +110,7 @@ impl super::Config for ConfigLocal {
         entity.queue(spru_bevy::server::command::ManualTrigger::<crate::Server> { 
             trigger: crate::reaction::Trigger::StartGame,
         });
+
+        commands.insert_resource(prelude::NextState::PendingIfNeq(crate::AppState::InGame));
     }
 }

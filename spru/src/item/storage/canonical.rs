@@ -76,6 +76,12 @@ impl<State: crate::State> item::Storage for Canonical<State::Repr, State> {
             .ok_or(Error::ItemDoesNotExist(id.untyped()))
             .map_err(Into::into)
     }
+    
+    fn clear(&mut self) -> storage::Result<()> {
+        self.items_map.clear();
+        
+        Ok(())
+    }
 }
 
 struct ItemMap<T> {
@@ -186,7 +192,7 @@ where
 #[derive_where(Debug; Repr)]
 pub(crate) struct ItemsMap<Repr, State> {
     raw: std::collections::HashMap<Repr, Box<dyn ErasedItemMap>>,
-    _p: PhantomData<fn(State) -> State>,
+    _p: PhantomData<State>,
 }
 
 impl<Repr, State> ItemsMap<Repr, State> {
@@ -266,6 +272,10 @@ impl<State: crate::State> ItemsMap<State::Repr, State> {
         } else {
             None
         }
+    }
+
+    pub fn clear(&mut self) {
+        self.raw.clear();
     }
 }
 

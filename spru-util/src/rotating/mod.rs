@@ -10,8 +10,7 @@ use telety::telety;
 
 use crate::cloned;
 
-/// A 'wheel' of values which loops around at both ends. Can represent turn order, round phases,
-// #[telety(crate::rotating)]
+/// A 'wheel' of values which loops around at both ends. Can represent turn order, round phases, etc.
 #[derive(Debug, Clone)]
 #[derive_where(Default)]
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -363,7 +362,8 @@ where
 #[must_use]
 pub struct Remove<T> {
     position: usize,
-    _p: PhantomData<fn(T) -> T>,
+    #[serde(skip)]
+    _p: PhantomData<T>,
 }
 
 impl<T> spru::action::Update for Remove<T>

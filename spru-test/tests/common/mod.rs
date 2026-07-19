@@ -73,9 +73,9 @@ pub(crate) fn minimal_spru() {
                         },
                         Event::ClientEvent(event::ClientEvent { player_id, event }) => {
                             match event {
-                                spru::client::Event::GameComplete(game_complete) => {
+                                spru::client::Event::GameCompleted(game_completed) => {
                                     game_outcomes
-                                        .insert(Some(player_id), game_complete.game_outcome);
+                                        .insert(Some(player_id), game_completed.game_outcome);
                                 }
                                 _ => {}
                             }

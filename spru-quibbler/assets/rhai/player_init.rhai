@@ -1,4 +1,4 @@
-let input = args;
+let data = args;
 
 if context.root.has_started {
     throw "cannot add player to started game";
@@ -12,5 +12,5 @@ let played = type.MaybePlay.create(());
 context.root.current_turn.push(context.player);
 context.root.current_dealer.push(context.player);
 
-let player_root = type.PlayerRoot.create(input, hand, score, fsm, played);
-context.root.players.add_player(context.player, player_root);
+let player_root = type.PlayerRoot.create(data, hand, score, fsm, played);
+context.root.players.insert(context.player, player_root);

@@ -3,17 +3,18 @@
 use derive_where::derive_where;
 
 /// An event which occurred on the [Server](crate::Server).
-#[derive_where(Debug; GameComplete<Server>)]
+#[derive_where(Debug; GameCompleted<Server>)]
 #[derive(derive_more::From)]
 #[non_exhaustive]
 pub enum Event<Server: super::Server> {
     /// The game has completed
-    GameComplete(GameComplete<Server>),
+    GameComplete(GameCompleted<Server>),
 }
 
 /// The game has completed
 #[derive_where(Debug; <Server::Reaction as crate::Reaction>::GameOutcome)]
-pub struct GameComplete<Server: super::Server> {
+#[non_exhaustive]
+pub struct GameCompleted<Server: super::Server> {
     /// The outcome of the game, as defined by the [Reaction](trait@crate::Reaction).
     /// Usually contains the winner of the game and any other notable stats.
     pub game_outcome: <Server::Reaction as crate::Reaction>::GameOutcome,

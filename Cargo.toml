@@ -39,7 +39,6 @@ thiserror = "2.0.12"
 anyhow = "1.0.100"
 append-only-vec = "0.1.8"
 itertools = "0.15.0"
-scopeguard = "1.2.0"
 
 bytemuck = { version = "1.25.0", features = ["extern_crate_alloc"] }
 
@@ -75,6 +74,7 @@ url = "2.5.8"
 # moro = "0.4.0"
 
 # async (smol ecosystem)
+async-io = "2.6"
 # async-broadcast = "0.7.2"
 # async-lazy = "0.1.0"
 # async-once-cell = "0.5.3"
@@ -96,7 +96,7 @@ vacro-report = "0.1.3"
 # serialization
 rmp-serde = "=1.3.0"
 deku = "0.18.1"
-ron = "0.11.0"
+ron = "0.12.2"
 serde_bytes = "0.11.19"
 
 # build.rs

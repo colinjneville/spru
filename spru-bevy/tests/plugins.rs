@@ -51,7 +51,7 @@ fn local_multiplayer() -> impl std::process::Termination {
         ))
         .add_observer(
             |
-                server_init: prelude::On<spru_bevy::server::event::Init<minimal::MyServer>>, 
+                server_init: prelude::On<spru_bevy::server::event::Initialized>, 
                 mut commands: prelude::Commands,
             | -> prelude::Result {
                 commands.entity(server_init.entity)
@@ -62,7 +62,7 @@ fn local_multiplayer() -> impl std::process::Termination {
             },
         )
         .add_observer(|
-                client_init: prelude::On<spru_bevy::client::event::Init<minimal::MyClient>>,
+                client_init: prelude::On<spru_bevy::client::event::Initialized>,
                 mut commands: prelude::Commands,
             | -> prelude::Result {                
                 commands.entity(client_init.entity)
@@ -76,7 +76,7 @@ fn local_multiplayer() -> impl std::process::Termination {
         )
         .add_observer(
             |game_complete: prelude::On<
-                spru_bevy::server::event::GameComplete<minimal::MyServer>,
+                spru_bevy::server::event::GameCompleted<minimal::MyServer>,
             >,
              mut exit: prelude::MessageWriter<prelude::AppExit>|
              -> prelude::Result {

@@ -7,7 +7,7 @@ use crate::client::remote;
 
 #[derive_where(Debug, Default; )]
 pub struct Plugin<Client: crate::client::ClientSSS> {
-    _client: PhantomData<fn() -> Client>,
+    _client: PhantomData<Client>,
 }
 
 impl<Client> prelude::Plugin for Plugin<Client>
@@ -41,7 +41,6 @@ where
                     remote::system::propagate_remote_queues::<Client>,
                 ),
             )
-            .add_observer(remote::observer::on_connected::<Client>)
         ;
     }
 }

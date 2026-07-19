@@ -1,5 +1,6 @@
 pub mod adapt;
 pub mod component;
+pub mod event;
 
 use bevy::prelude;
 

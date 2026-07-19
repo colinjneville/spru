@@ -7,12 +7,12 @@ use crate::{common, server};
 
 #[derive_where(Debug, Default; )]
 pub struct Plugin<Server: server::ServerSSS> {
-    _server: PhantomData<fn() -> Server>,
+    _p: PhantomData<Server>,
 }
 
 impl<Server: server::ServerSSS> prelude::Plugin for Plugin<Server> {
     fn build(&self, app: &mut prelude::App) {
-        let Self { _server } = self;
+        let Self { _p } = self;
 
         app
             .add_systems(

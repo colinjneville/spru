@@ -234,6 +234,36 @@ where
     type Action = Lexicon::Action;
 }
 
+/// For some inexplicable reason, a Rhai block evaluates to
+/// the value of the last statement, even if ended with a semicolon.
+/// This makes it very easy to mess up a script by returning a non-()
+/// value when Ret is (). To prevent this, do a runtime check on Ret,
+/// and if it is (), do not cast the value to (), just transmute one and
+/// discard the return value.
+fn unit_safe_eval_with_scope<Ret>(
+    rhai: &rhai::Engine,
+    scope: &mut rhai::Scope,
+    script: &str,
+)
+    -> Result<Ret, Box<rhai::EvalAltResult>>
+where 
+    Ret: Clone + Send + Sync + 'static,
+{
+    
+    if TypeId::of::<Ret>() == TypeId::of::<()>() {
+        let _ = rhai
+            .eval_with_scope::<rhai::Dynamic>(scope, script)?;
+
+        // SAFETY: We have verified Ret == ()
+        unsafe { 
+            Ok(std::mem::transmute_copy::<(), Ret>(&()))
+        }
+    } else {
+        rhai
+            .eval_with_scope::<Ret>(scope, script)
+    }
+}
+
 impl<Lexicon, Args, Ret> spru_script::StatelessDialectEval<Args, Ret> for RhaiInstance<Lexicon> 
 where
     Lexicon: spru_script::StatelessLexicon<Language = Rhai>,
@@ -247,8 +277,7 @@ where
         let mut scope = cached.internal.scope.clone();
         scope.push(&*crate::key::GLOBAL_ARGS, args);
         
-        let ret = rhai
-            .eval_with_scope::<Ret>(&mut scope, script)?;
+        let ret = unit_safe_eval_with_scope::<Ret>(&rhai, &mut scope, script)?;
 
         Ok(ret)
     }
@@ -278,8 +307,7 @@ where
          // Store a pointer to the Ledger for the duration of the script
         rhai.set_default_tag(rhai::Dynamic::from(ledger_handle));
         
-        let ret = rhai
-            .eval_with_scope::<Ret>(&mut scope, script)?;
+        let ret = unit_safe_eval_with_scope::<Ret>(&rhai, &mut scope, script)?;
 
         // Pointer to the Ledger must be cleared to prevent it from outliving the mut borrow 
         rhai.set_default_tag(());
@@ -331,8 +359,7 @@ where
         // Store a pointer to the Ledger for the duration of the script
         rhai.set_default_tag(rhai::Dynamic::from(ledger_handle));
         
-        let ret = rhai
-            .eval_with_scope::<Output::RetIn>(&mut scope, script)?;
+        let ret = unit_safe_eval_with_scope::<Output::RetIn>(&rhai, &mut scope, script)?;
 
         // Pointer to the Ledger must be cleared to prevent it from outliving the mut borrow 
         rhai.set_default_tag(());

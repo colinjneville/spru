@@ -10,10 +10,14 @@ keywords = ["gamedev", "framework", "game", "wasm", "bevy"]
 
 [features]
 default = ["server", "client", "local", "remote", "script"]
+
 server = ["aeronet_webtransport?/server"]
 client = ["aeronet_webtransport?/client"]
 local = ["client", "server"]
-remote = ["dep:aeronet", "aeronet_webtransport/server", "dep:url"]
+remote = ["dep:aeronet", "aeronet_webtransport/server", "dep:url", "dep:serde", "dep:rmp-serde", ]
+
+# Serialize using human-readable ron and trace remote communications
+traced-comms = ["dep:ron"]
 script = ["dep:spru-script"]
 
 [dependencies]
@@ -22,12 +26,9 @@ spru-script = { workspace = true, optional = true }
 
 bevy = { workspace = true, features = ["system_clipboard" ] }
 
-serde.workspace = true
-rmp-serde.workspace = true
-
-scopeguard.workspace = true
-
 thiserror.workspace = true
+
+tracing.workspace = true
 
 uuid.workspace = true
 
@@ -38,7 +39,11 @@ tagset.workspace = true
 
 aeronet = { workspace = true, optional = true }
 aeronet_webtransport = { workspace = true, optional = true }
+serde = { workspace = true, optional = true }
+rmp-serde = { workspace = true, optional = true }
+ron = { workspace = true, optional = true }
 url = { workspace = true, optional = true }
+
 
 [dev-dependencies]
 spru-test = { path = "../spru-test/" }

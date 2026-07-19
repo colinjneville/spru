@@ -7,7 +7,7 @@ use crate::server;
 
 #[derive_where(Debug, Default; )]
 pub struct Plugin<Server: crate::server::ServerSSS> {
-    _server: PhantomData<fn() -> Server>,
+    _p: PhantomData<Server>,
 }
 
 impl<Server> prelude::Plugin for Plugin<Server>
@@ -41,11 +41,7 @@ where
                     server::remote::system::propagate_remote_queues::<Server>,
                 ),
             )
-            .add_observer(server::remote::observer::on_opened)
-            .add_observer(server::remote::observer::on_session_request::<Server>)
-            .add_observer(server::remote::observer::on_connecting::<Server>)
-            .add_observer(server::remote::observer::on_connected::<Server>)
-            .add_observer(server::remote::observer::on_disconnected::<Server>)
-        ;
+            .add_observer(server::remote::command::StartListener::<Server>::on_session_request)
+            ;
     }
 }

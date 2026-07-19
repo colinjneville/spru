@@ -3,26 +3,21 @@ use std::fmt;
 use bevy::prelude;
 use bevy_egui::egui;
 
+use spru_bevy::remote::component::CertificateHash;
+
 use super::ConfigPanel as _;
 
 use super::Validated;
 
-#[derive(Debug, Default, PartialEq, Eq)]
-struct CertHash([u8; 32]);
+#[derive(Debug, Default)]
+struct BlankableCertificateHash(CertificateHash);
 
-impl AsRef<[u8; 32]> for &CertHash {
-    fn as_ref(&self) -> &[u8; 32] {
-        &self.0
-    }
-}
-
-impl fmt::Display for CertHash {
+impl fmt::Display for BlankableCertificateHash {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.0 == CertHash::default().0 {
+        if self.0 == CertificateHash::default() {
             Ok(())
         } else {
-            let s = super::encode_base64(&self.0);
-            write!(f, "{s}")
+            write!(f, "{}", self.0)
         }
     }
 }
@@ -31,7 +26,7 @@ impl fmt::Display for CertHash {
 struct ConfigRemoteJoinPanel {
     address: Validated<url::Url>,
     port: Validated<u16>,
-    cert_hash: Validated<CertHash>,
+    cert_hash: Validated<BlankableCertificateHash>,
     password: String,
 }
 
@@ -40,7 +35,7 @@ impl Default for ConfigRemoteJoinPanel {
         Self { 
             address: Validated::new(url::Url::parse("https://localhost").unwrap()), 
             port: Validated::new(super::DEFAULT_PORT), 
-            cert_hash: Validated::new(CertHash::default()),
+            cert_hash: Validated::new(BlankableCertificateHash::default()),
             password: String::new(),
         }
     }
@@ -58,12 +53,13 @@ impl ConfigRemoteJoinPanel {
         Ok(url)
     }
 
-    fn validate_hash(s: &str) -> Result<CertHash, &'static str> {
+    fn validate_hash(s: &str) -> Result<BlankableCertificateHash, &'static str> {
         if s.is_empty() {
-            Ok(CertHash::default())
+            Ok(BlankableCertificateHash::default())
         } else {
-            aeronet_webtransport::cert::hash_from_b64(s)
-                .map(CertHash)
+            spru_bevy::remote::aeronet_webtransport::cert::hash_from_b64(s)
+                .map(CertificateHash)
+                .map(BlankableCertificateHash)
                 .map_err(|_| "Invalid certificate hash")
         }
     }
@@ -138,52 +134,24 @@ impl super::Config for ConfigJoin {
         let port = self.server_panel.port.into_value();
         let password = self.server_panel.password;
 
-        address.set_port(Some(port))
-            .expect("Url was already checked for port support");
+        if address.set_port(Some(port)).is_err() {
+            prelude::warn!("Can't set port for address {address}");
+        }
 
-        // aeronet_webtransport::xwt_web::
+        let cert_hash = Some(cert_hash.0).filter(|ch| ch != &CertificateHash::default());
 
-        let config = cfg_select! {
-            all(target_family = "wasm", target_os = "unknown") => {
-                {
-                    let server_certificate_hashes = if cert_hash == CertHash::default() {
-                        vec![]
-                    } else {
-                        vec![aeronet_webtransport::xwt_web::CertificateHash {
-                            algorithm: aeronet_webtransport::xwt_web::HashAlgorithm::Sha256,
-                            value: cert_hash.0.to_vec(),
-                        }]
-                    };
-                    
-                    aeronet_webtransport::xwt_web::WebTransportOptions {
-                        server_certificate_hashes,
-                        .. Default::default()
-                    }
-                }
-            }
-            _ => {
-                {
-                    let config = aeronet_webtransport::client::ClientConfig::builder()
-                        .with_bind_default();
-
-                    if cert_hash == CertHash::default() {
-                        config.with_native_certs()
-                    } else {
-                        config.with_server_certificate_hashes([aeronet_webtransport::wtransport::tls::Sha256Digest::new(cert_hash.0)])
-                    }.build()
-                }
-            }
-        };
-
-        let mut join_remote = spru_bevy::client::remote::command::JoinRemote::<crate::Client>::new(address)
-            .with_config(config)
-            .with_header("username", &username);
-
+        let mut connection_config = spru_bevy::client::remote::component::ConnectionConfig::new(address);
+        connection_config.certificate_hash = cert_hash;
+        connection_config.headers.insert("username".to_string(), username);
         if !password.is_empty() {
-            join_remote.set_header("password", &password);
+            connection_config.headers.insert("password".to_string(), password);
         }
             
-        commands.spawn_empty()
+        let join_remote = spru_bevy::client::remote::command::JoinRemote::<crate::Client>::new(connection_config);
+            
+        commands
+            .spawn_empty()
+            .queue(crate::plugin::remote_client::StartJoinLobby { })
             .queue(join_remote);
     }
 }

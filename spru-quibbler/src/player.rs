@@ -1,4 +1,4 @@
-use std::fmt;
+use std::{collections::HashMap, fmt};
 
 use rust_fsm::state_machine;
 use itertools::Itertools as _;
@@ -18,18 +18,44 @@ pub(crate) fn validate_usernames<'u>(usernames: impl Iterator<Item = &'u str>) -
     Ok(())
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-#[script(state = false)]
-pub struct Input {
-    #[get]
-    pub username: String,
-    // ip...
+/// Provided by the client on attempted first connection. If the client gets disconnected,
+/// they can request a reconnect with the same token to rejoin the game.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct ReconnectToken(pub u64);
+
+impl ReconnectToken {
+    pub fn from_headers(headers: &HashMap<String, String>) -> Result<Option<Self>, &str> {
+        Ok(
+            headers
+                .get("token")
+                .map(|s| s.parse::<u64>().map_err(|_| s))
+                .transpose()
+                .map_err(String::as_str)?
+                .map(crate::player::ReconnectToken)
+        )
+    }
 }
 
-impl Input {
-    pub fn new(username: String) -> Self {
-        Self { username }
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct Request {
+    pub username: String,
+    pub reconnect_token: Option<ReconnectToken>,
+}
+
+impl Request {
+    pub fn into_data(self) -> Data {
+        Data {
+            username: self.username,
+        }
     }
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[script(state = false)]
+pub struct Data {
+    #[get]
+    pub username: String,
 }
 
 #[allow(unused)]
@@ -39,7 +65,7 @@ pub struct Init;
 impl spru::player::Init for Init {
     type Action = crate::Actions;
     type Root = IdT<crate::game::Root>;
-    type In = Input;
+    type In = Request;
 
     fn initialize(
         &self,
@@ -72,10 +98,12 @@ impl spru::player::Init for Init {
         current_turn.update(rotating::insert(current_turn.len(), player_id));
         current_dealer.update(rotating::insert(current_dealer.len(), player_id));
 
-        players.update(player_map::add_player(
+        let data = input.into_data();
+
+        players.update(player_map::insert(
             player_id,
             Root {
-                data: input,
+                data,
                 hand,
                 score,
                 fsm,
@@ -91,7 +119,7 @@ impl spru::player::Init for Init {
 #[script(state = false, include = [Impl])]
 pub struct Root {
     #[get]
-    pub data: Input,
+    pub data: Data,
     #[get]
     pub hand: IdT<pile::Pile<data::Card>>,
     #[get]
@@ -106,7 +134,7 @@ pub struct Root {
 impl Root {
     #[function]
     fn create(
-        data: Input, 
+        data: Data, 
         hand: IdT<pile::Pile<data::Card>>,
         score: IdT<counter::Counter<u32>>,
         fsm: IdT<fsm::Fsm<machine::Impl>>,
@@ -177,9 +205,12 @@ pub mod machine {
 pub mod init {
     const SCRIPT: crate::script::Script = crate::script::script!("rhai/player_init.rhai");
 
+    const REMOVE_PLAYER_SCRIPT: crate::script::Script = crate::script::script!("rhai/player_remove.rhai");
+
     pub fn new() -> crate::PlayerInit {
         let language = crate::Language::default();
         crate::PlayerInit::new(language, SCRIPT.get())
+            .with_remove_player(REMOVE_PLAYER_SCRIPT.get())
     }
 }
 

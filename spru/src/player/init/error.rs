@@ -56,6 +56,12 @@ impl From<item::storage::Error> for Error {
     }
 }
 
+impl From<AnyError> for Error {
+    fn from(value: AnyError) -> Self {
+        Self::new(Kind::Init(value))
+    }
+}
+
 impl<E: std::error::Error + Send + Sync + 'static> From<E> for Error {
     fn from(value: E) -> Self {
         Self::new(Kind::Init(AnyError::new(value)))

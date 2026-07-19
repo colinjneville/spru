@@ -1,6 +1,6 @@
 pub mod command;
 pub mod component;
-pub mod observer;
+pub mod event;
 mod plugin;
 pub use plugin::Plugin;
 pub mod system;

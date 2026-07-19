@@ -18,6 +18,10 @@ impl<Server: server::ServerSSS> Runner<Server> {
         Self { server }
     }
 
+    pub fn root(&self) -> &Server::Root {
+        self.server.root()
+    }
+
     pub fn save(&self) -> Result<spru::server::Save<Server>, spru::server::error::SaveError>
     where
         Server::PlayerInit: Clone,

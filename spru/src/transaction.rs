@@ -1,7 +1,8 @@
 use std::{collections::VecDeque, fmt};
 
-use crate::{action, common::error::RecoverableError, item, record::Records, transaction};
+use crate::{action, common::error::RecoverableError, item, record::{self, Records}, transaction};
 
+/// A group of sequential [Transaction]s.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Transactions<Action> {
     transactions: VecDeque<Transaction<Action>>,
@@ -58,7 +59,36 @@ impl<Action> Transactions<Action> {
         if let Some(mut diff) = id.index_of(&self.start_id) {
             diff = diff.min(self.transactions.len());
             self.transactions.drain(diff..);
+            self.start_id = self.start_id.skip(diff as u32);
         }
+    }
+
+    pub(crate) fn clear(&mut self) {
+        let id = self.next_id();
+        self.transactions.drain(..);
+        self.start_id = id;
+    }
+
+    pub(crate) fn retain<F>(&mut self, f: F)
+    where
+        F: Fn(&record::Packed<Action>) -> bool,
+    {
+        for transaction in &mut self.transactions {
+            transaction.retain(&f);
+        }
+    }
+
+    pub(crate) fn any<F>(&self, f: F)
+        -> bool
+    where
+        F: Fn(&record::Packed<Action>) -> bool,
+    {
+        for transaction in &self.transactions {
+            if transaction.any(&f) {
+                return true;
+            }
+        }
+        false
     }
 }
 
@@ -109,6 +139,21 @@ impl<Action> Transaction<Action> {
     pub(crate) fn into_records(self) -> Records<Action> {
         self.records
     }
+
+    pub(crate) fn retain<F>(&mut self, f: F)
+    where
+        F: Fn(&record::Packed<Action>) -> bool,
+    {
+        self.records.retain(f);
+    }
+
+    pub(crate) fn any<F>(&self, f: F)
+        -> bool
+    where 
+        F: Fn(&record::Packed<Action>) -> bool,
+    {
+        self.records.any(f)
+    }
 }
 
 /// Uniquely identifies a confirmed [Transaction]
@@ -134,6 +179,10 @@ impl Id {
 
     pub(crate) fn next(&self) -> Self {
         Self::new(self.get() + 1)
+    }
+
+    pub(crate) fn skip(&self, n: u32) -> Self {
+        Self(self.0 + n)
     }
 
     pub(crate) fn into_u32(self) -> u32 {

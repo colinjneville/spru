@@ -115,12 +115,16 @@ pub type RunServerResult<T> = std::result::Result<T, RunServerError>;
 
 pub(crate) fn trigger_events<Server: ServerSSS>(entity: prelude::Entity, event_trigger: &mut impl common::TriggerEvent, events: Vec<spru::server::Event<Server>>) {
     for event in events {
-        #[allow(clippy::single_match)]
         match event {
             spru::server::Event::GameComplete(game_complete) => {
-                event_trigger.trigger(event::GameComplete::<Server> {
+                let spru::server::event::GameCompleted {
+                    game_outcome,
+                    ..
+                } = game_complete;
+
+                event_trigger.trigger(event::GameCompleted::<Server> {
                     entity,
-                    game_outcome: game_complete.game_outcome,
+                    game_outcome,
                 });
             }
             _ => {}

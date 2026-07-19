@@ -4,9 +4,7 @@ pub use error::Error;
 use std::collections::VecDeque;
 
 use crate::{
-    interactor,
-    item::{self},
-    player,
+    common::error::AnyError, interactor, item::{self}, player,
 };
 
 pub trait Init {
@@ -18,7 +16,16 @@ pub trait Init {
     /// The game's [Server::Action](crate::Server::Action)
     type Action: crate::Action;
 
+    /// The logic to initialize a new player. If this method returns an error,
+    /// the player will not be added, and all changes will be reverted.
     fn initialize(&self, interactor: &mut Interactor<Self>, input: Self::In) -> self::Result<()>;
+
+    /// The logic to remove an existing player. It is not required to allow removing a player,
+    /// as it may be impossible for some games. In this case, the default implementation of
+    /// this method is sufficient, and will reject all attempts to remove a player.
+    fn remove(&self, _interactor: &mut Interactor<Self>) -> self::Result<()> {
+        Err(Error::new(error::Kind::Init(AnyError::from_string("Removing players is not implemented"))))
+    }
 }
 
 /// An alias for the [Interactor](crate::Interactor) used in [player::Init].

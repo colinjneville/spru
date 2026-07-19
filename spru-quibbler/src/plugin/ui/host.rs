@@ -13,6 +13,17 @@ pub(super) struct ConfigHost {
     server_panel: super::ConfigRemoteCreatePanel,
 }
 
+impl ConfigHost {
+    pub fn new(external_ip: Option<&str>) -> Self {
+        Self {
+            step: 0,
+            game_panel: Default::default(),
+            player_panel: Default::default(),
+            server_panel: super::ConfigRemoteCreatePanel::new(external_ip),
+        }
+    }
+}
+
 impl super::Config for ConfigHost {
     fn show(&mut self, ctx: &mut egui::Context) -> bool {
         self.game_panel.show_panel(&mut self.step, 0, ctx, "Next");
@@ -24,14 +35,19 @@ impl super::Config for ConfigHost {
     fn complete(self: Box<Self>, commands: &mut prelude::Commands) {
         let max_players = self.game_panel.max_players.into_value();
         let username = self.player_panel.username.into_value();
+        let external_ip = self.server_panel.external_ip.into_value();
         let port = self.server_panel.port.into_value();
         let password = self.server_panel.password;
 
-        // It's not ideal to maintain a separate list of usernames in the connection observer,
-        // but it's simpler until we have a fleshed-out lobby. A username conflict also
-        // has no impact on correctness (everything is done with ids), it's just confusing.
-        let mut claimed_usernames = HashSet::new();
-        claimed_usernames.insert(username.clone());
+        let mut ips = vec!["localhost", "127.0.0.1", "::1"];
+        if !external_ip.is_empty() {
+            ips.push(&external_ip);
+        }
+
+        let identity = spru_bevy::remote::aeronet_webtransport::wtransport::Identity::self_signed(ips)
+            .expect("external_ip should already have been validated");
+
+        let local_client_entity = commands.spawn_empty().id();
 
         commands.spawn_empty()
             .queue(
@@ -41,42 +57,23 @@ impl super::Config for ConfigHost {
                     reaction: crate::reaction::new(),
                 }
             )
-            .observe(move |mut attemped_connection: prelude::On<spru_bevy::server::remote::event::AttemptedConnection::<crate::player::Input>>| {
-                attemped_connection.propagate(false);
-                
-                if attemped_connection.headers.get("password").map(String::as_str).unwrap_or("") == &*password {
-                    let mut username = attemped_connection.headers
-                        .get("username")
-                        .map(String::as_str)
-                        .unwrap_or("Anonymous");
-
-                    // At least MAX_MAX_PLAYERS fallback usernames provided
-                    let fallback_usernames = ["Anonymous2", "Anonymous3", "Anonymous4", "Anonymous5", "Anonymous6", "Anonymous7", "Anonymous8"];
-                    let mut iter = fallback_usernames.iter();
-                    while claimed_usernames.contains(username) {
-                        username = *iter.next()
-                            .expect("Not enough fallback usernames");
-                    }
-
-                    let username = username.to_string();
-                    claimed_usernames.insert(username.clone());
-                    
-                    attemped_connection.set_response(spru_bevy::server::remote::JoinRequestResponse::AcceptNew(crate::player::Input {
-                        username,
-                    }));
-                } else {
-                    attemped_connection.set_response(spru_bevy::server::remote::JoinRequestResponse::RejectNotAllowed);
-                }
-            })
             .queue(
-                spru_bevy::local::command::AddLocalPlayer::<crate::Server, crate::Client>::new( 
-                    crate::player::Input {
-                        username,
-                    } 
+                crate::plugin::remote_server::StartHostLobby {
+                    max_players,
+                    password,
+                }
+            )
+            .queue(
+                spru_bevy::local::command::AddLocalPlayer::<crate::Server, crate::Client>::new_for_entity( 
+                    crate::player::Data {
+                        username: username.clone(),
+                    },
+                    local_client_entity,
                 )
             )
             .queue(
                 spru_bevy::server::remote::command::StartListenerBuilder {
+                    identity: Some(identity),
                     port: Some(port),
                     keep_alive_interval: Some(time::Duration::from_secs(5)),
                     max_idle_timeout: Some(time::Duration::from_mins(2)),
@@ -84,5 +81,18 @@ impl super::Config for ConfigHost {
                 }.build::<crate::Server>()
             )
         ;
+
+        // Set ActiveClient context to local player
+        #[cfg(feature = "ui")]
+        commands.entity(local_client_entity)
+            .queue(|mut entity: prelude::EntityWorldMut| {
+                if let Ok((&game_id, &client_id)) = entity.get_components::<(&spru_bevy::common::component::GameId, &spru_bevy::client::component::ClientId)>() {
+                    entity.resource_scope::<crate::plugin::ui::ActiveClient, ()>(|_, mut active_client| {
+                        active_client.set(*game_id, Some(*client_id));
+                    });
+                } else {
+                    prelude::error!("Expected GameId and ClientId");
+                }
+            });
     }
 }

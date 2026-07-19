@@ -56,14 +56,11 @@ impl<Action> Log<Action> {
 
         let undo_transaction = transaction.apply_or_revert(storage)?;
 
-        let do_id = self.next_id;
-        self.next_id = do_id.next();
+        let id = self.next_id;
+        self.register_undo(undo_transaction);
 
-        let undo_id = self.undo_transactions.push_back(undo_transaction);
-
-        debug_assert!(do_id == undo_id);
         Ok(transaction::Confirmed {
-            id: do_id,
+            id,
             transaction,
         })
     }
@@ -104,14 +101,22 @@ impl<Action> Log<Action> {
         Ok(confirmed)
     }
 
+    /// 
     pub fn pin_undo(&self) -> UndoPin {
         self.undo_pin_board.add_pin()
     }
 
-    // Release any undo transactions that are no longer needed
+    /// Release any undo transactions that are no longer needed
     fn release_undo(&mut self) {
         let min_pin = self.undo_pin_board.min_pin().unwrap_or(self.next_id);
         self.undo_transactions.trim_start(min_pin);
+    }
+
+    /// Release all undo transactions. Intended for operations which are impossible to undo.
+    /// Currently this is just adding/removing players, because adding/removing is not logged,
+    /// it is stored in the [crate::player::Manager].
+    pub fn force_release_undo(&mut self) {
+        self.undo_transactions.clear();
     }
 }
 

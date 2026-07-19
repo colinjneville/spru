@@ -30,7 +30,7 @@ serde.workspace = true
 tracing.workspace = true
 tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
 
-[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+[target.'cfg(target_family = "wasm")'.dev-dependencies]
 getrandom = { version = "0.3", features = ["wasm_js"] }
 uuid = { workspace = true, features = ["rng-getrandom"] }
 wasm-bindgen = { version = "0.2" }

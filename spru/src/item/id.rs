@@ -73,8 +73,8 @@ impl<T> From<IdT<T>> for Id {
 #[serde(transparent)]
 pub struct IdT<T> {
     id: Id,
-    #[serde(skip_serializing)]
-    _p: PhantomData<fn() -> T>,
+    #[serde(skip)]
+    _p: PhantomData<T>,
 }
 
 impl<T> IdT<T> {
@@ -158,7 +158,15 @@ impl Range {
         Self { range }
     }
 
-    pub(crate) fn contains(&self, id: &Id) -> bool {
+    pub fn start(&self) -> Id {
+        Id(self.range.start)
+    }
+
+    pub fn end(&self) -> Id {
+        Id(self.range.end)
+    }
+
+    pub(crate) fn contains(&self, id: Id) -> bool {
         self.range.contains(&id.0)
     }
 
@@ -167,6 +175,16 @@ impl Range {
             next_id: AtomicU32::new(self.range.start),
             end_of_id_reservation: self.range.end,
         }
+    }
+
+    /// Advance the range to the beginning start.
+    /// Panics if `id` is not within the range.
+    pub(crate) fn skip(mut self, id: Id) -> Self {
+        assert!(id.0 >= self.range.start);
+        assert!(id.0 < self.range.end);
+
+        self.range.start = id.0;
+        self
     }
 }
 

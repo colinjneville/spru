@@ -1,3 +1,6 @@
+mod join_lobby;
+pub use join_lobby::{JoinLobby, StartJoinLobby};
+
 use bevy::prelude;
 
 pub(crate) struct RemoteClient;

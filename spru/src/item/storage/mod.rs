@@ -49,6 +49,9 @@ pub trait Storage: ReadOnlyStorage {
     fn destroy<T>(&mut self, id: IdT<T>) -> self::Result<Item<T>>
     where
         T: Storable<Self::State>;
+
+    /// Destroy all [`Item<T>`]s, as the client is shutting down
+    fn clear(&mut self) -> self::Result<()>;
 }
 
 /// Types which can be stored in a [Storage]

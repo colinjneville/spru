@@ -7,7 +7,7 @@ use crate::client;
 
 #[derive_where(Debug, Default)]
 pub struct Plugin<Client> {
-    _client: PhantomData<fn() -> Client>,
+    _client: PhantomData<Client>,
 }
 
 impl<Client: super::ClientSSS> prelude::Plugin for Plugin<Client> {

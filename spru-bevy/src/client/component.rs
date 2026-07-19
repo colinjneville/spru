@@ -267,6 +267,18 @@ impl EntityMap {
             hash_map::Entry::Vacant(_) => Err(super::BevyError::IdNotFound(id)),
         }
     }
+
+    pub(crate) fn clear_as(
+        &mut self,
+        mut f: impl FnMut(item::Id, prelude::Entity) -> super::BevyResult<()>,
+    ) -> super::BevyResult<()> {
+        // Clear as much as we can, and return the first error hit
+        let mut result = Ok(());
+        for (id, entity) in self.map.drain() {
+            result = result.and(f(id.0, entity));
+        }
+        result
+    }
 }
 
 impl<ID: Into<item::Id>> ops::Index<ID> for EntityMap {

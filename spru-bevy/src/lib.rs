@@ -72,3 +72,39 @@ pub mod remote;
 pub mod server;
 
 pub mod reflect;
+
+pub(crate) fn u256_to_base64(hash: &[u8; 32]) -> String {
+    let mut s = vec![0u8; 44];
+
+    let (chunks, remainder) = hash.as_chunks::<3>();
+    let padded_chunk = [remainder[0], remainder[1], 0];
+    
+    for (i, &[a, b, c]) in chunks.iter().chain(std::iter::once(&padded_chunk)).enumerate() {
+        s[i * 4] = a >> 2;
+        s[i * 4 + 1] = (a << 6 >> 2) | (b >> 4);
+        s[i * 4 + 2] = (b << 4 >> 2) | (c >> 6);
+        s[i * 4 + 3] = c << 2 >> 2;
+    }
+    for c in &mut s {
+        *c = match *c {
+            0..26 => {
+                *c + b'A'
+            }
+            26..52 => {
+                *c + b'a' - 26
+            }
+            52..62 => {
+                *c + b'0' - 52
+            }
+            62 => {
+                *c + b'+' - 62
+            }
+            63.. => {
+                *c + b'/' - 63
+            }
+        };
+    }
+    s[43] = b'=';
+
+    String::from_utf8(s).unwrap()
+}
