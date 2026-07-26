@@ -10,4 +10,8 @@ pub const OUTPUT_ENQUEUE_TRIGGER: LazyLock<rhai::ImmutableString> = LazyLock::ne
 
 pub const OUTPUT_TRIGGER_QUEUE: LazyLock<rhai::ImmutableString> = LazyLock::new(|| rhai::ImmutableString::from("trigger_queue"));
 
+pub const OUTPUT_END_GAME: LazyLock<rhai::ImmutableString> = LazyLock::new(|| rhai::ImmutableString::from("end_game"));
+
+pub const OUTPUT_GAME_OUTCOME: LazyLock<rhai::ImmutableString> = LazyLock::new(|| rhai::ImmutableString::from("game_outcome"));
+
 pub const GLOBAL_TYPE: LazyLock<rhai::ImmutableString> = LazyLock::new(|| rhai::ImmutableString::from("type"));

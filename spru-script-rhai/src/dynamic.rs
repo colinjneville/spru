@@ -1,4 +1,4 @@
-use std::any;
+use std::{any, collections::HashMap};
 
 pub trait IntoDynamic: 'static {
     fn into_dynamic(self) -> rhai::Dynamic;

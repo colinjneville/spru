@@ -5,6 +5,8 @@ use std::time;
 
 use bevy::prelude;
 
+use crate::{game, player, reaction};
+
 #[derive(Debug)]
 #[derive(prelude::Resource)]
 pub struct ExternalIp(ExternalIpInternal);
@@ -70,9 +72,9 @@ impl ExternalIp {
     }
 }
 
-pub(crate) struct RemoteServer;
+pub(crate) struct Host;
 
-impl RemoteServer {
+impl Host {
     /// Skip the main menu state if we are a dedicated server without UI
     fn skip_main_menu(
         mut next_state: prelude::ResMut<prelude::NextState<crate::AppState>>,
@@ -98,13 +100,13 @@ impl RemoteServer {
                 commands.spawn_empty()
                     .queue(
                         spru_bevy::server::command::Init::<crate::Server, crate::GameInit> {
-                            game_init: crate::game::init::new(),
-                            player_init: crate::player::init::new(),
-                            reaction: crate::reaction::new(),
+                            game_init: game::init::new(game::Settings::default()),
+                            player_init: player::init::new(),
+                            reaction: reaction::new(),
                         }
                     )
                     .queue(
-                        crate::plugin::remote_server::StartHostLobby {
+                        crate::plugin::host::StartHostLobby {
                             max_players: 4,
                             password: String::new(),
                         }
@@ -125,24 +127,12 @@ impl RemoteServer {
                         }.build::<crate::Server>()
                     )
                     ;
-
-                 #[cfg(feature = "ui")]
-                commands.entity(local_client_entity)
-                    .queue(|mut entity: prelude::EntityWorldMut| {
-                        if let Ok((&game_id, &client_id)) = entity.get_components::<(&spru_bevy::common::component::GameId, &spru_bevy::client::component::ClientId)>() {
-                            entity.resource_scope::<crate::plugin::ui::ActiveClient, ()>(|_, mut active_client| {
-                                active_client.set(*game_id, Some(*client_id));
-                            });
-                        } else {
-                            prelude::error!("Expected GameId and ClientId");
-                        }
-                    });
             }
         }
     }
 }
 
-impl prelude::Plugin for RemoteServer {
+impl prelude::Plugin for Host {
     fn build(&self, app: &mut prelude::App) {
         app
             .add_plugins(spru_bevy::server::remote::Plugin::<crate::Server>::default())

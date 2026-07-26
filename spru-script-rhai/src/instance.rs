@@ -369,6 +369,6 @@ where
 
         output.triggers(&mut output_map);
 
-        Ok(output.apply_ret(ret))
+        Ok(output.apply_ret(ret)?)
     }
 }

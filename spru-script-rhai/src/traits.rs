@@ -9,7 +9,7 @@ use crate::storage_handle::StorageHandle;
 // Creates function/method/create traits for converting FromDynamic parameters and IntoDynamic return types
 // The first number is the max number of parameters when converting parameters (O(2^n) implementations),
 // the second number is the max number of parameters when not converting parameters (O(n))
-spru_script_rhai_macro::impl_dynamic_fn!(6, 8);
+spru_script_rhai_macro::impl_dynamic_fn!(5, 10);
 
 
 pub trait RegisterStatelessNoop {

@@ -1,79 +1,59 @@
 mod core;
-pub(crate) use core::Core;
-cfg_select! {
-    feature = "client" => {
-        mod client;
-        pub(crate) use client::Client;
-    }
-    _ => {
-        pub(crate) use Noop as Client;
-    }
-}
-cfg_select! {
-    all(feature = "remote", feature = "client") => {
-        mod remote_client;
-        pub(crate) use remote_client::RemoteClient;
-    }
-    _ => {
-        pub(crate) use Noop as RemoteClient;
-    }
-}
-cfg_select! {
-    feature = "remote-server" => {
-        mod remote_server;
-        pub(crate) use remote_server::RemoteServer;
-    }
-    _ => {
-        pub(crate) use Noop as RemoteServer;
-    }
-}
-cfg_select! {
-    feature = "local" => {
-        mod local;
-        pub(crate) use local::Local;
-    }
-    _ => {
-        pub(crate) use Noop as Local;
-    }
-}
-cfg_select! {
-    feature = "remote" => {
-        mod remote;
-        pub(crate) use remote::Remote;
-    }
-    _ => {
-        pub(crate) use Noop as Remote;
-    }
-}
-cfg_select! {
-    feature = "server" => {
-        mod server;
-        pub(crate) use server::Server;
-    }
-    _ => {
-        pub(crate) use Noop as Server;
-    }
-}
 
-cfg_select! {
-    feature = "ui" => {
-        mod ui;
-        pub(crate) use ui::Ui;
-    }
-    _ => {
-        pub(crate) use Noop as Ui;
-    }
-}
+#[cfg(feature = "client")]
+mod client;
+
+#[cfg(feature = "join")]
+mod join;
+
+#[cfg(feature = "host")]
+mod host;
+
+#[cfg(feature = "hotseat")]
+mod hotseat;
+
+#[cfg(feature = "local")]
+mod local;
+
+#[cfg(feature = "remote")]
+mod remote;
+
+#[cfg(feature = "server")]
+mod server;
+
+#[cfg(feature = "ui")]
+mod ui;
 
 use bevy::prelude;
 
-#[allow(dead_code, reason = "Replaces plugins for disabled features")]
-pub(crate) struct Noop;
+pub struct Group;
 
-impl prelude::Plugin for Noop {
-    fn build(&self, _app: &mut prelude::App) { }
-    
-    fn is_unique(&self) -> bool {
-        false
+impl prelude::PluginGroup for Group {
+    fn build(self) -> bevy::app::PluginGroupBuilder {
+        let builder = bevy::app::PluginGroupBuilder::start::<Self>()
+            .add(core::Core);
+
+        #[cfg(feature = "client")]
+        let builder = builder.add(client::Client);
+
+        #[cfg(feature = "join")]
+        let builder = builder.add(join::Join);
+
+        #[cfg(feature = "host")]
+        let builder = builder.add(host::Host);
+
+        #[cfg(feature = "local")]
+        let builder = builder.add(local::Local);
+
+        #[cfg(feature = "remote")]
+        let builder = builder.add(remote::Remote);
+
+        #[cfg(feature = "server")]
+        let builder = builder.add(server::Server);
+
+        #[cfg(feature = "ui")]
+        let builder = builder.add(ui::Ui);
+
+        builder
     }
 }

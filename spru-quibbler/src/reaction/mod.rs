@@ -248,18 +248,18 @@ impl Trigger {
         };
 
         let mut max_score = 0;
-        let mut final_scores = HashMap::new();
+        let mut final_scores = vec![];
         for (player_id, player_root) in players.iter() {
             with! { interactor =>
                 let player_score = ~[player_root.score]?;
             };
 
             max_score = max_score.max(*player_score.value());
-            final_scores.insert(player_id, *player_score.value());
+            final_scores.push((player_id, player_root.data.username.clone(), *player_score.value()));
         }
 
         let mut winners = vec![];
-        for (&player_id, &score) in &final_scores {
+        for &(player_id, ref _name, score) in &final_scores {
             if score == max_score {
                 winners.push(player_id);
             }

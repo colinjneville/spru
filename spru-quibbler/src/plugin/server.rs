@@ -35,8 +35,8 @@ impl prelude::Plugin for Server {
                 {
                     let mut log = q_log.get_mut(game_complete.entity).ok();
                     crate::Log::try_log(&mut log, "Game complete");
-                    for (id, score) in &game_complete.game_outcome.final_scores {
-                        crate::Log::try_log(&mut log, format!("{id}: {score}"));
+                    for (id, name, score) in &game_complete.game_outcome.final_scores {
+                        crate::Log::try_log(&mut log, format!("{name} ({id}): {score}"));
                     }
                 },
             )

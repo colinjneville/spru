@@ -13,7 +13,7 @@ if trigger == type.Trigger.start_game() {
 
     output.enqueue_trigger(type.Trigger.start_round());
 } else if trigger == type.Trigger.start_round() {
-    let hand_size = context.root.round.value + 3;
+    let hand_size = context.root.round.value + context.root.settings.first_hand;
     let player_count = context.root.players.count;
     // TODO This needs to apply a non-method-created Action, which I 
     // don't think is currently possible
@@ -101,8 +101,8 @@ if trigger == type.Trigger.start_game() {
     // Clear the discard pile
     context.root.discard.clear();
 
-    // Game ends after 8 rounds
-    if context.root.round == 7 {
+    
+    if context.root.settings.first_hand + context.root.round.value == context.root.settings.last_hand {
         output.enqueue_trigger(type.Trigger.end_game());
     } else {
         context.root.round.add_checked(1);
@@ -115,7 +115,7 @@ if trigger == type.Trigger.start_game() {
     for player_id in context.root.players.ids {
         let player_root = context.root.players.get(player_id);
         max_score = max_score.max(player_root.score.value);
-        final_scores.push([player_id, player_root.score.value]);
+        final_scores.push([player_id, player_root.data.username, player_root.score.value]);
     }
 
     let winners = [];
@@ -128,8 +128,12 @@ if trigger == type.Trigger.start_game() {
         }
     }
 
-    // TODO
-    type.GameOutcome.create(winners, final_scores)
+    let game_outcome = type.GameOutcome.create(winners);
+    for final_score in final_scores {
+        game_outcome = type.GameOutcome.with_final_score(game_outcome, final_score[0], final_score[1], final_score[2]);
+    }
+
+    return game_outcome;
 } else {
     throw "Unknown trigger";
 }

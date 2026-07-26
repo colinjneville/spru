@@ -1,6 +1,8 @@
 use bevy::prelude;
 use bevy_egui::egui;
 
+use crate::plugin::{self, ui};
+
 pub(super) struct Data {
     client_entity: prelude::Entity,
     usernames: Vec<String>,
@@ -8,41 +10,14 @@ pub(super) struct Data {
     has_started: bool,
 }
 
-pub(super) fn join_lobby_connecting_ui(
-    mut egui: bevy_egui::EguiContexts,
-    timer: prelude::Res<prelude::Time>,
-) -> prelude::Result {
-    let ctx = egui.ctx_mut()?;
-
-    let dots = (timer
-        .elapsed()
-        .subsec_micros()
-        % 4) as usize;
-
-    egui::Window::new("join_lobby_connecting")
-        .title_bar(false)
-        .movable(false)
-        .min_width(480.)
-        .show(ctx, |ui| {
-            let mut s = "Connecting".to_string();
-            for _ in 0..dots {
-                s.push('.');
-            }
-            ui.label(s);
-        })
-        ;
-
-    Ok(())
-}
-
-pub(super) fn join_lobby_ui_get_client(
-    active_game: prelude::Res<super::ActiveGame>,
-    active_client: prelude::Res<super::ActiveClient>,
+pub(super) fn ui_get_client(
+    active_game: prelude::Res<ui::ActiveGame>,
+    active_client: prelude::Res<ui::client::ActiveClient>,
     client_map: prelude::Res<spru_bevy::client::resource::ClientMap>,
     q_has_join_lobby: prelude::Query<(
 
     ), (
-        prelude::With<crate::plugin::remote_client::JoinLobby>,
+        prelude::With<plugin::join::JoinLobby>,
     )>,
 ) -> Option<(spru::player::Id, prelude::Entity)> {
     let game_id = active_game.0?;
@@ -53,7 +28,7 @@ pub(super) fn join_lobby_ui_get_client(
     Some((client_id, client_entity))
 }
 
-pub(super) fn join_lobby_ui_get_data(
+pub(super) fn ui_get_data(
     prelude::In(input): prelude::In<Option<(spru::player::Id, prelude::Entity)>>,
     world: &prelude::World,
 ) 
@@ -92,7 +67,7 @@ pub(super) fn join_lobby_ui_get_data(
 }
 
 
-pub(super) fn join_lobby_ui(
+pub(super) fn ui_render(
     prelude::In(data): prelude::In<Option<Data>>,
     mut commands: prelude::Commands,
     mut egui: bevy_egui::EguiContexts,
@@ -111,11 +86,14 @@ pub(super) fn join_lobby_ui(
         }
 
         if let Ok(ctx) = egui.ctx_mut() {
+            let window_center = ctx.content_rect().center();
+
             // This is a lazy way of recreating a lobby without any additional non-game messages from the server
-            egui::Window::new("join_lobby")
-                .title_bar(false)
-                .movable(false)
+            egui::Window::new("Game Lobby")
+                .collapsible(false)
                 .resizable(false)
+                .pivot(egui::Align2::CENTER_CENTER)
+                .fixed_pos(window_center)
                 .show(ctx, |ui| {
                     ui.horizontal(|ui| {
                         ui.label("Waiting for host to begin game...");
@@ -141,6 +119,22 @@ pub(super) fn join_lobby_ui(
                 });
         }
     }
+}
+
+pub(super) fn on_insert(
+    insert: prelude::On<prelude::Insert, plugin::join::JoinLobby>,
+    mut active_client: prelude::ResMut<ui::client::ActiveClient>,
+    q_game_id: prelude::Query<(
+        &spru_bevy::common::component::GameId,
+        &spru_bevy::client::component::ClientId,
+    )>,
+) {
+    if let Ok((game_id, client_id)) = q_game_id.get(insert.entity) {
+        active_client.set(**game_id, Some(**client_id));
+    } else {
+        prelude::error!("JoinLobby was added without GameId/ClientId");
+    }
+
 }
 
 // fn in_game_reconnect(

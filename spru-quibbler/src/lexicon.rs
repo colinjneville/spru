@@ -15,6 +15,7 @@ impl spru_script::StatelessLexicon for Lexicon {
             data::card::register_Card       => data::Card as Card;
             crate::play::register_Play      => crate::Play as Play;
             reaction::register_Trigger      => reaction::Trigger as Trigger;
+            game::register_Settings         => game::Settings as GameSettings;
             game::register_Outcome          => game::Outcome as GameOutcome;
         } };
     }

@@ -1,3 +1,6 @@
+mod game_outcome;
+pub use game_outcome::GameOutcome;
+
 use bevy::prelude;
 
 pub(crate) struct Client;
@@ -8,6 +11,16 @@ impl prelude::Plugin for Client {
             .add_plugins((
                 spru_bevy::client::Plugin::<crate::Client>::default(),
             ))
+            .add_observer(|
+                game_complete: prelude::On<spru_bevy::client::event::GameComplete<crate::Client>>,
+                mut commands: prelude::Commands,
+            | {
+                commands.entity(game_complete.entity)
+                    .insert(
+                        GameOutcome::new(game_complete.game_outcome.clone())
+                    )
+                    ;
+            })
             .add_observer(|
                     client_add: prelude::On<prelude::Add, spru_bevy::client::component::Runner<crate::Client>>,
                     mut commands: prelude::Commands,

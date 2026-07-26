@@ -25,7 +25,7 @@ pub use state::State;
 use bevy::prelude;
 
 type Language = spru_script_rhai::RhaiInstance::<self::Lexicon>;
-type GameInit = spru_script::GameInit<spru::item::IdT<game::Root>, Language, ()>;
+type GameInit = spru_script::GameInit<spru::item::IdT<game::Root>, Language, game::Settings>;
 type PlayerInit = spru_script::PlayerInit<spru::item::IdT<game::Root>, Language, player::Data>;
 type Client = spru::client::Impl<Interaction, game::Outcome>;
 
@@ -50,16 +50,7 @@ enum AppState {
 
 fn main() {
     let _app_exit = prelude::App::new()
-        .add_plugins((
-            plugin::Core,
-            plugin::Ui,
-            plugin::Server,
-            plugin::Client,
-            plugin::Local,
-            plugin::Remote,
-            plugin::RemoteClient,
-            plugin::RemoteServer,
-        ))
+        .add_plugins(plugin::Group)
         .run();
 }
 

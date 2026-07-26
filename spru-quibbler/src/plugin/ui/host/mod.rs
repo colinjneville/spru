@@ -1,9 +1,22 @@
-use std::{collections::HashSet, time};
+mod host_lobby;
 
-use bevy::prelude;
-use bevy_egui::egui;
+use std::time;
 
-use super::ConfigPanel as _;
+use bevy::{ecs::system::IntoSystem as _, prelude};
+
+use crate::plugin::ui;
+
+pub(super) struct Plugin;
+
+impl prelude::Plugin for Plugin {
+    fn build(&self, app: &mut bevy::app::App) {
+        app
+            .add_systems(bevy_egui::EguiPrimaryContextPass, (
+                host_lobby::ui.pipe(crate::error_to_console),
+            ))
+            ;
+    }
+}
 
 #[derive(Debug, Default)]
 pub(super) struct ConfigHost {
@@ -25,14 +38,23 @@ impl ConfigHost {
 }
 
 impl super::Config for ConfigHost {
-    fn show(&mut self, ctx: &mut egui::Context) -> bool {
-        self.game_panel.show_panel(&mut self.step, 0, ctx, "Next");
-        self.player_panel.show_panel(&mut self.step, 1, ctx, "Next");
-        self.server_panel.show_panel(&mut self.step, 2, ctx, "Start");
-        self.step == 3
+    fn title(&self) -> &'static str {
+        "Host Remote Game"
+    }
+
+    fn panels(&mut self) -> (Vec<&mut dyn super::ConfigPanel>, &mut usize) {
+        (
+            vec![
+                &mut self.game_panel as &mut dyn super::ConfigPanel,
+                &mut self.player_panel,
+                &mut self.server_panel,
+            ],
+            &mut self.step,
+        )
     }
 
     fn complete(self: Box<Self>, commands: &mut prelude::Commands) {
+        let settings = self.game_panel.to_settings();
         let max_players = self.game_panel.max_players.into_value();
         let username = self.player_panel.username.into_value();
         let external_ip = self.server_panel.external_ip.into_value();
@@ -52,13 +74,13 @@ impl super::Config for ConfigHost {
         commands.spawn_empty()
             .queue(
                 spru_bevy::server::command::Init::<crate::Server, crate::GameInit> {
-                    game_init: crate::game::init::new(),
+                    game_init: crate::game::init::new(settings),
                     player_init: crate::player::init::new(),
                     reaction: crate::reaction::new(),
                 }
             )
             .queue(
-                crate::plugin::remote_server::StartHostLobby {
+                crate::plugin::host::StartHostLobby {
                     max_players,
                     password,
                 }
@@ -83,11 +105,10 @@ impl super::Config for ConfigHost {
         ;
 
         // Set ActiveClient context to local player
-        #[cfg(feature = "ui")]
         commands.entity(local_client_entity)
             .queue(|mut entity: prelude::EntityWorldMut| {
                 if let Ok((&game_id, &client_id)) = entity.get_components::<(&spru_bevy::common::component::GameId, &spru_bevy::client::component::ClientId)>() {
-                    entity.resource_scope::<crate::plugin::ui::ActiveClient, ()>(|_, mut active_client| {
+                    entity.resource_scope::<ui::client::ActiveClient, ()>(|_, mut active_client| {
                         active_client.set(*game_id, Some(*client_id));
                     });
                 } else {

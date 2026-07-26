@@ -854,6 +854,8 @@ where
                 }
 
                 if let Some(game_outcome) = game_outcome {
+                    tracing::info!("Received GameOutcome, game is completing");
+                    
                     for player_id in self.player_manager.iter_active() {
                         messaging.push_signal(
                             player_id,
